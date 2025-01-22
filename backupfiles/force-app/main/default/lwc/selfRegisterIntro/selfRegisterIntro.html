@@ -1,0 +1,115 @@
+<template>
+    <template if:true={isLoading}>
+        <div class="slds-align--absolute-center" style="position: relative">
+            <lightning-spinner class="slds-is-fixed" variant="brand" alternative-text="Loading..." size="large">
+            </lightning-spinner>
+        </div>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+    <template if:true={showModal}>
+        <!-- Modal/Popup Box LWC starts here -->
+        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-02" aria-modal="true"
+            aria-describedby="modal-content-id-2" class="slds-modal slds-fade-in-open 	$duration-quickly"
+            style="position: fixed;">
+            <div class="slds-modal__container">
+                <!-- Modal/Popup Box LWC header here -->
+                <header class="slds-modal__header">
+                    <!-- <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={closeModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse"
+                            size="small" style="--slds-c-icon-color-foreground:white;"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button> -->
+                    <h2 id="modal-heading-02" class="slds-text-heading_medium slds-hyphenate" style="color: #000000;font-weight: bold;">
+                        Please provide the information below to complete the registration process.</h2>
+                </header>
+                <!-- Modal/Popup Box LWC body starts here -->
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-2">
+                    <lightning-record-edit-form object-api-name="User" record-id={user.Id} onsubmit={updateUser}>
+                        <lightning-messages></lightning-messages>
+                        <lightning-input-field field-name="FirstName" value={user.FirstName}> </lightning-input-field>
+                        <lightning-input-field field-name="LastName" value={user.LastName}> </lightning-input-field>
+                        <lightning-input-field field-name="Date_Of_Birth__c" value={user.Date_Of_Birth__c} required={enforceMemberId}>
+                        </lightning-input-field>
+                        <lightning-input-field field-name="Member_ID__c" value={user.Member_ID__c} required={enforceMemberId}>
+                        </lightning-input-field>
+                        <lightning-button
+                            type="submit"
+                            name="submit"
+                            label="Confirm"
+                            style="float: right;"
+                        >
+                        </lightning-button>
+                    </lightning-record-edit-form>
+                </div>
+                <!-- Modal/Popup Box LWC footer starts here -->
+                <footer class="slds-modal__footer">
+                    <!-- <button class="slds-button slds-button_brand" onclick={closeErrorModal} title="OK">OK</button> -->
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+    <template if:true={updateSuccess}>
+        <!-- Modal/Popup Box LWC starts here -->
+        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-success" aria-modal="true"
+            aria-describedby="modal-content-id-2" class="slds-modal slds-fade-in-open 	$duration-quickly"
+            style="position: fixed;">
+            <div class="slds-modal__container">
+                <!-- Modal/Popup Box LWC header here -->
+                <header class="slds-modal__header">
+                    <!-- <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={closeModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse"
+                            size="small" style="--slds-c-icon-color-foreground:white;"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button> -->
+                    <h2 id="modal-heading-success" class="slds-text-heading_medium slds-hyphenate" style="color: #2E844A;font-weight: bold;">
+                        Information Saved.</h2>
+                </header>
+                <!-- Modal/Popup Box LWC body starts here -->
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-success">
+                    <p>
+                        {successMessage}
+                    </p>
+                </div>
+                <!-- Modal/Popup Box LWC footer starts here -->
+                <!-- <footer class="slds-modal__footer">
+                    <button class="slds-button slds-button_brand" onclick={closeModal} title="Okay">Okay</button>
+                </footer> -->
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+    <template if:true={updateFail}>
+        <!-- Modal/Popup Box LWC starts here -->
+        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-fail" aria-modal="true"
+            aria-describedby="modal-content-id-2" class="slds-modal slds-fade-in-open 	$duration-quickly"
+            style="position: fixed;">
+            <div class="slds-modal__container">
+                <!-- Modal/Popup Box LWC header here -->
+                <header class="slds-modal__header">
+                    <!-- <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={closeModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse"
+                            size="small" style="--slds-c-icon-color-foreground:white;"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button> -->
+                    <h2 id="modal-heading-fail" class="slds-text-heading_medium slds-hyphenate" style="color: #EA001E;font-weight: bold;">
+                        Error occured while saving the information.</h2>
+                </header>
+                <!-- Modal/Popup Box LWC body starts here -->
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-fail">
+                    <p>
+                        {failMessage}
+                    </p>
+                </div>
+                <!-- Modal/Popup Box LWC footer starts here -->
+                <!-- <footer class="slds-modal__footer">
+                    <button class="slds-button slds-button_brand" onclick={closeModal} title="Okay">Okay</button>
+                </footer> -->
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

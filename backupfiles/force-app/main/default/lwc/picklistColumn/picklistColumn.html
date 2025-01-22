@@ -1,0 +1,16 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 06-19-2023
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<template>
+    <div class="picklistSection" id="picklist">
+        <div  class="picklist-container">
+            <lightning-combobox data-inputable="true" disabled={disabled}  name="picklist" label={label} value={value} placeholder={placeholder} options={options} variant='label-hidden'
+            onchange={handleChange} onblur={closePicklist}   dropdown-alignment="auto"></lightning-combobox>
+        </div>
+     
+    </div>
+</template>

@@ -1,0 +1,515 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 05-01-2024
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<apex:page title="Estimated Costs" renderAs="pdf" controller="AdvancedEOBController" standardStylesheets="false" applyBodyTag="false">
+        <head>
+            <title>Price Comparison Report - No Surprise Act Project</title>
+            <style type="text/css" media="print">
+             @page {
+                size: A4 landscape;
+                @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+            }
+            }
+                 #main.body {
+                    font-family: Arial, sans-serif;
+                    margin: 20px;
+                    background-color: #f5f5f5;
+                }
+        
+                header {
+                    text-align: center;
+                    padding: 11px 0;
+                }
+        
+                h1, h2, h3, h4 {
+                    color: #333;
+                }
+        
+                h1 {
+                    font-size: 24px;
+                    margin-top: 20px;
+                }
+        
+                h2 {
+                    font-size: 20px;
+                    margin-top: 5px;
+                }
+        
+                h3 {
+                    font-size: 18px;
+                    margin-top: 15px;
+                }
+        
+                h4 {
+                    font-size: 16px;
+                    margin-top: 11px;
+                }
+        
+                p {
+                    line-height: 1.4;
+                    margin-bottom: 15px;
+                }
+        
+                ul {
+                    list-style: none;
+                    padding: 0;
+                }
+        
+                ul li {
+                    margin-bottom: 5px;
+                }
+        
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 11px;
+                }
+        
+                table, th, td {
+                    border: 1px solid #333;
+                }
+        
+                th, td {
+                    padding: 8px;
+                    text-align: center;
+                }
+        
+                th {
+                    background-color: #333;
+                    color: #fff;
+                }
+        
+                td {
+                    background-color: #f2f2f2;
+                }
+        
+                .logo {
+                    display: block;
+                    margin: 0 auto;
+                    max-width: 150px; /* Adjust the max-width as needed */
+                    background-color: transparent; /* Remove the black background */
+                }
+        
+                .separator {
+                    margin-top: 20px;
+                    margin-bottom: 20px;
+                    border-top: 2px solid #89CFF0;
+                }
+           th, td {
+                    padding: 8px;
+                    text-align: center;
+                }
+        
+                th {
+                    background-color: #333;
+                    color: #fff;
+                }
+        
+                td {
+                    background-color: #f2f2f2;
+                }
+        
+                /* Additional table column styles */
+                .table-details th {
+                    background-color: #555;
+                    color: #fff;
+                }
+        
+                .table-details td {
+                    background-color: #ddd;
+                }
+        
+                /* Style for grouping table sections */
+                .table-section {
+                    margin-top: 20px;
+                    border-collapse: collapse;
+                    width: 100%;
+                }
+        
+                .table-section th {
+                    background-color: #333;
+                    color: #fff;
+                }
+        
+                .table-section td {
+                    background-color: #f2f2f2;
+                }
+        
+                /* Style for the title row */
+                .table-title-row th {
+                    background-color: #555;
+                    color: #fff;
+                }
+         /* Container for Patient and Health Plan Details */
+         .details-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            border:2px solid #ff4d01;
+        }
+
+        /* Style for Patient Details section */
+        .pricing-details {
+            flex-basis: calc(50% - 11px); /* 50% width with some spacing */
+           
+            border:0.5px solid #89CFF0;
+        }
+        .patient-details {
+            flex-basis: calc(50% - 11px); /* 50% width with some spacing */
+            margin-left: 5px;
+            margin-top: 5px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border:0.5px solid #89CFF0;
+        }
+
+        /* Style for Health Plan Details section */
+        .health-plan-details {
+            flex-basis: calc(50% - 11px); /* 50% width with some spacing */
+            margin-left: 5px;
+            margin-top: 5px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border:0.5px solid #89CFF0;
+
+        }
+        .page-break {
+            page-break-before: always; /* or page-break-after: always; */
+        }
+            </style>
+        </head>
+        <div id="main">
+        <body>
+            <header>
+                <img class="logo" src="{!$Resource.IPSLogo}" alt="Logo" style="width:20%; margin-left:10%; height:15%"/>
+                <h1>{!$Label.NSA_Report_Title}</h1>
+            </header>
+        
+            <div class="separator"></div>
+        <!--
+            <h3>Introduction</h3>
+            <p>The No Surprise Act project aims to provide transparency and prevent unexpected healthcare costs. This report is designed to help you compare prices for common medical procedures.</p>
+        
+            <div class="separator"></div>-->
+
+            <div class="details-container">
+            <div class="patient-details">
+            <h4 style="margin-left:5px;">Patient Information</h4>
+            <ul>
+                <li><strong>Member ID: </strong>{!eob.IntPS_NSA__Patient__r.IntPS__Not_Unique_Member_Id__c} </li>
+                <li><strong>Name: </strong> {!eob.IntPS_NSA__Patient__r.IntPS__First_Name__c}  {!eob.IntPS_NSA__Patient__r.IntPS__Last_Name__c}</li>
+                <li><strong>Address: </strong> {!eob.IntPS_NSA__Patient__r.IntPS__Street__c} {!eob.IntPS_NSA__Patient__r.IntPS__Street1__c} {!eob.IntPS_NSA__Patient__r.IntPS__City__c} {!eob.IntPS_NSA__Patient__r.IntPS__State__c} , {!eob.IntPS_NSA__Patient__r.IntPS__Zip_Code__c}</li>
+
+            </ul>
+            </div>
+            <div class="health-plan-details">
+                <h4 style="margin-left:5px;" >Health Plan Details</h4>
+                <ul>
+                <li><strong>Employer Group Name: </strong>{!eob.IntPS_NSA__Patient__r.IntPS__Employer__r.Name} </li>
+                <li><strong>Health Plan Name: </strong> {!eob.IntPS_NSA__Eligibility__r.IntPS__Health_Plan__r.Name}</li>
+                <li><strong>Health Plan Number: </strong> {!eob.IntPS_NSA__Eligibility__r.IntPS__Health_Plan__r.IntPS__ExternalID__c}</li>
+                <li><strong>Eligibility Period: </strong> Starting {!eob.IntPS_NSA__Eligibility__r.IntPS__Begin_Date__c} <apex:outputText value="Ending On {!eob.IntPS_NSA__Eligibility__r.IntPS__Term_Date__c}" 
+                    rendered="{!eob.IntPS_NSA__Eligibility__r.IntPS__Term_Date__c!=null}" escape="false" /> 
+                </li>
+                
+            </ul>
+            </div>
+            <div class="health-plan-details">
+                <h4 style="margin-left:5px;">Plan Benefits Balance (at time of request)</h4>
+                <ul>
+                <li><strong>Deductible: Individual: </strong>${!eob.IntPS_NSA__Total_Deductible_Paid_Amount__c}</li>
+                <li><strong>Deductible: Family: </strong>
+                    <apex:outputText value="${!eob.IntPS_NSA__Total_Deductible_Paid_Amount_by_Family__c}" escape="false" /></li>
+                <li><strong>Out-of-Pocket Max: Individual: </strong>
+                     <apex:outputText value="${! IF($Label.NSA_OrgName=='Cornerstone','Not Captured',ROUND(eob.IntPS_NSA__Total_Out_Of_Pocket_Amount__c, 2))}"> </apex:outputText>
+                </li>
+                <li><strong>Out-of-Pocket Max: Family: </strong>
+                    <apex:outputText value="${! IF($Label.NSA_OrgName=='Cornerstone','Not Captured',ROUND(eob.IntPS_NSA__Total_Out_Of_Pocket_Amount_by_Family__c,2))}"> </apex:outputText>
+                </li>
+                <li><strong>As of: </strong>
+                    <apex:outputText value="{!healthPlan.IntPS__TPA_Accumulators__r[0].LastModifiedDate}" 
+                    rendered="{!healthPlan.IntPS__TPA_Accumulators__r.size>0}" escape="false" /> 
+               </li>
+            </ul> 
+            </div>
+            
+          
+            </div>
+            <div class="separator"></div>
+
+            <h3>Procedure Prices Comparison</h3>
+            <p>{!$Label.NSA_Report_Disclaimer1}
+                <br/>
+                <i>{!$Label.NSA_smallDisclaimer}</i>
+                <br/>
+                <i>{!eob.IntPS_NSA__Eligibility__r.IntPS__Health_Plan__r.IntPS_NSA__Disclaimer__c}</i>
+           </p>
+        
+            <div id="divActivites" name="divActivites" style="border:2px solid #ff4d01;">
+
+                <div class="patient-details">
+                    <h4 style="margin-left:5px;">Request Details</h4>
+                    <ul>
+                        <li><strong>Date Of Service: </strong>{!serviceDate} </li>
+                        <li><strong>Request Number: </strong> {!eob.Name}  </li>
+                        <li><strong>Request Date/Time: </strong>{!eob.CreatedDate}</li>
+                        <li><strong>Network Rate Applied: </strong>{!eob.IntPS_NSA__MRF_Network__c} </li>
+                        <li><strong>Network Rate Applied Date: </strong>{!eob.IntPS_NSA__MRF_Date__c} </li>
+        
+                    </ul>
+                    </div>
+             <div class="patient-details">
+            <h4 style="margin-left:5px;">Provider Details</h4>
+            <ul>
+                <li><strong>Provider Name: </strong>{!eob.IntPS_NSA__Provider_Name__c} </li>
+                <li><strong>NPI Number: </strong>{!eob.IntPS_NSA__Provider_NPI_Number__c} </li>
+                <li><strong>Address: </strong> {!eob.IntPS_NSA__Provider_Billing_Street__c} {!eob.IntPS_NSA__Provider_Billing_City__c} {!eob.IntPS_NSA__Provider_Billing_State__c} , {!eob.IntPS_NSA__Provider_Billing_Postal_Code__c}</li>
+                <li><strong>Available Provider Networks: </strong> {! IF(eob.IntPS_NSA__Provider_Network__c=='Out-Of-Network','',eob.Available_Networks_For_Provider__c)}</li>
+                <li><strong>Provider Network: </strong> {!eob.IntPS_NSA__Provider_Network__c}</li>
+               
+            </ul>
+        </div>
+        </div>
+            <!-- Combined Table for Service Details, Patient Responsibility, and Patient Answers -->
+            <div style="page-break-after: always"/>
+            <div id="divActivites" name="divActivites" style="border:2px solid #ff4d01;">
+            <div class="pricing-details">
+                <h4 style="margin-left:5px;">Prices Details</h4>
+            <table style="table-layout: fixed; overflow: hidden; empty-cells: hidden;  width: 100%; border: 2px solid white;" border="0" cellspacing="3" class="tbl">
+                <thead>
+                    <tr>
+                        <th colspan="6" rowspan="2" style="width: 35%; border: 2px solid black !important;">
+                            <div>
+                                <p style="border-bottom: 1px solid black; font-size: small; text-align: center;">
+                                    <strong>Services Details</strong>
+                                </p>
+                                <div class="row">
+                                    <div class="column" style="font-size: 11px; float: left;  width: 16.66%; text-align: center;">
+                                        Service Code
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 33.333%; text-align: center;">
+                                        Service Description
+                                    </div>
+                                    <div class="column" style=" font-size: 11px; float: left; width: 16.66%; text-align: center;">
+                                        Contracted Rate
+                                    </div>
+                                    <div class="column" style="float: left; font-size: 11px; width: 16.66%; text-align: center">
+                                        Qty                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 16.66%; text-align: center;">
+                                        Total Contracted Costs
+                                    </div>
+                                </div>
+                            </div>
+                        </th>
+                       
+                        <th colspan="6" rowspan="2" style="width: 30%; border: 2px solid black !important;">
+                            <div>
+                                <p style="border-bottom: 1px solid black; font-size: small; text-align: center;">
+                                    <strong>Patient Responsibility</strong>
+                                </p>
+                                <div class="row" style="font-size: 12px;">
+                                    <div class="column" style="font-size: 11px; float: left; width: 16.666%; text-align: center;">
+                                        Copay
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 16.666%; text-align: center;">
+                                        Coins.
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 16.666%; text-align: center;">
+                                        Ded.
+                                    </div>
+                                    <div class="column" style="float: left; font-size: 11px; width: 16.666%; text-align: center">
+                                        Non-Covered
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 16.666%; text-align: center;">
+                                        Total estimated Costs
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 16.666%; text-align: center;">
+                                        Notation
+                                    </div>
+                                </div>
+                            </div>
+                        </th>
+                        <th colspan="3" rowspan="2" style="width: 35%; border: 2px solid black !important;">
+                            <div>
+                                <p style="border-bottom: 1px solid black; font-size: small; text-align: center;">
+                                    <strong>Pricing Request Questions</strong>
+                                </p>
+                                <div class="row" style="font-size: 12px;">
+                                    <div class="column" style="font-size: 11px; float: left; width: 33.3%; text-align: center;">
+                                        Type of Provider
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 33.3%; text-align: center;">
+                                        Preventative or Pregnancy Services
+                                    </div>
+                                    <div class="column" style="font-size: 11px; float: left; width: 33.3%; text-align: center;">
+                                        Place of Service
+                                    </div>
+                                </div>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <apex:repeat var="lineItems" value="{!eob.IntPS__EOB_Line_Items__r}">
+                        <tr style="border-top: 2px solid black;">
+                            <td class="slds-cell-wrap" style=" text-align: center; ">
+                                <apex:outputText value="{!lineItems.IntPS__L2110_Procedure_Code__c}"> </apex:outputText>
+                            </td>
+                            <td colspan="2" class="slds-cell-wrap" style=" text-align: center; font-size: 12px;">
+                                <apex:outputText value="{!lineItems.IntPS__L2110_Procedure_Code_Description__c}"> </apex:outputText>
+                            </td>
+                            <td style="  text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{! IF(lineItems.IntPS_NSA__Service_Line_Allowed_Unit_Price__c==null,'No Rate',ROUND(lineItems.IntPS_NSA__Service_Line_Allowed_Unit_Price__c,2))}">
+                                </apex:outputText>
+                            </td>
+                            <td style=" text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS__L2110_Units_of_Service_Paid_Count__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS__L2110_Units_of_Service_Paid_Count__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="  text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{! IF(lineItems.IntPS__L2110_Service_Line_Allowed_Amount__c==null,'No Rate',ROUND(lineItems.IntPS__L2110_Service_Line_Allowed_Amount__c,2))}">
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Copay_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Copay_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: center; border-right: 0.5px solid black;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Coinsurance_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Coinsurance_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Deductible_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Deductible_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Not_Covered_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Not_Covered_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: center; " class="slds-cell-wrap">
+                                <apex:outputText value="{! IF(lineItems.IntPS_NSA__Service_Line_Allowed_Unit_Price__c==null,'No Rate',ROUND(lineItems.IntPS_NSA__Patient_Responsibility__c,2))}"> </apex:outputText>
+                            </td>
+                            <td style="text-align: center; font-size: 12px;" class="slds-cell-wrap">
+                                
+                                <apex:outputText value="{! IF(ISNULL(lineItems.Remark_Code__c),lineItems.IntPS_NSA__Health_Plan_Item__r.Remark_Code__r.IntPS__Code__c,lineItems.Remark_Code__r.IntPS__Code__c)}"> </apex:outputText>
+                            </td>
+                            <td style="text-align: center;  border-left: 0.5px solid black; font-size: 13px;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.Provider_Type__c}" escape="false" />
+                            </td>
+                            <td style="text-align: center;  border-left: 0.5px solid black; font-size: 13px;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.PreventativePregn__c}" escape="false" />
+                            </td>
+                            <td style="text-align: center;  border-left: 0.5px solid black; font-size: 13px;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.IntPS_NSA__Place_Of_Service__c}" escape="false" />
+                            </td>
+                        </tr>
+                    </apex:repeat>
+                </tbody>
+            </table>
+            </div>
+            <div class="separator"></div>
+            
+        <div style="text-align: center;">
+            <table  style="margin-top: 11px; margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th>
+                            <b>Notations</b>
+                        </th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <apex:repeat var="notationItem" value="{!remarkCodes}">
+
+                    <tr>
+                        <td>
+                            <apex:outputText value="{!notationItem}"> </apex:outputText>
+
+                        </td>
+                        <td>
+                            <apex:outputText value="{!remarkCodes[notationItem]}"> </apex:outputText>
+                        </td>
+                    </tr>
+                  </apex:repeat>
+                </tbody>
+            </table>
+            </div>
+            </div>
+            <div class="separator"></div>
+            <div style="page-break-after: always"/>
+
+            <h3>Summary</h3>
+            <p>Based on the information provided, here is a summary of the cost comparison between the facilities for the selected procedures:</p>
+        
+            <table>
+                <tr>
+                    <th>Selected Provider</th>
+                    <th>Total Contracted Costs</th>
+                    <th>Total Copay</th>
+                    <th>Total Coins.</th>
+                    <th>Total Ded.</th>
+                    <th>Total Non-Covered.</th>
+                    <th>Total Estimated Costs</th>
+                    <th>Total Estimated Patient Costs</th>
+                    
+                </tr>
+                <apex:repeat var="eob" value="{!eob}">
+
+                <tr>
+                    <td>{!eob.IntPS_NSA__Provider_Name__c}</td>
+                    <td><apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Allowed_Amount_F__c),false,true)}">
+                        <apex:param value="{!eob.IntPS_NSA__Total_Allowed_Amount_F__c}" />
+                    </apex:outputText></td>
+                    <td> <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Copay_Amount_F__c),false,true)}">
+                        <apex:param value="{!eob.IntPS_NSA__Total_Copay_Amount_F__c}" />
+                    </apex:outputText></td>
+                    <td> <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Coinsurance_Amount_F__c),false,true)}">
+                        <apex:param value="{!eob.IntPS_NSA__Total_Coinsurance_Amount_F__c}" />
+                    </apex:outputText></td>
+                    <td> <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Deductible_Amount_F__c),false,true)}">
+                        <apex:param value="{!eob.IntPS_NSA__Total_Deductible_Amount_F__c}" />
+                    </apex:outputText></td>
+                    <td> <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Non_Covered_Amount_F__c),false,true)}">
+                        <apex:param value="{!eob.IntPS_NSA__Total_Non_Covered_Amount_F__c}" />
+                    </apex:outputText></td>
+                    <td> <apex:outputText value="{! IF(eob.AtLeastOneLineItemWithRate__c==false,'No Rate',ROUND(eob.IntPS_NSA__Total_Patient_Responsibility_F__c,2))}">
+                    </apex:outputText></td>
+                    <td><apex:outputText value="{! IF(eob.AtLeastOneLineItemWithRate__c==false,'No Rate',ROUND(eob.IntPS_NSA__Total_Patient_Responsibility_F__c,2))}">
+                    </apex:outputText>    </td>
+                </tr>
+                </apex:repeat>
+            </table>
+            <div class="separator"></div>
+
+            <div style="font-family: fantasy; font-size: 30px; text-align: center; margin-top: 11px;">
+                THIS IS NOT A BILL
+            </div>
+            <div style="padding-top: 11px; color: black; white-space: normal; text-align: center;">
+                <i>{!$Label.NSA_Report_Question}</i>
+            </div>
+            <p> <p>{!$Label.NSA_Report_Disclaimer2}</p>
+                <ol type="a">
+                <li>{!$Label.NSA_Report_Disclaimer3}</li>
+                <li>{!$Label.NSA_Report_Disclaimer4}</li>
+                <li>{!$Label.NSA_Report_Disclaimer5}</li>
+                <li>{!$Label.NSA_Report_Disclaimer6}</li>
+                <li>{!$Label.NSA_Report_Disclaimer7}</li>
+                <li>{!$Label.NSA_Report_IPSName} , {!$Label.NSA_OrgName} , {!$Label.NSA_Report_Disclaimer8}</li>
+                </ol>
+            </p>
+        
+       </body>
+    </div>
+        
+</apex:page>

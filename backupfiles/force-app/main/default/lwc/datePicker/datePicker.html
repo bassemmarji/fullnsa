@@ -1,0 +1,27 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 05-28-2024
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<template>
+    <div class="picklistSection" id="picklist">
+        <div class="slds-modal__content" style="overflow: visible !important;">
+            <lightning-input type="date" 
+            data-inputable="true"
+            disabled={disabled}
+            name="datepicker"
+            label={label}
+            value={value}
+            placeholder={placeholder}
+            variant='label-hidden'
+            dropdown-alignment="auto"
+            min={minDate}
+            onchange={handleChange}>
+        </lightning-input>
+
+        </div>
+     
+    </div>
+</template>

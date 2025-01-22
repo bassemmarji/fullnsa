@@ -1,0 +1,50 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 01-31-2024
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<template>
+    <lightning-card>
+        <div class="slds-m-around_medium">
+            <lightning-input type="search" label="Filter Result" onchange={handleSearch}></lightning-input>
+
+            <template if:true={data}>
+                <lightning-datatable
+                    key-field="id"
+                    data={data}
+                    columns={columns}
+                    column-widths-mode="fixed"
+                    hide-checkbox-column="true"
+                    onrowaction={getSelectedRec}>
+                </lightning-datatable>
+
+                <div class="slds-m-around_medium slds-grid slds-wrap slds-gutters">
+                    <div class="slds-col slds-size_12-of-12 slds-medium-size_4-of-12">
+                        <lightning-button label="Previous" icon-name="utility:chevronleft" onclick={previousHandler}
+                            disabled={isPreviousDisable}>
+                        </lightning-button>
+                    </div>
+                    <div class="slds-col slds-size_12-of-12 slds-medium-size_4-of-12 slds-text-align_center">
+                        <span>
+                            Displaying {startingRecord} to {endingRecord} of {totalRecountCount} records.
+                            Page {page} of {totalPage}.
+                        </span>
+                    </div>
+                    <div class="slds-col slds-size_12-of-12 slds-medium-size_4-of-12 slds-text-align_right">
+                        <lightning-button label="Next" icon-name="utility:chevronright" icon-position="right"
+                            onclick={nextHandler} disabled={isNextDisable}>
+                        </lightning-button>
+                    </div>
+                </div>
+
+            </template>
+
+            <template if:true={error}>
+                <div class="slds-text-color_error">{error}</div>
+            </template>
+
+        </div>
+    </lightning-card>
+</template>
