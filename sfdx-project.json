@@ -5,8 +5,8 @@
        ,"default":true 
      }
   ],  
-  "name": "medcosal"
+  "name": "fullnsa"
  ,"namespace": ""
- ,"sfdcloginurl":"https://medcosal-dev-ed.my.salesforce.com/"
+ ,"sfdcloginurl":"https://fullnsa-dev-ed.develop.my.salesforce.com/"
  ,"sourceApiVersion":"63.0" 
 }
