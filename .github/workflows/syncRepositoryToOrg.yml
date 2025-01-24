@@ -23,15 +23,14 @@ jobs:
  main_job:
    runs-on: ubuntu-latest
    steps:
-     - name: 'Print Parameters'
+     - name: 'Print Workflow Context Variables'
        run: |
-        echo "This job was triggered by ${{ github.actor }} actor / ${{ github.event_name }} event on repository ${{ github.repository }} and branch ${{ github.ref }}"
-        echo "This job is running on ${{runner.os}} server hosted by Github."
-        # Workflow context variables
-        # Github.actor is the latest person to schedule / trigger with workflow
-        #echo ""
-        #echo "This job was triggered by ${{ github.actor }} actor / ${{ github.event_name }} event on repository ${{ github.repository }} and branch ${{ github.ref }}"
-        #run: echo "This job is running on ${{runner.os}} server hosted by Github."
+        echo "This job was triggered by:"
+        echo " * Actor = ${{ github.actor }}" 
+        echo " * Event = ${{ github.event_name }}"  
+        echo " * Repository = ${{ github.repository }}"
+        echo " * Branch = ${{ github.ref }}"
+        echo " * OS = ${{runner.os}} server hosted by Github."
         
      - name: 'Install Salesforce CLI'
        run: |
