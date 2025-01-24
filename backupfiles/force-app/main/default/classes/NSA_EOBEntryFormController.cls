@@ -1315,7 +1315,18 @@ public with sharing class NSA_EOBEntryFormController {
            System.debug('getting line items ');
            for (IntPS__EOB_Line_Item__c lineItem: lineItems) {
              System.debug('calculating line items IntPS_NSA__Patient_Responsibility__c ');
-               lineItem.IntPS_NSA__Patient_Responsibility__c = lineItem.IntPS_NSA__Deductible_Amount__c + lineItem.IntPS_NSA__Copay_Amount__c + lineItem.IntPS_NSA__Coinsurance_Amount__c + lineItem.IntPS_NSA__Not_Covered_Amount__c;
+               //lineItem.IntPS_NSA__Patient_Responsibility__c = lineItem.IntPS_NSA__Deductible_Amount__c 
+               //                                              + lineItem.IntPS_NSA__Copay_Amount__c 
+               //                                              + lineItem.IntPS_NSA__Coinsurance_Amount__c 
+               //                                              + lineItem.IntPS_NSA__Not_Covered_Amount__c
+               //                                              ;
+
+               //Modified By Bassem To cater for null values on 23/01/2025
+               lineItem.IntPS_NSA__Patient_Responsibility__c = ((lineItem.IntPS_NSA__Deductible_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Deductible_Amount__c)
+                                                             + ((lineItem.IntPS_NSA__Copay_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Copay_Amount__c)
+                                                             + ((lineItem.IntPS_NSA__Coinsurance_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Coinsurance_Amount__c)
+                                                             + ((lineItem.IntPS_NSA__Not_Covered_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Not_Covered_Amount__c)
+                                                             ;
                System.debug('calculated');
  
                System.debug('checking is rate available '+lineItem.isRateAvailableInMRF__c);
@@ -1334,7 +1345,19 @@ public with sharing class NSA_EOBEntryFormController {
            }
            for (IntPS__EOB_Line_Item__c lineItem: lineItems) {
              System.debug('calculating line items IntPS_NSA__Patient_Responsibility__c ');
-               lineItem.IntPS_NSA__Patient_Responsibility__c = lineItem.IntPS_NSA__Deductible_Amount__c + lineItem.IntPS_NSA__Copay_Amount__c + lineItem.IntPS_NSA__Coinsurance_Amount__c + lineItem.IntPS_NSA__Not_Covered_Amount__c;
+               //lineItem.IntPS_NSA__Patient_Responsibility__c = lineItem.IntPS_NSA__Deductible_Amount__c 
+               //                                              + lineItem.IntPS_NSA__Copay_Amount__c 
+               //                                              + lineItem.IntPS_NSA__Coinsurance_Amount__c 
+               //                                              + lineItem.IntPS_NSA__Not_Covered_Amount__c
+               //                                              ;
+               
+               //Modified By Bassem To cater for null values on 23/01/2025
+               lineItem.IntPS_NSA__Patient_Responsibility__c = ((lineItem.IntPS_NSA__Deductible_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Deductible_Amount__c)
+                                                             + ((lineItem.IntPS_NSA__Copay_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Copay_Amount__c)
+                                                             + ((lineItem.IntPS_NSA__Coinsurance_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Coinsurance_Amount__c)
+                                                             + ((lineItem.IntPS_NSA__Not_Covered_Amount__c == null) ? 0 : lineItem.IntPS_NSA__Not_Covered_Amount__c)
+                                                             ;
+                
                System.debug('calculated');
  
                System.debug('checking is rate available '+lineItem.isRateAvailableInMRF__c);
