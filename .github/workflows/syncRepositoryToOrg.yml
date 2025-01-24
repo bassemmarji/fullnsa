@@ -77,14 +77,14 @@ jobs:
          sfdx force:source:retrieve -u backupfiles -x manifest/package.xml
          
      - name: 'Export Org Data'
-       run: echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles -o backupfiles
-        
-       #run: |
-       #  if test -d "./backupfiles/data_org"; then
-       #    echo data_org folder exists
-       #  else
-       #    echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles/data_org -o backupfiles
-       #  fi
+       run: | 
+         echo $GITHUB_PATH
+         if test -d "./backupfiles/data"; then
+            echo data folder exists
+         else   
+            mkdir -p ./backupfiles/data
+            echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles/data -o backupfiles
+         fi
          
      - name: Save repository owner email
        run: |
