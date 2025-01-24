@@ -25,7 +25,8 @@ jobs:
    steps:
      - name: 'Print Parameters'
        run: |
-        echo "test"
+        echo "This job was triggered by ${{ github.actor }} actor / ${{ github.event_name }} event on repository ${{ github.repository }} and branch ${{ github.ref }}"
+        echo "This job is running on ${{runner.os}} server hosted by Github."
         # Workflow context variables
         # Github.actor is the latest person to schedule / trigger with workflow
         #echo ""
