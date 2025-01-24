@@ -89,4 +89,22 @@ jobs:
        if: steps.git-check.outputs.modified == 'true'
        run: |
          git commit -m "${{ github.event.inputs.commit_text }} on ${{ github.event.repository.updated_at }}"
-         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT    
+         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
+
+     - name: 'Send Job Status By Email'
+       uses: dawidd6/action-send-mail@v2
+       with:
+             # Mail server settings
+             server_address: smtp.gmail.com
+             server_port: 465
+             # User credentials
+             username: ${{ secrets.MAIL_USERNAME }}
+             password: ${{ secrets.MAIL_PASSWORD }}
+             # Email subject
+             subject: ${{ github.job }} job of ${{ github.repository }} has  ${{ job.status }}
+             # Email body
+             body: ${{ github.job }} job in workflow ${{ github.workflow }} of ${{ github.repository }} has  ${{ job.status }}
+             # Email To
+             to: bassemmarji@gmail.com
+             # Email From
+             from: Bassem Marji
