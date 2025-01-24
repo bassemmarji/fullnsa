@@ -51,14 +51,6 @@ jobs:
       
      - name: 'Authenticate to the org using SFDX'
        run: sfdx force:auth:sfdxurl:store -f DEV-LOGIN.txt -d -a backupfiles
-      
-     - name: 'Export Org Data'
-       run: |
-         if test -d "./backupfiles/data_org"; then
-           echo data_org folder exists
-         else
-           echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./data_org -o backupfiles
-         fi
      
      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
        run: |
@@ -83,6 +75,16 @@ jobs:
      
          cd ./backupfiles
          sfdx force:source:retrieve -u backupfiles -x manifest/package.xml
+         
+     - name: 'Export Org Data'
+       run: echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles -o backupfiles
+        
+       #run: |
+       #  if test -d "./backupfiles/data_org"; then
+       #    echo data_org folder exists
+       #  else
+       #    echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles/data_org -o backupfiles
+       #  fi
          
      - name: Save repository owner email
        run: |
