@@ -1,4 +1,4 @@
-name: Detect changes in the org and backup into the repository
+name: Backup Org
 
 # When the workflow will run
 on:
@@ -6,8 +6,12 @@ on:
    # Runs at 12:00 UTC every day.
   # - cron: '0 12 * * *'
   
- # Allows you to run this workflow manually from the Actions tab
+ # To manually trigger the workflow directly from Github UI or via the Github API.
+ # This is particularly useful for workflows that perform manual tasks such as deploying software to production
+ # database migrations, or any process that requires manual oversight.
  workflow_dispatch:
+   # Define parameters for the workflow in order to pass parameters to it when triggered.
+   # This makes the workflow more flexible and adaptable.
    inputs:
      # this will be refered to as ${{ github.event.inputs.commit_text }}
      commit_text:
@@ -16,11 +20,17 @@ on:
        default: 'New Manual Sync commit'
 
 jobs:
- sync_job:
+ main_job:
    runs-on: ubuntu-latest
    steps:
-  
-     - name: Install Salesforce CLI
+     - name: 'Print Parameters'
+        run: |
+        # Workflow context variables
+        # Github.actor is the latest person to schedule / trigger with workflow
+        echo "This job was triggered by ${{ github.actor }} actor / ${{ github.event_name }} event on repository ${{ github.repository }} and branch ${{ github.ref }}"
+        echo "This job is running on ${{runner.os}} server hosted by Github."
+        
+     - name: 'Install Salesforce CLI'
        run: |
          wget https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
          mkdir ~/sfdx
@@ -77,4 +87,4 @@ jobs:
        if: steps.git-check.outputs.modified == 'true'
        run: |
          git commit -m "${{ github.event.inputs.commit_text }} on ${{ github.event.repository.updated_at }}"
-         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT        
+         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT    
