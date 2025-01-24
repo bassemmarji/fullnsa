@@ -41,7 +41,7 @@ jobs:
          ~/sfdx/bin/sfdx version
          
      - name: 'Instll SFDX Texei Plugin'
-       run: sfdx plugins:install texei-sfdx-plugin
+       echo 'y' | run: sfdx plugins:install texei-sfdx-plugin
         
      - name: 'Checkout source code'
        uses: actions/checkout@main
