@@ -39,6 +39,9 @@ jobs:
          tar xJf sfdx-linux-x64.tar.xz -C ~/sfdx --strip-components 1
          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
          ~/sfdx/bin/sfdx version
+         
+     - name: 'Instll SFDX Texei Plugin'
+       run: sfdx plugins:install texei-sfdx-plugin
         
      - name: 'Checkout source code'
        uses: actions/checkout@main
@@ -49,6 +52,14 @@ jobs:
      - name: 'Authenticate to the org using SFDX'
        run: sfdx force:auth:sfdxurl:store -f DEV-LOGIN.txt -d -a backupfiles
       
+     - name: 'Export Org Data'
+       run: |
+         if test -d "./backupfiles/data_org"; then
+           echo data_org folder exists
+         else
+           sfdx texei:data:export --objects Account,Contact --outputdir ./data_org --targetusername fullnsa
+         fi
+     
      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
        run: |
          rm DEV-LOGIN.txt
@@ -72,6 +83,7 @@ jobs:
      
          cd ./backupfiles
          sfdx force:source:retrieve -u backupfiles -x manifest/package.xml
+         
      - name: Save repository owner email
        run: |
         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
