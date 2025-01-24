@@ -92,11 +92,13 @@ jobs:
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
 
      - name: 'Send Job Status By Email'
-       uses: dawidd6/action-send-mail@v2
+       uses: dawidd6/action-send-mail@v4
        with:
              # Mail server settings
              server_address: smtp.gmail.com
              server_port: 465
+             # Optional whether this connection use TLS
+             secure: true
              # User credentials
              username: ${{ secrets.MAIL_USERNAME }}
              password: ${{ secrets.MAIL_PASSWORD }}
@@ -104,6 +106,7 @@ jobs:
              subject: ${{ github.job }} job of ${{ github.repository }} has  ${{ job.status }}
              # Email body
              body: ${{ github.job }} job in workflow ${{ github.workflow }} of ${{ github.repository }} has  ${{ job.status }}
+             attachments: file//README.html
              # Email To
              to: bassemmarji@gmail.com
              # Email From
