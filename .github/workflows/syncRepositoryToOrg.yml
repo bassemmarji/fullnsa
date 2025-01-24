@@ -1,4 +1,4 @@
-name: Backup Org
+name: Backup_Org
 
 # When the workflow will run
 on:
