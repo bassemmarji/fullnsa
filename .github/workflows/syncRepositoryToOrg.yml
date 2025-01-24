@@ -85,30 +85,36 @@ jobs:
          git add .
          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
          
-     - name: Commit and push if there modified files
+     - name: Commit and push if there are modified files
        if: steps.git-check.outputs.modified == 'true'
        run: |
          git commit -m "${{ github.event.inputs.commit_text }} on ${{ github.event.repository.updated_at }}"
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
 
-     - name: 'Send Job Status By Email'
-       uses: dawidd6/action-send-mail@v4
-       with:
+     #- name: 'Send Job Status By Email'
+     #  uses: dawidd6/action-send-mail@v4
+     #  with:
              # Mail server settings
-             server_address: smtp.gmail.com
-             server_port: 465
+     #        server_address: smtp.gmail.com
+     #        server_port: 465
              # Optional whether this connection use TLS
-             secure: true
+     #        secure: true
              # User credentials
-             username: ${{ secrets.MAIL_USERNAME }}
-             password: ${{ secrets.MAIL_PASSWORD }}
+     #        username: ${{ secrets.MAIL_USERNAME }}
+     #        password: ${{ secrets.MAIL_PASSWORD }}
              # Email subject
-             subject: ${{ github.job }} job of ${{ github.repository }} has  ${{ job.status }}
+     #        subject: ${{ github.job }} job of ${{ github.repository }} has  ${{ job.status }}
              # Email body
-             body: ${{ github.job }} job in workflow ${{ github.workflow }} of ${{ github.repository }} has  ${{ job.status }}
+     #        body: ${{ github.job }} job in workflow ${{ github.workflow }} of ${{ github.repository }} has  ${{ job.status }}
              # Email To
-             to: bassemmarji@gmail.com
+     #        to: bassemmarji@gmail.com
              # Email From
-             from: Bassem Marji
+     #        from: Bassem Marji
              # Optional unsigned/invalid certificates allowance
-             ignore_cert: true
+     #        ignore_cert: true
+     - name: 'Send Push Notification'
+       uses: techulus/push-github-action@1.0.0
+       env:
+          API_KEY: ${{ secrets.API_KEY }}
+          MESSAGE: "There is a new commit!"
+
