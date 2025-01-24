@@ -112,9 +112,9 @@ jobs:
      #        from: Bassem Marji
              # Optional unsigned/invalid certificates allowance
      #        ignore_cert: true
-     - name: 'Send Push Notification'
-       uses: techulus/push-github-action@1.0.0
-       env:
-          API_KEY: ${{ secrets.API_KEY }}
-          MESSAGE: "There is a new commit!"
+     #- name: 'Send Push Notification'
+     #  uses: techulus/push-github-action@1.0.0
+     #  env:
+     #     API_KEY: ${{ secrets.API_KEY }}
+     #     MESSAGE: "There is a new commit!"
 
