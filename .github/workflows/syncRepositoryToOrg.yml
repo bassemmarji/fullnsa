@@ -106,8 +106,9 @@ jobs:
              subject: ${{ github.job }} job of ${{ github.repository }} has  ${{ job.status }}
              # Email body
              body: ${{ github.job }} job in workflow ${{ github.workflow }} of ${{ github.repository }} has  ${{ job.status }}
-             attachments: file//README.html
              # Email To
              to: bassemmarji@gmail.com
              # Email From
              from: Bassem Marji
+             # Optional unsigned/invalid certificates allowance
+             ignore_cert: true
