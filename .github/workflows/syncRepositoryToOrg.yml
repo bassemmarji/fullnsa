@@ -57,7 +57,7 @@ jobs:
          if test -d "./backupfiles/data_org"; then
            echo data_org folder exists
          else
-           sfdx texei:data:export --objects Account,Contact --outputdir ./data_org --targetusername fullnsa
+           echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./data_org --targetusername fullnsa
          fi
      
      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
