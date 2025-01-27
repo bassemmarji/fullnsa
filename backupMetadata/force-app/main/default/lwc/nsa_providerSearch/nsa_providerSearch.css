@@ -1,0 +1,13 @@
+.item-with-line {
+    position: relative;
+}
+
+.item-with-line::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background-color: red; /* Adjust color as needed */
+}

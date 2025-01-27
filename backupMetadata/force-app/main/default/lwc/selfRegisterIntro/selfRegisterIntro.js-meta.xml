@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>55.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__AppPage</target>
+        <target>lightning__RecordPage</target>
+        <target>lightning__HomePage</target>
+        <target>lightningCommunity__Page</target>
+        <target>lightningCommunity__Default</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig
+            targets="lightning__AppPage,lightning__RecordPage,lightning__HomePage,lightningCommunity__Default">
+            <property name="successMessage" label="Success Message:" type="String"
+                description="The success message after confirmation of user info."></property>
+            <property name="failMessage" label="Fail Message:" description="The fail message if user data update fails."
+                type="String"></property>
+            <property name="batchInProcessMessage" label="Request In Progress Message:" description="The message if user refreshes the page before schedule job process."
+                type="String"></property>
+            <property name="noMatchMessage" label="No Matched Data Message:" description="No match message for contact with Failed status."
+                type="String"></property>
+            <property name="avoidedProfileName" label="Profile Name of Administrator to hide modal:" description="Modal won't show up for entered profile (This may useful for admin during page edit)."
+                type="String"></property>
+            <property name="enforceMemberId" type="Boolean" label="Enforce Member ID and Birthdate" description="It makes Member ID and Birthdate fields required."/>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>
