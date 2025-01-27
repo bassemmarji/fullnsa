@@ -1,0 +1,2 @@
+<apex:page > <script> window.open('{!$Resource.User_Intructions_Overview}', '_blank');
+window.history.back(); </script> </apex:page>

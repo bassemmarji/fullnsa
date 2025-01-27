@@ -1,0 +1,295 @@
+<template>
+    <template if:true={isLoading}>
+        <div class="slds-align--absolute-center" style="position: relative">
+          <lightning-spinner class="slds-is-fixed" alternative-text="Loading..." variant="brand" size="large">
+          </lightning-spinner>
+        </div>
+    </template> 
+    <template if:true={showResponseBoolen}>
+        <div class="custom-modal">
+            <section role="dialog" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <span class="slds-modal__close">
+                            <lightning-icon style="cursor: pointer;" icon-name="utility:close" onclick={CloseModel} variant="inverse" alternative-text="close"> </lightning-icon>
+                        </span>
+                        <h2 class="slds-text-heading_medium slds-hyphenate">Response</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <pre>{showResponse}</pre>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button label="Cancel" onclick={CloseModel} title="Close Model" class="slds-m-right_small"></lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </div>
+    </template>
+    
+    <lightning-tabset variant="scoped">
+        <lightning-tab label="NSA Service Tool">
+            <lightning-card variant="Narrow" title={requestCardName} icon-name="custom:custom19"
+            style="width: -webkit-fill-available;">
+                <lightning-layout horizontal-align='center' vertical-align='start' label="">
+
+                    <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <lightning-combobox style="width:200px"
+                            name="requestType"
+                            label="Request Type"
+                            value={selectedRequestType}
+                            placeholder=""
+                            options={requestTypeOptions}
+                            onchange={requestTypeChange} ></lightning-combobox>
+                    </lightning-layout-item>
+                    <template if:false={isRequestProvider}>
+                        <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                            large-device-size='largeDeviceSize' padding='around-small'>
+                            <lightning-input type="text" variant="standard" name="name" label="Procedure Codes" onchange={handleProcedureCodeChange} placeholder="Type here...">
+                            </lightning-input>
+                            <template if:true={isOutOfNetwork}>
+                                <lightning-input type="checkbox" variant="standard" name="checkbox" label="Is Revenue Code" onchange={RevCodeCheckbox} >
+                                </lightning-input>
+                                <lightning-input type="checkbox" variant="standard" name="checkboxDrg" label="Is DRG Code" onchange={drgCodeCheckbox} >
+                                </lightning-input>
+                            </template>
+
+                        </lightning-layout-item>
+                    </template>
+                    <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <lightning-input type="text" variant="standard" name="name" label="TINs/NPI" onchange={handleTinChange} placeholder="Type here...">
+                        </lightning-input>
+                    </lightning-layout-item>
+                    <template if:true={isOutOfNetwork}>
+                        <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                            large-device-size='largeDeviceSize' padding='around-small'>
+                            <lightning-input type="text" required variant="standard" name="name" label="Zip Code" onchange={handleZipChange} placeholder="Type here...">
+                            </lightning-input>
+                            
+                        </lightning-layout-item>
+                    </template>
+                    
+                    <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <!-- <lightning-input type="" variant="standard" name="name" label="TPA Acronym" onchange={handleTPAAcronymChange} placeholder="type here...">
+                        </lightning-input> -->
+                        <lightning-combobox style="width:200px"
+                            name="tpaAcronymCombo"
+                            label="TPA Acronym"
+                            value={tpaAcronym}
+                            placeholder="Select TPA Acronym"
+                            options={tpaAcronymOptions}
+                            onchange={handleTPAAcronymChange} required validity=""></lightning-combobox>
+                            <template if:true={isOutOfNetwork}>
+                                <lightning-input type="Text" data-name="unite" label="Quantity" value={quantity} onchange={changeQuantity}></lightning-input>
+                            </template>
+                            
+                    </lightning-layout-item>
+                    <template if:false={isRequestProvider}>
+                        <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <!-- <lightning-input type="" variant="standard" name="name" label="TPA Acronym" onchange={handleTPAAcronymChange} placeholder="type here...">
+                        </lightning-input> -->
+                            <lightning-combobox style="width:200px;"
+                                name="placeOfService"
+                                label="Place Of Service"
+                                value={valuePlaceOfService}
+                                options={placeOfService}
+                                onchange={handleChangePlaceOfService} required >
+                            </lightning-combobox>
+                            
+                            <lightning-combobox style="width:200px;"
+                                name="ClaimType"
+                                label="Claim Type"
+                                value={claimTypeValue}
+                                options={claimType}
+                                disabled >
+                            </lightning-combobox>
+                            
+                        </lightning-layout-item>
+                    </template>
+                    <template if:true={isOutOfNetwork}>
+                        <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <!-- <lightning-input type="" variant="standard" name="name" label="TPA Acronym" onchange={handleTPAAcronymChange} placeholder="type here...">
+                        </lightning-input> -->
+                            <lightning-input type="date" data-name="FromDate" label="From Date" value={todayDate} onchange={changeDate}></lightning-input>
+                            <lightning-input type="date" data-name="ToDate" label="To Date" value={todayDate} onchange={changeDate}></lightning-input>
+                            
+                        </lightning-layout-item>
+                    </template>
+                </lightning-layout>
+                <lightning-layout horizontal-align='center' vertical-align='start' label="">
+                    <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <!-- <lightning-input type="text" variant="standard" name="name" label="Network Acronyms" onchange={handleNetworkAcronymChange} placeholder="type here...">
+                        </lightning-input> -->
+                        <lightning-dual-listbox style="width: 37.5rem;"
+                            name="networkAcronyms"
+                            label="Select Network Acronyms"
+                            source-label="Available"
+                            selected-label="Selected"
+                            field-level-help="Select at least one Network Acronym to send a request!"
+                            options={networkAcronymsOptions}
+                            onchange={handleNetworkAcronymChange} required>
+                        </lightning-dual-listbox>
+                    </lightning-layout-item>
+                </lightning-layout>
+                <div slot="footer" class="slds-grid slds-wrap">
+                    <div class="slds-col slds-size_4-of-12"></div>
+                    <div class="slds-col slds-size_4-of-12">
+                        <lightning-button class="slds-col slds-size_6-of-12" type="submit" slot="footer" variant="brand" label="Send Request" title="Send Request" onclick={sendRequest}></lightning-button>
+                        <template if:true={testRequestBoolen} >
+                            <lightning-button class="slds-col slds-size_6-of-12" style="padding-left: 20px;" slot="footer" variant="brand" label="Send Request For Test" title="Send Request For Test" onclick={forTestRequest}></lightning-button>
+
+                        </template>
+                    </div>
+                    <template if:true={sendRequestTrue}>
+                        <div class="slds-col slds-size_4-of-12">
+                            <div class="slds-clearfix">
+                                <div class="slds-float_right">
+                                    <lightning-input type="checkbox" class="checkboxForValue" onchange={ShowResponceClick} slot="footer" label="Show Response" name="input1"></lightning-input>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </lightning-card>
+            <lightning-layout multiple-rows>
+                <template if:true={showPriceResponse} for:each={priceResponse} for:item="item" for:index="index">
+                    <lightning-layout-item size='4' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                    large-device-size='largeDeviceSize' padding='around-small' key={item.in_network_id}>
+                    <lightning-card>
+                        <div style="padding-left: 11px;">
+                            <p style="overflow-wrap: break-word; font-weight: bold;" >
+                                <lightning-icon
+                                    icon-name="standard:account"
+                                    size="medium"
+                                    alternative-text={item.network.reporting_entity_name}
+                                >
+                                </lightning-icon>  {item.network.reporting_entity_name}</p>
+                        </div>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Provider Group TIN: <b>{item.provider_group.tin}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Provider Group TIN Type: <b>{item.provider_group.tin_type}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Procedure Code: <b>{item.procedure_code}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Provider TIN/NPI: <b>{item.provider_tin}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Negotiated Type: <b>{item.negotiated_type}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Negotiated Rate: <b>{item.negotiated_rate}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Billing Class: <b>{item.billing_class}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Billing Code Modifier: <b>{item.billing_code_modifier}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Service Code: <b>{item.service_code}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Expiration Date: <b>{item.expiration_date}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Additional Information: <b>{item.additional_information}</b></p>
+                        <p slot="footer">
+                            Last Modified: {item.network.last_updated_on}
+                        </p>
+                        <p slot="footer">
+                            Version: {item.network.version}
+                        </p>
+                    </lightning-card>
+                    </lightning-layout-item>
+                </template>
+                <template if:true={showProviderResponse} for:each={providerResponse} for:item="item">
+                    <lightning-layout-item size='12' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                    large-device-size='largeDeviceSize' padding='around-small' key={item.tin}>
+                    <lightning-card  variant="Narrow"  title="Provider" icon-name="standard:account">
+                        
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Networks: <b>{item.networks}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Provider Group TIN Type: <b>{item.tin_type}</b></p>
+                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Provider Type: <b>{item.provider_type}</b></p>
+                    </lightning-card>
+                    </lightning-layout-item>
+                </template>
+                <template if:true={showPriceoon} for:each={priceoon} for:item="item" for:index="index">
+                        <lightning-layout-item size='6' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small' key={item.parsedResponse.Data.ScrubID}>
+                            <lightning-card  variant="Narrow"  title={item.networkAcronyms} icon-name="standard:account">
+                                <template if:true={item.parsedResponse.Data} for:each={item.parsedResponse.Data} for:item="data" for:index="index">
+                                    <lightning-card key={data.index} variant="Narrow"  title="Zip(s)" icon-name="standard:address">
+                                        <p style="overflow-wrap: break-word;" key={data.index} class="slds-p-horizontal_small">Zip Code: <b>{data.ScrubID}</b></p>
+                                        <lightning-layout multiple-rows>
+                                            <template if:true={data.Results} for:each={data.Results} for:item="itemResult" for:index="index">
+                                                <lightning-layout-item size='6' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                                                large-device-size='largeDeviceSize' padding='around-small' key={itemResult.LineNumber}>
+                                                    <lightning-card  variant="Narrow"  title="Procedure Code">
+                                                        
+                                                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Procedure Code: <b>{itemResult.ProcedureCode}</b></p>
+                                                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Line Number: <b>{itemResult.LineNumber}</b></p>
+                                                        <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Allowed: <b>{itemResult.Allowed}</b></p>
+                                                    </lightning-card>
+                                                </lightning-layout-item>
+                                            </template>
+                                        </lightning-layout>
+                                    </lightning-card>
+
+                                </template>
+                                
+                            </lightning-card>
+                        </lightning-layout-item>
+                
+
+                </template>
+            </lightning-layout>
+        </lightning-tab>
+        <lightning-tab label="MRF Detail Tool">
+            <lightning-card variant="Narrow" title='MRF Detail Tool' icon-name="custom:custom19"
+            style="width: -webkit-fill-available;">
+                <lightning-layout horizontal-align='center' vertical-align='start' label="">
+                    <lightning-layout-item size='size' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                        large-device-size='largeDeviceSize' padding='around-small'>
+                        <lightning-combobox style="width:200px"
+                            name="tpaAcronymCombo"
+                            label="TPA Acronym"
+                            value={tpaAcronym}
+                            placeholder="Select TPA Acronym"
+                            options={tpaAcronymOptions}
+                            onchange={handleTPAAcronymChange} required validity=""></lightning-combobox>
+                    </lightning-layout-item>
+                </lightning-layout>
+                <lightning-button type="submit" slot="footer" variant="brand" label="Send Request" title="Send Request" onclick={getRetrieveMRFDetails}></lightning-button>
+                <template if:true={testRequestBoolen}>
+                    <lightning-button class="slds-col slds-size_2-of-12" style="padding-left: 20px;" slot="footer" variant="brand" label="Send Request For Test" title="Send Request For Test" onclick={forTestRequestMRF}></lightning-button>
+                </template>
+            </lightning-card>
+            <lightning-layout multiple-rows>
+                <template if:true={mrfDetailBoolen} for:each={returnValueJsonParse} for:item="item" for:index="index">
+                    <lightning-layout-item size='12' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize'
+                    large-device-size='largeDeviceSize' padding='around-small' key={item.provider_count}>
+                        <lightning-card  variant="Narrow" desc  title="MRF Detail"  key={item.provider_count}>
+                            <p style="overflow-wrap: break-word;"  class="slds-p-horizontal_small">Total Provider Number: <b> <lightning-formatted-number value={item.provider_count}></lightning-formatted-number></b></p>
+                            <lightning-layout multiple-rows>
+                                <template for:each={item.files} for:item="itemFile">
+                                        <lightning-layout-item size='4' small-device-size='smallDeviceSize' medium-device-size='mediumDeviceSize' large-device-size='largeDeviceSize' padding='around-small' key={itemFile} >
+                                            <lightning-card  variant="Narrow" >
+                                                <h4 slot="title">
+                                                    <lightning-icon icon-name="standard:account" size="small" style="padding-right: 5 px;"></lightning-icon>
+                                                    MRF ({itemFile.ntw_acronym})
+                                                </h4>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Reporting Entity Name: <b>{itemFile.reporting_entity_name}</b></p>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Reporting Entity Type: <b>{itemFile.reporting_entity_type}</b></p>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Last Updated On (In MRF): <b>{itemFile.last_updated_on}</b></p>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Version: <b>{itemFile.version}</b></p>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">File Name: <b>{itemFile.file_name}</b></p>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Network Acronym: <b>{itemFile.ntw_acronym}</b></p>
+                                                <p style="overflow-wrap: break-word;" class="slds-p-horizontal_small">Billing Code Count: <b>{itemFile.billing_code_count}</b></p>
+                                                
+                                                <div slot="footer" style={itemFile.style}>
+                                                    
+                                                    <p class="slds-p-horizontal_small ">Created Date: <b>{itemFile.created_date}</b></p>
+                                                    <p if:true={itemFile.daysAgo} class="slds-p-horizontal_small ">last upload was done {itemFile.daysAgo} days ago</p>
+                                                </div>
+                                            </lightning-card>
+                                        </lightning-layout-item>
+                                </template>
+                            </lightning-layout>
+                        </lightning-card>
+                    </lightning-layout-item>
+
+                </template>
+            </lightning-layout>
+        </lightning-tab>
+    </lightning-tabset>
+    
+</template>

@@ -1,0 +1,647 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 12-21-2023
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<template>
+	<div
+				style="box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #272952;">
+				<img style="width: 100%;
+    height: 100%;object-fit:cover;" src={companyLogo}>
+				</div>
+	
+	<template if:true={serversHeartbeat}>
+		<lightning-card class="init">
+		
+			<div class="slds-p-around_medium slds-box" style="border : 2px solid #ffffff; font-family: Work Sans - Medium; font-size: 10pt;" >
+				<div class="slds-text-heading_medium " style=" align-self: center; text-align: center;margin-top: 0.2%; margin-bottom: 0.2%;"><b class="headerInit">System Not Available</b><br />
+				</div>
+				
+				<div class="slds-box lgc-bg" data-id="checkForEligibility"
+				style="background-color: lightgray; align-items: center;  margin: auto; align-content: center; margin-top: auto;margin-bottom: auto; margin-left: auto; box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #E53E25; width: 100%;">
+				<div class="slds-text-heading_medium "><a onclick={toggleCheckEligibility}><b class="header1"></b></a><br />
+				<div class="header3">{NSA_ServersDown}</div>
+				</div>
+				<br/>
+				
+			</div>
+			</div>
+	</lightning-card>
+	</template>
+	<template if:false={serversHeartbeat}>
+	<template if:true={isEmployerActivated}>
+	<lightning-card class="init">
+		
+		<div class="slds-p-around_medium slds-box" style="border : 2px solid #ffffff; font-family: Work Sans - Medium; font-size: 10pt;" >
+			<template if:false={isLoaded}>
+				<div class="backgroundInverse">
+					<lightning-spinner class="slds-spinner_container">
+						<div role="status" class="slds-spinner slds-spinner_medium slds-spinner_brand" style="background:white">
+							<span class="slds-assistive-text">Loading</span>
+							<div class="slds-spinner__dot-a"></div>
+							<div class="slds-spinner__dot-b"></div>
+						</div>
+					</lightning-spinner>
+				</div>
+				</template>
+				
+			<lightning-record-edit-form  object-api-name="IntPS__EOB__c" onsubmit={handleEobFormSubmit}
+                 onerror={handleEobFormError}>
+				<div class="slds-text-heading_medium " style=" align-self: center; text-align: center;margin-top: 0.2%; margin-bottom: 0.2%;"><b class="headerInit">{NSA_PageTitle}</b><br />
+					</div>
+					
+					<div class="slds-box lgc-bg" data-id="checkForEligibility"
+					style="background-color: lightgray; align-items: center;  margin: auto; align-content: center; margin-top: auto;margin-bottom: auto; margin-left: auto; box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #E53E25; width: 100%;">
+					<div class="slds-text-heading_medium " style="width:100%; height: 100%;"><a onclick={toggleCheckEligibility}><b class="header1">{NSA_EligibilityTitle}</b></a><br />
+					<br/>
+					<div class="header3">{checkEligIntro}</div>
+					</div>
+					<br/>
+					<div class="eligibilityDetails" style="width: 100%;">
+					<div class="slds-border_bottom slds-p-top_x-small"><b class="header2">{NSA_EligibilityMessage}</b></div>	
+					<div class="slds-grid" style="border-left: 2px solid #273A93 ;width:100%">
+							<div class="slds-col slds-size_1-of-3"  style="width: 35%;">
+								<lightning-input id="date_picker" type="Date" onchange={handleServiceDateChange} min={todaysDate} style="font-weight: 500; -webkit-text-fill-color:#273A93 ;" class="allInputs searchCriterias"  data-name="serviceDate"
+                             variant="label-hidden" value={serviceDate} placeholder="Service Date"></lightning-input>
+							</div>
+							<template if:true={isAdmin}>
+							<div class="slds-col slds-size_1-of-3"   style="width: 35%; margin-left: 10px;">
+								<lightning-input-field variant="label-hidden"
+                field-name="IntPS_NSA__Patient__c"
+                onchange={handlePatientLookupChange}
+            ></lightning-input-field>
+							</div>
+							</template>
+							<template if:false={isAdmin}>
+								<template if:true={isCustomerSupport}>
+									<div class="slds-col slds-size_1-of-3"   style="width: 35%; margin-left: 10px;">
+										<lightning-input-field variant="label-hidden"
+						field-name="IntPS_NSA__Patient__c"
+						onchange={handlePatientLookupChange}
+					></lightning-input-field>
+									</div>
+									</template>
+									<template if:false={isCustomerSupport}>
+								<div class="slds-col slds-size_1-of-3"   style="width: 35%; margin-left: 10px;">
+									<lightning-combobox class="allInputs"  style="color:#273A93;  -webkit-text-fill-color:#273A93 ;-webkit-column-rule-color:#273A93 ;-webkit-text-stroke-color: #273A93; -webkit-text-stroke-color: #273A93;"
+									name="dependents"
+									variant="label-hidden"
+									value={dependentValue}
+									placeholder="Select Your Patient"
+									options={dependents}
+									onchange={handleDependentsChange} >
+									</lightning-combobox>
+								</div>
+							</template>
+								</template>
+							<div class="slds-col slds-size_1-of-3" style="margin-left: 10px; width:15%" >
+								<lightning-button disabled={dateAndPatientSelected}  class="allInputs" style="color:#E53E25 ;" variant="brand"    onclick={searchPatient} icon-name="utility:search" con-position="right" label="Search"></lightning-button>
+							</div>
+						</div>
+						
+					<template if:true={openPatientInfoSection}>
+						<div class="slds-p-vertical_medium"></div>
+						<div class="slds-border_bottom slds-p-top_x-small slds-border_bottom slds-p-top_x-small"><b style="color:#273A93 ;width:100%;">{NSA_EligibilityInfo}</b></div>
+						<br/>
+						<div class="slds-box lgc-bg" style="background:#272952;border-bottom-width: thick;width:100%;">
+							<div class="slds-grid slds-gutters" style="width: 100%;">
+								<div class="slds-col"  style="width:20%;">
+									<lightning-record-view-form record-id={clientId} object-api-name="Account">
+										<div class="slds-p-around_medium lgc-bg" style="width: 100%;">
+											<lightning-tile  style="-webkit-text-fill-color: #f8f6f6;"  href="javascript:void(0)" label={NSA_EligibilityInfo_Client} type="media">
+												<lightning-icon slot="media" icon-name="action:new_person_account" style="--sds-c-icon-color-foreground-default: #E53E25; --sds-c-icon-color-background: #E53E25;" ></lightning-icon>
+												<ul class="slds-list_vertical slds-has-dividers_right">
+													<li class="slds-item">
+														{clientName}
+													</li>
+												</ul>
+											</lightning-tile>
+										</div>
+									</lightning-record-view-form>
+								</div>
+								<div class="slds-col"  style="width:45%;">
+									<lightning-record-view-form record-id={eligibilityId}
+                                    object-api-name="IntPS__Eligibility__c">
+										<div class="slds-p-around_medium lgc-bg" style="width: 100%;">
+											<lightning-tile class="allInputs" style="-webkit-text-fill-color: #f8f6f6;" label={NSA_EligibilityInfo_EligibilityTitle}  href="javascript:void(0)" type="media">
+												<lightning-icon style="--sds-c-icon-color-foreground-default: #E53E25; --sds-c-icon-color-background: #E53E25;" slot="media" icon-name="action:following" ></lightning-icon>
+												<ul class="slds-list_vertical">
+													<li class="slds-item">
+														<lightning-output-field variant="label-hidden" field-name="Name"></lightning-output-field>
+
+													</li>
+													<li class="slds-item">
+													Health Plan: {healthPlanName}
+
+													</li>
+												
+													
+												</ul>
+											</lightning-tile>
+										</div>
+									</lightning-record-view-form>
+								</div>
+								<div class="slds-col" style="width:35%; ">
+									<template if:false={isPodPlan}>
+										<div class="slds-p-around_medium lgc-bg" style="width: 100%;">
+											<lightning-tile class="allInputs" style="-webkit-text-fill-color: #f8f6f6;" href="javascript:void(0)" target="_blank" label={NSA_EligibilityInfo_Networks} type="media">
+												<lightning-icon style="--sds-c-icon-color-foreground-default: #E53E25; --sds-c-icon-color-background: #E53E25;" slot="media" icon-name="action:record"></lightning-icon>
+												<ul class="slds-list_vertical">
+													<template for:each={networkNamesDisplay} for:item="item" for:index="ind">
+													<li key={item} class="slds-item">
+													{item}
+													</li>
+													</template>
+												
+												</ul>
+											
+											</lightning-tile>
+										</div>
+									</template>
+									
+							
+								</div>
+							</div>
+						</div>
+					</template>
+				</div>
+				</div>
+			</lightning-record-edit-form>
+				
+					
+					<template if:true={openEOBInfoSection}>
+						<div class="slds-p-vertical_medium"></div>
+						
+						<div if:false={tempIsProvider}>
+						<div data-id="NPIDetails" class="slds-box slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12" style="background-color: lightgray; box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #272952" if:true={npıSearchDisplay}>
+							<template if:true={npıSearchDisplay}><div class="slds-text-heading_medium "><a onclick={toggleNPI}><b class="header1">{NSA_NPI_Title}</b></a> <br />
+							</div>	
+						</template>
+						<br/>
+						<div class="slds-text-heading_medium">
+							<div class="header3">
+							<p>{providerLine1}</p>
+							<br/>
+							<template if:false={isPodPlan}>
+								<p>{providerLine2}</p>
+									<br/>
+							<p>{providerLine3}</p>
+							<p>{providerLine4} <a href={NSA_ProviderNPILink} target=”_blank”><b style="-webkit-text-fill-color: blue ;">{NSA_ProviderNPILink}</b></a></p>
+							</template>
+							<template if:true={isPodPlan}>
+							
+							<p>1. You can Search by GeoLocation</p>
+							<p>2. You can Search by Provider Name</p>
+							</template>
+							</div>
+						</div>
+							<template if:true={npıSearchDisplay} class="allInputs slds-box">
+									
+									<div class="NPIDetails">
+									<div style='margin:2px;margin-top: 15px'>
+										
+										<template if:false={isPodPlan}>
+											<div style="font-weight: 650;--slds-c-checkbox-shadow-focus:0px; -webkit-text-fill-color:#273A93 ;--sds-c-checkbox-color-border-checked: #273A93;
+										--sds-c-checkbox-mark-color-foreground: #ffffff; --slds-c-checkbox-color-background: #ffffffff;--slds-c-checkbox-color-background-checked:var(--sds-c-checkbox-color-border-checked)">{providerExample}
+									</div>
+								</template>
+			
+									</div>
+									<template if:true={isPodPlan}>
+										<div style='margin:2px;margin-top: 15px'>
+											<lightning-input class="allInputs" style="font-weight: 650;--slds-c-checkbox-shadow-focus:0px; -webkit-text-fill-color:#273A93 ;--sds-c-checkbox-color-border-checked: #273A93;
+											--sds-c-checkbox-mark-color-foreground: #ffffff; --slds-c-checkbox-color-background: #ffffffff;--slds-c-checkbox-color-background-checked:var(--sds-c-checkbox-color-border-checked)" onchange={searchNPIwithGeoLocation} 
+												type="checkbox" label="I want to search by GeoLocation"
+												checked={npıSearchDisplayByGeo} name="NPIinput2"></lightning-input>
+										</div>			
+					<div style='margin:2px;margin-top: 15px'>
+											<lightning-input class="allInputs" style="font-weight: 650;--slds-c-checkbox-shadow-focus:0px; -webkit-text-fill-color:#273A93 ;--sds-c-checkbox-color-border-checked: #273A93;
+											--sds-c-checkbox-mark-color-foreground: #ffffff; --slds-c-checkbox-color-background: #ffffffff;--slds-c-checkbox-color-background-checked:var(--sds-c-checkbox-color-border-checked)" onchange={searchNPIwithNamechange} 
+												type="checkbox" label="I want to search by Provider Names"
+												checked={npıSearchDisplayByName} name="NPIinput2"></lightning-input>
+											<!--<div style="font-size: 9px">i.e. enter Bay Imaging Consultants										</div>-->
+										</div>
+									</template>
+									<template if:true={npıSearchDisplayByName}>
+										<div onpaste={handleNPIPaste} onkeyup={handleNPIKeyUp} style="width:100%" >
+										
+											<lightning-layout>
+												<lightning-layout-item>
+													<lightning-input class="allInputs" style="font-weight: 500;-webkit-text-fill-color:#273A93 ;" name="enter-search-code" onchange={testOnChange} type="search" value={NPIsearchValue}></lightning-input>
+												</lightning-layout-item>
+												<lightning-layout-item style="padding-top: 19px;padding-left: 7px">
+													<lightning-button style="margin-left:0px;--sds-c-button-brand-color-background : #E53E25;" variant="brand" label="Search" icon-name="utility:search" con-position="right"
+														title="Search" onclick={SearchNPI} class="allInputs slds-m-left_x-small"
+														>
+													</lightning-button>
+														 <div if:false={isNPILoaded} class="slds-is-relative">
+															<lightning-spinner
+																alternative-text="Loading..." variant="brand">
+															</lightning-spinner>
+														</div>
+												</lightning-layout-item>
+											</lightning-layout>
+										</div>
+									</template>
+									<template if:true={npıSearchDisplayByGeo}>
+										<section id="geoSection"  role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="modal-heading-01" class="slds-modal slds-fade-in-open">
+											<div class="slds-modal__container">
+											  <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse">
+												<svg class="slds-button__icon slds-button__icon_large" aria-hidden="true">
+												  <use xlink:href="/assets/icons/utility-sprite/svg/symbols.svg#close"></use>
+												</svg>
+												<span class="slds-assistive-text">Cancel and close</span>
+											  </button>
+											  <div class="slds-modal__header">
+												<h1 id="modal-heading-01" class="slds-modal__title slds-hyphenate" tabindex="-1">Search By GeoLocation</h1>
+											  </div>
+											  <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+												<iframe src="/apex/locationFinder" height="400px" width="600px"></iframe>
+											</div>
+											<div class="slds-modal__footer">
+												<button class="slds-button slds-button_neutral" onclick={handleOkay} aria-label="Cancel and close">Cancel</button>
+											  </div>
+											</div>
+										  </section>
+										  <div class="slds-backdrop slds-backdrop_open" role="presentation"></div>
+
+									</template>
+									<template if:true={searchedNPILine}>
+
+										<div class="slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12">
+											<div  style="margin: 2%">
+												<div class="slds-text-heading_medium " style="margin-bottom: 15px;"><b class="header2">{NSA_NPI_Result}</b>
+												</div>
+												<template if:true={hasNPICode}>
+													<lightning-datatable  max-row-selection="1" hide-checkbox-column={hideCheckbox}  key-field="Id" onrowselection={handleRowSelected}                 
+													 enable-infinite-loading={isNPILoaded} class="slds-max-medium-table_stacked-horizontal" 
+														data={NPIList} columns={NPIcolumnsResults} onrowaction={handleNPIRowAction}>
+													</lightning-datatable>
+												</template>
+												
+												<template if:false={hasNPICode}>
+													<template if:true={oonError}>
+														<div class="errorText">
+														
+									<div class="slds-text-heading_small slds-p-left_x-small slds-text-color_error">{oonErrorLabel}</div>
+						
+														</div>
+													</template>
+													<template if:false={oonError}>
+
+													<div class="errorText">
+													
+								<div class="slds-text-heading_small slds-p-left_x-small slds-text-color_error">{oonErrorLabel}</div>
+					
+													</div>
+													</template>
+												</template>
+						
+											</div>
+										</div>
+										</template>
+										<template if:true={providerSelected}>
+										<lightning-record-view-form
+										record-id='0013t00002YA9ZFAA1'
+										object-api-name="Account"
+									>
+
+										<div class="slds-box slds-theme_default" style="background:#272952;">
+											<div class="slds-text-heading_medium " style="margin-bottom: 15px;"><b class="header2" style="color: #ffffff;">{NSA_NPI_Selected}</b></div>
+											<div class="slds-grid slds-wrap" >
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>Provider Name</i></b> : {selectedProvider.ProviderName}</p>
+												</div>
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>NPI Number</i></b> : {selectedProvider.NPINumber}</p>
+												</div>
+											
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>Billing City</i></b> : {selectedProvider.ProviderCity}</p>
+												</div>
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>Billing Street</i></b> : {selectedProvider.ProviderStreet}</p>
+												</div>
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;" ><b style="color:#ffffff ;"><i>Billing State/Province</i></b> : {selectedProvider.ProviderState}</p>
+												</div>
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>Billing Postal Code</i></b> : {selectedProvider.ProviderPostalCode}</p>
+												</div>
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>Billing Country</i></b> : {selectedProvider.ProviderCountry}</p>
+												</div>
+												<div class="slds-col slds-size_6-of-12">
+													<p style="color:#ffffff ;"><b style="color:#ffffff ;"><i>Phone</i></b> : {selectedProvider.ProviderPhone}</p>
+												</div>
+											</div>
+								 
+											
+										</div>
+									
+							
+									</lightning-record-view-form>
+								</template>
+								</div>
+								</template>
+							</div>
+						</div>
+						
+
+					
+						<div class="slds-p-vertical_medium"></div>
+
+						
+						<div class="lgc-bg" data-id="proceduresDetails"
+                        style="background-color: lightgray; box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #272952" if:true={submitacc}
+						> 
+							<div class="slds-box slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12" 
+							if:true={searchForProcedures}
+							>
+							<template if:true={searchForProcedures}>
+							<div class="slds-text-heading_medium "><a onclick={toggleProcedures}><b class="header1">Search For Procedures</b><br />
+								</a>
+							</div>
+						</template>
+							<div class="proceduresDetails">
+								<template if:true={searchForProcedures} class="allInputs slds-box">
+									<div class="slds-text-heading_medium">
+										<div class="header3">
+										<p>{NSA_ProcedureIntro} <a href={NSA_ProcedureListURL} target=”_blank”>{NSA_ProcedureListText}</a></p>									
+										</div>
+									</div>
+									<div style='margin:2px;margin-top: 15px'>
+										<lightning-input class="allInputs" style="font-weight: 650;--slds-c-checkbox-shadow-focus:0px;-webkit-text-fill-color:#273A93 ;--sds-c-checkbox-color-border-checked: #273A93;
+										--sds-c-checkbox-mark-color-foreground: #ffffff; --slds-c-checkbox-color-background: #ffffffff;--slds-c-checkbox-color-background-checked:var(--sds-c-checkbox-color-border-checked)" onchange={searchwithCodeonchande}  type="checkbox"
+											label={NSA_CPT_ByCodeTitle} checked={searchwithCode} name="input1">
+										</lightning-input>
+										<div style="font-size: 9px">{NSA_CPT_ByCodeExample}</div>
+			
+			
+									</div>
+									<div style='margin:2px;margin-top: 15px'>
+										<lightning-input class="allInputs" style="font-weight: 650;--slds-c-checkbox-shadow-focus:0px; -webkit-text-fill-color:#273A93 ;--sds-c-checkbox-color-border-checked: #273A93;
+										--sds-c-checkbox-mark-color-foreground: #ffffff; --slds-c-checkbox-color-background: #ffffffff;--slds-c-checkbox-color-background-checked:var(--sds-c-checkbox-color-border-checked)" onchange={searchwithDescriptionnchande} 
+											type="checkbox" label={NSA_CPT_ByDescriptionTitle}
+											checked={searchwithDescription} name="input2"></lightning-input>
+										<div style="font-size: 9px">{NSA_CPT_ByDescriptionExample}</div>
+									</div>
+			
+			
+									<template if:true={openSearchBar}>
+										<div onkeyup={handleKeyUp} style="max-width: 450px">
+			
+											<lightning-layout>
+												<lightning-layout-item>
+													<lightning-input class="allInputs" name="enter-search-code" style="font-weight: 500;-webkit-text-fill-color:#273A93 ;" type="search" value={searchValue}></lightning-input>
+												</lightning-layout-item>
+												<lightning-layout-item style="padding-top: 19px;padding-left: 7px">
+													<lightning-button icon-name="utility:search" con-position="right" style="margin-left:0px; --sds-c-button-brand-color-background : #E53E25;" variant="brand" label="Search"
+														title="Search" onclick={Search} class="allInputs slds-m-left_x-small"
+														>
+													</lightning-button>
+													<div if:false={isProceduresLoaded} class="slds-is-relative">
+														<lightning-spinner
+															alternative-text="Loading..." variant="brand">
+														</lightning-spinner>
+													</div>
+												</lightning-layout-item>
+											</lightning-layout>
+										</div>
+									</template>
+			
+								</template>
+								<div class="procHome">
+									<template if:true={searchedLine}>
+										
+												<div class="procList">
+													<div class="slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12">
+														<div  style="margin: 2%;">
+												<div class="slds-text-heading_medium " style="margin-bottom: 15px;"><b class="header2">{NSA_CPT_SearchResults}</b>
+												</div>
+												<template if:true={hasProcedureCode} class="allInputs">
+													<lightning-datatable style="@include scrollbar;
+													@include enable-ios-momentum-scrolling;
+													overflow: auto;
+													max-width:100%;
+													max-height:300px;"  enable-infinite-loading={isLoaded} class="slds-max-medium-table_stacked-horizontal" hide-checkbox-column key-field="id"
+														data={procedureCodeList} columns={columnsResults} onrowaction={handleRowAction}>
+													</lightning-datatable>
+												</template>
+												<template if:false={hasProcedureCode}>
+													<template if:false={cptcodetimeout}>
+														<div class="slds-text-heading_small "><br />No Matches Found. <br />
+							
+														</div>
+													</template>
+													<template if:true={cptcodetimeout}>
+														<div class="slds-text-heading_small "><br />{cptcodetimeouterror}<br />
+							
+														</div>
+													</template>
+												</template>
+											</div>
+										</div>
+											</div>
+											<div class="selectedProcList">
+												<div class="slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12">
+													<div  style="margin: 2%;">
+												<div class="slds-text-heading_medium " style="margin-bottom: 15px;"><b class="header2">{NSA_CPT_SelectedProcedures}</b>
+												</div>
+												<div if:false={hasSelectedProcedureCode} class="slds-text-heading_small ">
+													<br />No Procedures Selected<br />
+						
+												</div>
+												<div if:true={hasSelectedProcedureCode}>
+													<lightning-datatable  enable-infinite-loading={isLoaded} class="slds-max-medium-table_stacked-horizontal" hide-checkbox-column key-field="Name"
+														data={selectedProcedures} show-row-number-column="false"  oncellchange={handleCellChange} columns={selectedProcedurescolumnsResults}  onrowaction={removeServiceLine}>
+													</lightning-datatable>
+												</div>
+													
+		
+												
+												</div>
+											</div>
+											</div>
+										
+										
+									</template>
+								</div>
+								</div>
+								<template if:true={procedureSelected}>
+									<div style=" margin-top : 10px ; text-align : center;">
+										<div style="margin-bottom:10px;" class="checkClaimValidation" lwc:dom="manual"></div>
+										<template if:false={eobUrlOK}>
+												<template if:false={isPodPlan}>
+													<p style="text-align: center;font-family: Work Sans - Extra Bold;">{NSA_CPT_PreConfirmMessage}</p>
+													<br/>	
+													
+												<lightning-button icon-name="utility:save" con-position="right" style="--sds-c-button-brand-color-background : #E53E25;" variant="brand" class="allInputs slds-m-top_small" onclick={confirmSelectedProcedures} label={NSA_CPT_ConfirmButtonMessage}></lightning-button>
+												
+												</template>
+												<template if:true={isPodPlan}>
+													<p>{NSA_Confirm_Message2}</p>
+
+													<lightning-button icon-name="utility:save" disabled={questionsError} con-position="right" style="--sds-c-button-brand-color-background : #E53E25;" variant="brand" class="allInputs slds-m-top_small" onclick={handleEobFormSubmit} label={NSA_Submit}></lightning-button>
+
+												</template>
+											<div if:false={isEOBLoaded} class="slds-is-relative">
+												<lightning-spinner
+													alternative-text="Loading..." variant="brand">
+												</lightning-spinner>
+											</div>
+										</template>
+									</div>
+									</template>
+							</div>
+							
+						</div>
+						
+							<div class="slds-box lgc-bg" data-id="selectedproceduresDetails"
+							style=" background-color: lightgray; box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #272952" if:true={selectedprocedureSelectedConfirmed}
+							> 
+								<div class="slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12" 
+								if:true={selectedprocedureSelectedConfirmed}
+								>
+								<template if:true={selectedprocedureSelectedConfirmed}>
+								<div class="slds-text-heading_medium "><a onclick={toggleSelectedProcedures}><b class="header1">{NSA_Confirm_Title}</b><br />
+									</a>
+								</div>
+							</template>
+								<div class="proceduresDetails">
+								<div class="procHome">
+								<template if:true={selectedprocedureSelectedConfirmed}>
+								
+										<div class="selectedProcListFull">
+													<div class="slds-col slds-size_1-of-1 slds-medium-size_12-of-12 slds-large-size_12-of-12">
+														<div  style="margin: 4px;">
+													<div class="slds-text-heading_medium " style="margin-bottom: 15px;"><b class="header2">{NSA_Confirm_TableTitle}</b>
+													</div>
+													<div if:false={hasSelectedProcedureCode} class="slds-text-heading_small ">
+														<br />No Procedures Selected<br />
+							
+													</div>
+													<div if:true={hasSelectedProcedureCode}>
+														<template if:true={questionsError}>
+															<div class="errorText">
+															
+										<div class="slds-text-heading_small slds-p-left_x-small slds-text-color_error">{questionsChangeError}</div>
+							
+															</div>
+														</template>
+														<div class="customDatatableTest">
+												<!--	<c-nsa_l-w-c-custom-datatable-type enable-infinite-loading={isLoaded} style="height=100% ; width=100%;"  hide-checkbox-column key-field="Name"
+															data={selectedProcedures} onpicklistchanged={picklistChanged}  show-row-number-column="false" oncellchange={handleCellChange} columns={selectedProceduresConfirmationcolumnsResults} onsave={handleConfirmProcedureSave}>
+														</c-nsa_l-w-c-custom-datatable-type>
+														-->
+													<c-l-w-c-custom-datatable-type enable-infinite-loading={isLoaded} style="height=100% ; width=100%;"  hide-checkbox-column key-field="Name"
+															data={selectedProcedures} onpicklistchanged={picklistChanged}  show-row-number-column="false" oncellchange={handleCellChange} columns={selectedProceduresConfirmationcolumnsResults} onsave={handleConfirmProcedureSave}>
+														</c-l-w-c-custom-datatable-type>
+													
+													</div>
+													
+													</div>
+														
+			
+													
+													</div>
+												</div>
+												</div>
+											
+										</template>	
+									</div>
+									</div>
+									<template if:true={selectedprocedureSelectedConfirmed}>
+										<div style=" margin-top : 10px ; text-align : center;">
+											<p style="text-align: center;font-family: Work Sans - Extra Bold;">{NSA_Confirm_Message1}</p>
+											<p>{NSA_Confirm_Message2}</p>
+											<div style="margin-bottom:10px;" class="checkClaimValidation" lwc:dom="manual"></div>
+											<template if:false={eobUrlOK}>
+												<template if:true={questionsError}>
+													<p class="slds-text-color_error">Please fill All the Questions Correctly before submitting</p>
+												</template>
+												<lightning-button icon-name="utility:save" disabled={questionsError} con-position="right" style="--sds-c-button-brand-color-background : #E53E25;" variant="brand" class="allInputs slds-m-top_small" onclick={handleEobFormSubmit} label={NSA_Submit}></lightning-button>
+												<div if:false={isEOBLoaded} class="slds-is-relative">
+													<lightning-spinner
+														alternative-text="Loading..." variant="brand">
+													</lightning-spinner>
+												</div>
+											</template>
+										</div>
+										</template>
+								</div>
+								
+							</div>
+
+						<template if:true={needsValidationKey}>
+							
+							<template if:true={eobSubmitted}>
+
+							<div class="errorText">
+								<div style=" margin-top : 10px ; text-align : center;">				
+								<div class="slds-text-heading_small slds-p-left_x-small slds-text-color_success">{NSAEOBMessageDisplayed}</div>
+					</div>
+													</div>
+													</template>
+						</template>
+						<template if:false={needsValidationKey}>
+							<template if:true={eobError}>
+                              
+								<div class="errorText">
+									<div style=" margin-top : 10px ; text-align : center;">				
+									<div class="slds-text-heading_small slds-p-left_x-small slds-text-color_success">{NSAEOBMessageDisplayed}</div>
+						</div>
+														</div>
+								
+							</template>
+							<template if:true={eobUrlOK}>
+								<template if:false={eobError}>
+								  
+									
+									<div style=" margin-top : 10px ; text-align : center;">
+										
+										  <lightning-button icon-name="action:new_note" style="--sds-c-button-brand-color-background : #E53E25;" variant="brand" label="View Report" class="allInputs slds-m-top_small" onclick={generatePdf}>
+										  </lightning-button>
+										</div>
+									
+								</template>
+							</template>
+						</template>
+
+						
+							<div style=" margin-top : 10px ; text-align : center;">
+								<a href="#" onclick={refreshPage}> <b>{NSA_NewQuery}</b></a>
+							</div>
+                        
+					</template>
+			
+			
+				<footer class="slds-modal__footer" style="background-color:#272952 ;">
+					<p style="text-align:center ; color: #ffffff;">{NSA_Footer}</p>
+				</footer>
+			</div>
+			
+		</lightning-card>
+	</template>
+	<template if:false={isEmployerActivated}>
+		<lightning-card class="init">
+		
+			<div class="slds-p-around_medium slds-box" style="border : 2px solid #ffffff; font-family: Work Sans - Medium; font-size: 10pt;" >
+				<div class="slds-text-heading_medium " style=" align-self: center; text-align: center;margin-top: 0.2%; margin-bottom: 0.2%;"><b class="headerInit">System Not Available</b><br />
+				</div>
+				
+				<div class="slds-box lgc-bg" data-id="checkForEligibility"
+				style="background-color: lightgray; align-items: center;  margin: auto; align-content: center; margin-top: auto;margin-bottom: auto; margin-left: auto; box-shadow: rgb(0, 0, 0) 0.5px 0.5px 0.5px 0.5px;border-left: 5px solid #E53E25; width: 100%;">
+				<div class="slds-text-heading_medium "><a onclick={toggleCheckEligibility}><b class="header1"></b></a><br />
+				<div class="header3">{NSA_SystemNotAvailableMessage}</div>
+				</div>
+				<br/>
+				
+			</div>
+			</div>
+	</lightning-card>
+	</template>
+</template>
+	</template>

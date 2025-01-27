@@ -1,0 +1,60 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 02-23-2023
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<template>
+   
+    <!--Use template if:true to display/hide popup based on isModalOpen value--> 
+    <template if:true={isModalOpen}>
+        <!-- Modal/Popup Box LWC starts here -->
+        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <!-- Modal/Popup Box LWC header here -->
+                <header class="slds-modal__header">
+                  
+                    <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">NSA Disclaimer</h2>
+                </header>
+                <!-- Modal/Popup Box LWC body starts here -->
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+                    <p>
+                        The cost sharing estimate provided is only an estimate based on the items and services selected by the members.
+It does not include any additional,reasonably expected to be furnished services , and is subject to change;
+Please also keep in mind the following:</p>
+<ol type="a">
+  <li><b>1.</b> If you or your dependents choose to see an out of network provider they may bill you for the difference between
+    the provider's billed charges and the sum of the amount paid by your group health plan and the amount you paid
+    in the form of a copayment or coinsurance amount (the difference referred to as balance billing), and that the 
+    cost sharing information provided above does not account for these potential additional amounts.</li>
+  <li><b>2.</b> The actual charges for a covered item or service may be different from the estimate of
+    cost sharing liability provided, depending on the actual items or services you or your dependent receive at the point of care;</li>
+  <li><b>3.</b> A statement of cost sharing liability for a covered item or service is not a guarantee that benefits will 
+    be provided for that item or service;</li>
+  <li><b>4.</b> This statement of cost sharing liability does not take into account any copayment assistance or other 
+    third-party payments in the calculation of your out-of-pocket maximum;</li>
+  <li><b>5.</b> For items and services that are recommended preventive services under section 2713 of the Public Health Services Act,
+    an in-network item or service may not be subject to cost-sharing if it is billed as a preventive service.</li>
+  <li><b>6.</b> Integrated Payor Solutions ,{orgName}, and your Employer are not responsible for the accuracy of the 
+    provided source data including in network providers, negotiated rates, health plan benefit balances.
+    In network providers and their rates are defined by the respective networks via machine readable files.
+    These files are expected to be updated monthly and may not provide access to all providers</li>
+  </ol>
+
+                   
+                </div>
+                <footer class="slds-modal__footer">
+                    <button class="slds-button slds-button_brand" onclick={submitDetails} title="Acknowledge">I Acknowledge</button>
+                    <p style="text-align:center ; color:grey">The following third-party data may be referenced.</p>
+                    <p style="text-align:center ;"><i>®CPT copyright 2021 American Medical Association. All rights reserved.</i></p>
+                    <p style="text-align:center ;"><i>®CPT Consumer Friendly Data are lay synonyms for CPT descriptors that are intended to help healthcare consumers who are
+                        not medical professionals understand clinical procedures on bills and patient portals.
+                         CPT ®Consumer Friendly Data should not beused for clinical coding or documentation</i></p>
+
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+ </template>
