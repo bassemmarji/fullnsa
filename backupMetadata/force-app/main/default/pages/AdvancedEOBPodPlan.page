@@ -1,0 +1,648 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 02-01-2023
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<apex:page renderAs="pdf" controller="AdvancedEOBController" standardStylesheets="false" applyBodyTag="false">
+    <head>
+        <style type="text/css" media="print">
+            @page {
+                size: A4 landscape;
+            }
+
+            div.header {
+                padding: 10px;
+                position: running(header);
+            }
+
+            div.footers {
+            }
+            #head {
+                height: 10%;
+            }
+            #boxes1 {
+                height: 20%;
+                font-size: small;
+                font-family: "Helvetica", "Arial", sans-serif;
+                margin-top: 10%;
+            }
+            #boxes2 {
+                height: 25%;
+                font-size: small;
+                font-family: "Helvetica", "Arial", sans-serif;
+                width: 100%;
+                margin-top: 5%;
+            }
+            #tableBig1 {
+                float: left;
+                width: 100%;
+                height: 35%;
+            }
+            #tableBig2 {
+                float: left;
+                height: 15%;
+            }
+            #leftbox {
+                float: left;
+                width: 28%;
+            }
+            #leftbox2 {
+                float: left;
+                width: 35%;
+                height: 100%;
+            }
+            #middlebox2 {
+                float: right;
+                width: 30%;
+                height: 100%;
+            }
+            #middlebox {
+                float: left;
+                width: 33%;
+                margin-left: 3%;
+            }
+            #rightbox {
+                float: right;
+                width: 33%;
+                margin-left: 3%;
+            }
+            h1 {
+                text-align: center;
+            }
+
+            #smallTable,
+            thead,
+            tr,
+            th {
+                border: none;
+            }
+            #smallTable {
+                width: 100%;
+            }
+            #smallTable,
+            tbody,
+            tr,
+            td {
+                border-top: 1px solid black;
+                border-right: 1px solid black;
+            }
+            #smallTable,
+            tbody,
+            tr:nth-child(1) {
+                border: none;
+            }
+            #smallTable,
+            tbody,
+            tr,
+            td:last-child {
+                border-right: none;
+            }
+
+            #title {
+                align-content: center;
+                width: 80%;
+                height: 100%;
+            }
+            #logo {
+                float: left;
+                width: 20%;
+                height: 100%;
+            }
+            #main {
+                height: 100%;
+                width: 100%;
+            }
+            #ending {
+                height: 30%;
+            }
+        </style>
+    </head>
+    <div id="main">
+        <div id="head">
+            <div id="logo"><img style="height: 100%; width: 100%; object-fit: contain;" src="{!$Resource.IPSLogo}" /></div>
+
+            <div id="title"><h2 style="text-align: center; padding-bottom: 5px;">{!$Label.NSA_Report_Title}</h2></div>
+        </div>
+        <div id="boxes1">
+            <div id="leftbox">
+                <table id="smallTable">
+                    <thead>
+                        <tr>
+                            <th>
+                                <b>Patient Details</b>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Member ID</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Patient__r.IntPS__Member_Id__c}"> </apex:outputText>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>First Name Last Name</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Patient__r.IntPS__First_Name__c}  {!eob.IntPS_NSA__Patient__r.IntPS__Last_Name__c} " escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Address</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Patient__r.IntPS__Street__c} {!eob.IntPS_NSA__Patient__r.IntPS__Street1__c}" escape="false" />
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Address</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Patient__r.IntPS__City__c} {!eob.IntPS_NSA__Patient__r.IntPS__State__c} , {!eob.IntPS_NSA__Patient__r.IntPS__Zip_Code__c}" escape="false" />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="middlebox">
+                <table id="smallTable">
+                    <thead>
+                        <tr>
+                            <th>
+                                <b>Health Plan Details</b>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Employer Group Name</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Patient__r.IntPS__Employer__r.Name}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Health Plan Name</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Eligibility__r.IntPS__Health_Plan__r.Name}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Health Plan Number</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Eligibility__r.IntPS__Health_Plan__r.IntPS__ExternalID__c}" escape="false" />
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Eligibility Period (Start and End Date)</td>
+                            <td><apex:outputText value="From {!eob.IntPS_NSA__Eligibility__r.IntPS__Begin_Date__c} To {!eob.IntPS_NSA__Eligibility__r.IntPS__Term_Date__c}" escape="false" /></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="rightbox">
+                <table id="smallTable">
+                    <thead>
+                        <tr>
+                            <th>
+                                <b>Plan Benefits Balance (at time of request)</b>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Deductible: Individual</td>
+                            <td>
+                                <apex:outputText value="${!eob.IntPS_NSA__Total_Deductible_Paid_Amount__c}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Deductible: Family</td>
+                            <td>
+                                <apex:outputText value="${!eob.IntPS_NSA__Total_Deductible_Paid_Amount_by_Family__c}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Out-of-Pocket Max: Individual</td>
+                            <td>
+                                <apex:outputText value="${!eob.IntPS_NSA__Total_Out_Of_Pocket_Amount__c}" escape="false" />
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Out-of-Pocket Max: Family</td>
+                            <td><apex:outputText value="${!eob.IntPS_NSA__Total_Out_Of_Pocket_Amount_by_Family__c}" escape="false" /></td>
+                        </tr>
+                        <tr>
+                            <td>As of</td>
+                            <td>
+                               <!-- <apex:outputText value="{!healthPlan.IntPS__TPA_Accumulators__r[0].LastModifiedDate}" escape="false" />-->
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="boxes2">
+            <div id="leftbox2">
+                <table id="smallTable">
+                    <thead>
+                        <tr>
+                            <th>
+                                <b>Request Details</b>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Date of Service</td>
+                            <td>
+                                <apex:outputText value="{0,date,yyyy.MM.dd}">
+                                    <apex:param value="{!eob.IntPS_NSA__Service_Date__c}"/>
+                               </apex:outputText>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Request #</td>
+                            <td>
+                                <apex:outputText value="{!eob.Name}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Request Date / Time</td>
+                            <td>
+                                <apex:outputText value="{!eob.CreatedDate}" escape="false" />
+                            </td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="middlebox2">
+                <table id="smallTable">
+                    <thead>
+                        <tr>
+                            <th>
+                                <b>Provider Details</b>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Provider Name</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Provider_Name__c}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>NPI Number</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Provider_NPI_Number__c}" escape="false" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Address</td>
+                            <td>
+                                <apex:outputText value="{!eob.IntPS_NSA__Provider_Billing_Street__c}" escape="false" />
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Address</td>
+                            <td><apex:outputText value="{!eob.IntPS_NSA__Provider_Billing_City__c} {!eob.IntPS_NSA__Provider_Billing_State__c} , {!eob.IntPS_NSA__Provider_Billing_Postal_Code__c}" escape="false" /></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tableBig1" style="font-size: small; font-family: 'Helvetica', 'Arial', sans-serif; padding-top: 15px;">
+            <table style="table-layout: fixed; overflow: hidden; empty-cells: hidden;  width: 100%; border: 2px solid white;" border="0" cellspacing="3" class="tbl">
+                <thead>
+                    <tr>
+                        <th colspan="5" rowspan="2" style="width: 50%; border: 2px solid black !important;">
+                            <div>
+                                <p style="border-bottom: 1px solid black; font-size: small; text-align: center;">
+                                    <strong>Services Details</strong>
+                                </p>
+                                <div class="row" style="font-size: 12px;">
+                                    <div class="column" style="font-size: 10px; float: left; width: 20%; text-align: center;">
+                                        Service Code
+                                    </div>
+                                    <div class="column" style="font-size: 10px; float: left; width: 20%; text-align: center;">
+                                        Service Description
+                                    </div>
+                                    <div class="column" style=" font-size: 10px; float: left; width: 20%; text-align: center;">
+                                        Contracted Rate
+                                    </div>
+                                    <div class="column" style="float: left; font-size: 10px; width: 20%; text-align: center">
+                                        Qty                                    </div>
+                                    <div class="column" style="font-size: 10px; float: left; width: 20%; text-align: center;">
+                                        Total Contracted Costs
+                                    </div>
+                                </div>
+                            </div>
+                        </th>
+                       
+                        <th colspan="6" rowspan="2" style="width: 50%; border: 2px solid black !important;">
+                            <div>
+                                <p style="border-bottom: 1px solid black; font-size: small; text-align: center;">
+                                    <strong>Patient Responsibility</strong>
+                                </p>
+                                <div class="row" style="font-size: 12px;">
+                                    <div class="column" style="font-size: 10px; float: left; width: 16.666%; text-align: center;">
+                                        Copay
+                                    </div>
+                                    <div class="column" style="font-size: 10px; float: left; width: 16.666%; text-align: center;">
+                                        Coins.
+                                    </div>
+                                    <div class="column" style="font-size: 10px; float: left; width: 16.666%; text-align: center;">
+                                        Ded.
+                                    </div>
+                                    <div class="column" style="float: left; font-size: 10px; width: 16.666%; text-align: center">
+                                        Non-Covered
+                                    </div>
+                                    <div class="column" style="font-size: 10px; float: left; width: 16.666%; text-align: center;">
+                                        Total estimated Costs
+                                    </div>
+                                    <div class="column" style="font-size: 10px; float: left; width: 16.666%; text-align: center;">
+                                        Notation
+                                    </div>
+                                </div>
+                            </div>
+                        </th>
+                     
+                    </tr>
+                </thead>
+                <tbody>
+                    <apex:repeat var="lineItems" value="{!eob.IntPS__EOB_Line_Items__r}">
+                        <tr style="border-top: 2px solid black;">
+                            <td class="slds-cell-wrap" style="padding-left: 5px; text-align: center;">
+                                <apex:outputText value="{!lineItems.IntPS__L2110_Procedure_Code__c}"> </apex:outputText>
+                            </td>
+                            <td class="slds-cell-wrap" style="padding-left: 5px; text-align: center;">
+                                <apex:outputText value="{!lineItems.IntPS__L2110_Procedure_Code_Description__c}"> </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px; text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{! IF(lineItems.IntPS_NSA__Service_Line_Allowed_Unit_Price__c==0.00,'No Rate',lineItems.IntPS_NSA__Service_Line_Allowed_Unit_Price__c)}">
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px; text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS__L2110_Units_of_Service_Paid_Count__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS__L2110_Units_of_Service_Paid_Count__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px; text-align: center;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS__L2110_Service_Line_Allowed_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS__L2110_Service_Line_Allowed_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Copay_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Copay_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px; border-right: 0.5px solid black;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Coinsurance_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Coinsurance_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Deductible_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Deductible_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: right; padding-left: 5px;" class="slds-cell-wrap">
+                                <apex:outputText value="{0,number,###,###,##0.00}" rendered="{! IF(ISNULL(lineItems.IntPS_NSA__Not_Covered_Amount__c),false,true)}">
+                                    <apex:param value="{!lineItems.IntPS_NSA__Not_Covered_Amount__c}" />
+                                </apex:outputText>
+                            </td>
+                            <td style="text-align: center; padding-left: 5px;" class="slds-cell-wrap">
+                                <apex:outputText value="{! IF(lineItems.IntPS_NSA__Service_Line_Allowed_Unit_Price__c==0.00,'No Rate',lineItems.IntPS_NSA__Patient_Responsibility__c)}"> </apex:outputText>
+                            </td>
+                            <td style="text-align: center; padding-left: 5px;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.IntPS_NSA__Health_Plan_Item__r.Remark_Code__r.IntPS__Code__c}"> </apex:outputText>
+                            </td>
+                            <td style="text-align: center; padding-left: 5px; border-left: 0.5px solid black;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.Provider_Type__c}" escape="false" />
+                            </td>
+                            <td style="text-align: center; padding-left: 5px; border-left: 0.5px solid black;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.PreventativePregn__c}" escape="false" />
+                            </td>
+                            <td style="text-align: center; padding-left: 5px; border-left: 0.5px solid black;" class="slds-cell-wrap">
+                                <apex:outputText value="{!lineItems.IntPS_NSA__Place_Of_Service__c}" escape="false" />
+                            </td>
+                        </tr>
+                    </apex:repeat>
+                    <tr style="border-top: 0.5px solid black;">
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+
+                    </tr>
+                    <tr style="border-top: 0.5px solid black;">
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+
+                    </tr>
+                    <tr style="border-top: 0.5px solid black;">
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+
+                    </tr>
+                    <tr>
+                        <td style="border-left: 2px solid black; border-bottom: solid black; border-top: 0.5px solid black;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black;"></td>
+
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <apex:outputText value=""> </apex:outputText>
+                        </td>
+
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <strong>Totals</strong>
+                        </td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px; text-align: center;">
+                            <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Allowed_Amount_F__c),false,true)}">
+                                <apex:param value="{!eob.IntPS_NSA__Total_Allowed_Amount_F__c}" />
+                            </apex:outputText>
+                        </td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;">
+                            <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Copay_Amount_F__c),false,true)}">
+                                <apex:param value="{!eob.IntPS_NSA__Total_Copay_Amount_F__c}" />
+                            </apex:outputText>
+                        </td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;">
+                            <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Coinsurance_Amount_F__c),false,true)}">
+                                <apex:param value="{!eob.IntPS_NSA__Total_Coinsurance_Amount_F__c}" />
+                            </apex:outputText>
+                        </td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;">
+                            <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Deductible_Amount_F__c),false,true)}">
+                                <apex:param value="{!eob.IntPS_NSA__Total_Deductible_Amount_F__c}" />
+                            </apex:outputText>
+                        </td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;">
+                            <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Non_Covered_Amount_F__c),false,true)}">
+                                <apex:param value="{!eob.IntPS_NSA__Total_Non_Covered_Amount_F__c}" />
+                            </apex:outputText>
+                        </td>
+
+                        <td style="text-align: right; border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;" class="slds-cell-wrap">
+                            <apex:outputText value="{0,number,###,###,##0.00}" rendered="{!IF(ISNULL(eob.IntPS_NSA__Total_Patient_Responsibility_F__c),false,true)}">
+                                <apex:param value="{!eob.IntPS_NSA__Total_Patient_Responsibility_F__c}" />
+                            </apex:outputText>
+                        </td>
+
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <apex:outputText value=""> </apex:outputText>
+                        </td>
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <apex:outputText value=""> </apex:outputText>
+                        </td>
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <apex:outputText value=""> </apex:outputText>
+                        </td>
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <apex:outputText value=""> </apex:outputText>
+                        </td>
+                    </tr>
+                    <tr style="border-top: 0.5px solid black;">
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+                        <td class="slds-cell-wrap" style="height: 20px !important; background-color: #ffffff; border-top: 0.5px solid black;"></td>
+
+                    </tr>
+                    <tr>
+                        <td style="border-left: 2px solid black; border-bottom: solid black; border-top: 0.5px solid black;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black;"></td>
+
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;">
+                            <apex:outputText value=""> </apex:outputText>
+                        </td>
+
+                        <td style="text-align: right; padding-left: 5px; border-bottom: solid black; border-top: 0.5px solid black;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px; text-align: center;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;"></td>
+                        <td style="border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;">
+                            <strong>Estimated Patient Costs</strong>
+                        </td>
+
+                        <td style="text-align: right; border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;" class="slds-cell-wrap">
+                            <apex:outputText value="{!eob.IntPS_NSA__Total_Patient_Responsibility_F__c}"> </apex:outputText>
+                        </td>
+
+                        <td style="text-align: right; border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;" class="slds-cell-wrap"></td>
+                        <td style="text-align: right; border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;" class="slds-cell-wrap"></td>
+                        <td style="text-align: right; border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;" class="slds-cell-wrap"></td>
+                        <td style="text-align: right; border-bottom: solid black; border-top: 0.5px solid black; padding-left: 5px;" class="slds-cell-wrap"></td>
+
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="tableBig2">
+           
+            <div style="text-align: center;">
+                <table  style="margin-top: 10px; margin-bottom: 20px;">
+                    <thead>
+                        <tr>
+                            <th>
+                                <b>Notations</b>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <apex:repeat var="notationItem" value="{!eob.IntPS__EOB_Line_Items__r}">
+
+                        <tr>
+                            <td>
+                                <apex:outputText value="{!notationItem.IntPS_NSA__Health_Plan_Item__r.Remark_Code__r.IntPS__Code__c}"> </apex:outputText>
+
+                            </td>
+                            <td>
+                                <apex:outputText value="{!notationItem.IntPS_NSA__Health_Plan_Item__r.Remark_Code__r.IntPS__EOB_Description__c}"> </apex:outputText>
+                            </td>
+                        </tr>
+                      </apex:repeat>
+                    </tbody>
+                </table>
+                <i>{!$Label.NSA_Report_Disclaimer1}</i>
+            </div>
+            <div style="font-family: fantasy; font-size: 30px; text-align: center; margin-top: 10px;">
+                THIS IS NOT A BILL
+            </div>
+
+            <div style="padding-top: 10px; color: black; white-space: normal; text-align: center;">
+                <i>{!$Label.NSA_Report_Question}</i>
+            </div>
+            <div id="ending">
+                <p>{!$Label.NSA_Report_Disclaimer2}</p>
+        <ol type="a">
+        <li>{!$Label.NSA_Report_Disclaimer3}</li>
+        <li>{!$Label.NSA_Report_Disclaimer4}</li>
+        <li>{!$Label.NSA_Report_Disclaimer5}</li>
+        <li>{!$Label.NSA_Report_Disclaimer6}</li>
+        <li>{!$Label.NSA_Report_Disclaimer7}</li>
+        <li>{!$Label.NSA_Report_IPSName} , {!$Label.NSA_OrgName} , {!$Label.NSA_Report_Disclaimer8}</li>
+        </ol>
+            </div>
+        </div>
+    </div>
+</apex:page>

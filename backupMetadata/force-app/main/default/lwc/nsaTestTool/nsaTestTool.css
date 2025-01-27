@@ -1,0 +1,21 @@
+/* div {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 10px;
+  } */
+  
+  
+  .requestCard {
+    width: -webkit-fill-available;
+  }
+  
+  .result {
+    background: #555;
+    transform: translateY(0%);
+    transition: transform 0.5s;
+  }
+  
+  .requestCardHide {
+    transform: translateY(-100%);
+  }
