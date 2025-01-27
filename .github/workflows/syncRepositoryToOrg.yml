@@ -69,6 +69,7 @@ jobs:
 
          if test -f "./$METADATA_FOLDERNAME/manifest/package.xml"; then
            echo package.xml file exists
+           cp ./package.xml ./$METADATA_FOLDERNAME/manifest
          else
            cp ./package.xml ./$METADATA_FOLDERNAME/manifest
          fi
