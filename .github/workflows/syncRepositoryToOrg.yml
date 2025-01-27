@@ -78,7 +78,7 @@ jobs:
          fi
      
          cd ./backupfiles
-         sfdx force:source:retrieve -u $ORG_ALIAS -x manifest/package.xml
+         sfdx force:source:retrieve --targetusername $ORG_ALIAS --manifest manifest/package.xml
          
      - name: 'Export Org Data'
        run: | 
