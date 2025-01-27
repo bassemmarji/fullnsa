@@ -73,13 +73,14 @@ jobs:
        #    cp ./sfdx-project.json ./$METADATA_FOLDERNAME/sfdx-project.json
        #  fi
 
-         cp ./package.xml ./$METADATA_FOLDERNAME/manifest 
+         
        
-       #  if test -f "./$METADATA_FOLDERNAME/manifest/package.xml"; then
-       #    echo package.xml file exists
-       #  else
-       #    cp ./package.xml ./$METADATA_FOLDERNAME/manifest
-       #  fi
+         if test -f "./$METADATA_FOLDERNAME/manifest/package.xml"; then
+           echo package.xml file exists
+           cp ./package.xml ./$METADATA_FOLDERNAME/manifest 
+         else
+           cp ./package.xml ./$METADATA_FOLDERNAME/manifest
+         fi
      
          cd "./$METADATA_FOLDERNAME"
          sfdx force:source:retrieve --targetusername $ORG_ALIAS --manifest manifest/package.xml
