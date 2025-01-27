@@ -79,16 +79,15 @@ jobs:
            cp ./package.xml ./$METADATA_FOLDERNAME/manifest
          fi
      
-         cd ./$METADATA_FOLDERNAME
+         cd "./$METADATA_FOLDERNAME"
          sfdx force:source:retrieve --targetusername $ORG_ALIAS --manifest manifest/package.xml
          
      - name: 'Export Org Data'
        run: | 
          echo $GITHUB_PATH
          echo "Current Folder is: ${PWD}"
-         cd..
          if test -d "./$DATA_FOLDERNAME"; then
-            echo data folder exists
+            echo "./$DATA_FOLDERNAME" folder exists
          else   
             mkdir -p "./$DATA_FOLDERNAME"
             echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
