@@ -1,9 +1,9 @@
-name: Backup Org Metadata
+name: Backup Org Metadata and Data
 
 # When the workflow will run
 on:
  #schedule:
-   # Runs at 12:00 UTC every day.
+  # Runs at 12:00 UTC every day.
   # - cron: '0 12 * * *'
   
  # To manually trigger the workflow directly from Github UI or via the Github API.
@@ -19,6 +19,10 @@ on:
        required: true
        default: 'New Manual Sync commit'
 
+env:
+  # Defining a Global environment variable accessible to all jobs and steps. 
+  ORG_ALIAS: org_alias 
+  
 jobs:
  main_job:
    runs-on: ubuntu-latest
@@ -50,7 +54,7 @@ jobs:
        run: echo ${{ secrets.ORG_SFDX_URL }} > DEV-LOGIN.txt
       
      - name: 'Authenticate to the org using SFDX'
-       run: sfdx force:auth:sfdxurl:store -f DEV-LOGIN.txt -d -a backupfiles
+       run: sfdx force:auth:sfdxurl:store -f DEV-LOGIN.txt -d -a $ORG_ALIAS
      
      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
        run: |
@@ -58,7 +62,7 @@ jobs:
          if test -d "./backupfiles/force-app"; then
            echo force-app folder exists
          else
-           sfdx force:project:create --projectname backupfiles --manifest
+           sfdx force:project:create --projectname $ORG_ALIAS --manifest
          fi
         
          if test -f "./backupfiles/sfdx-project.json"; then
@@ -74,7 +78,7 @@ jobs:
          fi
      
          cd ./backupfiles
-         sfdx force:source:retrieve -u backupfiles -x manifest/package.xml
+         sfdx force:source:retrieve -u $ORG_ALIAS -x manifest/package.xml
          
      - name: 'Export Org Data'
        run: | 
@@ -83,7 +87,7 @@ jobs:
             echo data folder exists
          else   
             mkdir -p ./backupfiles/data
-            echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles/data -o backupfiles
+            echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir ./backupfiles/data -o $ORG_ALIAS
          fi
          
      - name: Save repository owner email
