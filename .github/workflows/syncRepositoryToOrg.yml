@@ -62,7 +62,7 @@ jobs:
          if test -d "./backupfiles/force-app"; then
            echo force-app folder exists
          else
-           sfdx force:project:create --projectname $ORG_ALIAS --manifest
+           sfdx force:project:create --projectname backupfiles --manifest
          fi
         
          if test -f "./backupfiles/sfdx-project.json"; then
