@@ -1,3 +1,0 @@
-<apex:page > <script> window.open('{!$Resource.User_Intructions_FAQ}', '_blank');
-window.history.back();
- </script> </apex:page>
