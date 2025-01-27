@@ -64,18 +64,17 @@ jobs:
          if test -d "./$METADATA_FOLDERNAME/force-app"; then
            echo force-app folder exists
          else
-           sfdx force:project:create --projectname $METADATA_FOLDERNAME --manifest
+           sfdx force:project:create --name $METADATA_FOLDERNAME --manifest
          fi
 
          if test -f "./$METADATA_FOLDERNAME/manifest/package.xml"; then
            echo package.xml file exists
-           cp ./package.xml ./$METADATA_FOLDERNAME/manifest 
          else
            cp ./package.xml ./$METADATA_FOLDERNAME/manifest
          fi
      
          cd "./$METADATA_FOLDERNAME"
-         sfdx force:source:retrieve --targetusername $ORG_ALIAS --manifest manifest/package.xml
+         sfdx force:source:retrieve --target-org $ORG_ALIAS --manifest manifest/package.xml
          
      - name: 'Export Org Data'
        run: | 
