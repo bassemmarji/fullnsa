@@ -106,7 +106,7 @@ jobs:
          git config user.name "${{ github.repository_owner }}"
          git add .
          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
-         echo "Backup Folder Modified = ${{ env.modified }}"
+         echo Backup Folder Modified "${{ env.modified }}"
 
      # If there are uncommitted changes.
      #  Commit a snapshot of all changes in the working directory. This only includes modifications to tracked files (those that have been added with git add at some point in their history).
