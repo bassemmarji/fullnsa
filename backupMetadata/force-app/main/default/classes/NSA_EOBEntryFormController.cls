@@ -841,6 +841,7 @@ public with sharing class NSA_EOBEntryFormController {
      }
      return result;
    }
+       
    // main function for the eob and eob line item creation
    @AuraEnabled
    public static String serviceLineInsert(String claimFields, String procedures, String providerNumber, Date serviceDate, List < IntPS_NSA__Health_Plan_Content_Network__c > networks, String networkOption, String tpaAcro, List < String > networkNames, String userEmail, String patientId, List<String> outOfNetworkNames, String providerZIP,String healthPlanId,List<String> availableNetworksForProvider,List<String> networkNamesDisplay) {
@@ -850,19 +851,28 @@ public with sharing class NSA_EOBEntryFormController {
        List < Procedures > selectedProcedures = (List < Procedures > ) JSON.deserialize(procedures, List < Procedures > .class);
        String serviceType;
        Boolean INNRbp=false;
+       
        if(checkIfSplitAvailable){
+System.debug('**2---checkIfSplitAvailable');
+  
          serviceType= checkServiceTypeforINNRBP(selectedProcedures);
-       if(serviceType=='Institutional'){
-           INNRbp=true;
-           networkOption='In-Network';
+         if(serviceType=='Institutional'){
+            INNRbp=true;
+            networkOption='In-Network';
+         }
+         else{
+           INNRbp=false; 
+         }
        }
        else{
-           INNRbp=false; 
-       }
-     }
-     else{
+System.debug('**2--else-checkIfSplitAvailable');  
          serviceType= checkServiceType(selectedProcedures);
-     }
+       }
+       
+System.debug('**3-serviceType='+serviceType);  
+System.debug('**3-INNRbp='+INNRbp);  
+System.debug('**3-networkOption='+networkOption);  
+       
        Boolean lineItemWithNoRate=false;
        Boolean atLeastOneServiceWithPrice=false;
        IntPS__RemarkCode__c noRateRM=new IntPS__RemarkCode__c();
@@ -887,93 +897,108 @@ public with sharing class NSA_EOBEntryFormController {
        NSA_RbpPricesResponse rbpPriceByProcedure;
        System.debug('4 sorting networks by priority their priority');
        //fix the empty priorities that are on the member specific hpc networks to be first in priority
-     networks=checkForMemberSpecificHPC(networks);
+       networks=checkForMemberSpecificHPC(networks);
+System.debug('**networks='+networks);
+       
        for (IntPS_NSA__Health_Plan_Content_Network__c network: networks) {
+System.debug('**network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c='+network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c);
+System.debug('**networkOption='+networkOption);
+           
            if (network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c == networkOption) {
-             System.debug('entering if provider network is purely in network or out of network');
+              System.debug('entering if provider network is purely in network or out of network');
+
+System.debug('**Integer.valueOf(network.IntPS_NSA__Priority__c)='+Integer.valueOf(network.IntPS_NSA__Priority__c));
+System.debug('**network.IntPS_NSA__Network__r.IntPS_NSA__External_ID__c='+network.IntPS_NSA__Network__r.IntPS_NSA__External_ID__c);
+               
               networkByPriority.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network.IntPS_NSA__Network__r.IntPS_NSA__External_ID__c);
-               networkContentByPriority.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
-             
+              networkContentByPriority.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
            }
-           else{
+           else
+           {
              if(network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c.contains('1')){
-                 System.debug('entering if provider network contains 1, We will have multi tiers hpc');
+               System.debug('entering if provider network contains 1, We will have multi tiers hpc');
                networkByPriority.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network.IntPS_NSA__Network__r.IntPS_NSA__External_ID__c);
                networkContentByPriority.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
-           }
-           else{
-             if(network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c.contains('2')){
-             System.debug('entering if provider network contains 2, We will have multi tiers hpc');
-             networkContentByPriorityTier2.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
              }
-             else{
+             else
+             {
+                if(network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c.contains('2')){
+                  System.debug('entering if provider network contains 2, We will have multi tiers hpc');
+                  networkContentByPriorityTier2.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
+                }
+                else{
                  if(network.IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c.contains('3')){
-                     System.debug('entering if provider network contains 3');
-                     networkContentByPriorityTier3.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
-             }
-             
-           }
+                    System.debug('entering if provider network contains 3');
+                    networkContentByPriorityTier3.put(Integer.valueOf(network.IntPS_NSA__Priority__c), network);
+                 }
+                }
            }
        }
      }
-     System.debug('networkByPriority '+networkByPriority);
+System.debug('**networkByPriority '+networkByPriority);
        List < Integer > aList = new List < Integer > ();
        aList.addAll(networkByPriority.keySet());
        aList.sort();
        Integer maxValue=aList.size();
-       System.debug('max value is '+maxValue);
+System.debug('**max value is '+maxValue);
        for (Integer key : networkContentByPriorityTier2.keySet()) {
          networkByPriority.put(maxValue+Integer.valueOf(networkContentByPriorityTier2.get(key).IntPS_NSA__Priority__c), networkContentByPriorityTier2.get(key).IntPS_NSA__Network__r.IntPS_NSA__External_ID__c);
          networkContentByPriority.put(maxValue+Integer.valueOf(networkContentByPriorityTier2.get(key).IntPS_NSA__Priority__c), networkContentByPriorityTier2.get(key));
- 
-     }
+       }
+       
      List < Integer > aListTier2 = new List < Integer > ();
      aListTier2.addAll(networkByPriority.keySet());
      aListTier2.sort();
-       Integer maxValueTier2=aListTier2.size();
-       System.debug('max value tier 2 is '+maxValueTier2);
+     Integer maxValueTier2=aListTier2.size();
+     System.debug('max value tier 2 is '+maxValueTier2);
      for (Integer key : networkContentByPriorityTier3.keySet()) {
          networkByPriority.put(maxValueTier2+Integer.valueOf(networkContentByPriorityTier3.get(key).IntPS_NSA__Priority__c), networkContentByPriorityTier3.get(key).IntPS_NSA__Network__r.IntPS_NSA__External_ID__c);
          networkContentByPriority.put(maxValueTier2+Integer.valueOf(networkContentByPriorityTier3.get(key).IntPS_NSA__Priority__c), networkContentByPriorityTier3.get(key));
- 
      }
-       System.debug('5' + networkContentByPriority);
-       System.debug('5 v2 '+networkByPriority);
+System.debug('**5' + networkContentByPriority);
+System.debug('**5 v2 '+networkByPriority);
        Boolean isRBP=false;
        if(INNRbp){isRBP=true; }
        System.debug('checking from where we are getting the prices');
        IntPS_NSA__Health_Plan_Content_Network__c hon=getHealthPlanNetwork(outOfNetworkNames,serviceType,networkOption);
       
-     Boolean healthplanField=true;
-     
-     
+System.debug('**IntPS_NSA__Health_Plan_Content_Network__c=' + hon);
+          
+       Boolean healthplanField=true;
  
        if (networkOption == 'Out-Of-Network') {
          if(INNRbp){
              networkOption='In-Network';
          }
-           System.debug('out of network, so only rbp, so we will now check if we will use medicare or fair health');
-           wsWrapper=rbpCalculation(outOfNetworkNames, tpaAcro, providerZIP, providerNumber, selectedProcedures, serviceDate,healthPlanId,networkOption,hon);
-           rbpPriceByProcedure = wsWrapper.rbpResponse;
-       } else {
+         System.debug('out of network, so only rbp, so we will now check if we will use medicare or fair health');
+         wsWrapper=rbpCalculation(outOfNetworkNames, tpaAcro, providerZIP, providerNumber, selectedProcedures, serviceDate,healthPlanId,networkOption,hon);
+         rbpPriceByProcedure = wsWrapper.rbpResponse;
+
+System.debug('**networkOption == Out-Of-Network=' + Json.serialize(rbpPriceByProcedure) );
+           
+       } 
+       else 
+       {
            System.debug('this is in network, so we check if the most priority is rbp or else');
  
            if (isRBP) {
                System.debug('first priority is rbp,  so we will now check if we will use medicare or fair health');
                wsWrapper=rbpCalculation(outOfNetworkNames, tpaAcro, providerZIP, providerNumber, selectedProcedures, serviceDate,healthPlanId,networkOption,hon);
                rbpPriceByProcedure = wsWrapper.rbpResponse;
-           } else {
+System.debug('**networkOption == In-Network=' + Json.serialize(rbpPriceByProcedure) );
+           } 
+           else {
                System.debug('first priority is not rbp, so we do a sql callout for validation, and also we will use rbp calculation if it exists at least on hpc network having rbp');
                List<IntPS_NSA__Health_Plan_Content_Network__c> hpn=[Select IntPS_NSA__RbP_Basis__c,IntPS_NSA__RbP_Percentage__c from IntPS_NSA__Health_Plan_Content_Network__c where IntPS_NSA__Health_Plan_Content__r.IntPS__Provider_Network__c='In-Network' and IntPS_NSA__RbP__c=true];
                if(hpn.size()>0){
-                 rbpPriceByProcedure=rbpCalculation(outOfNetworkNames, tpaAcro, providerZIP, providerNumber, selectedProcedures, serviceDate,healthPlanId,networkOption,hon).rbpResponse;
- 
+System.debug('**hpn.size()>0=' + hpn.size());
+                  rbpPriceByProcedure=rbpCalculation(outOfNetworkNames, tpaAcro, providerZIP, providerNumber, selectedProcedures, serviceDate,healthPlanId,networkOption,hon).rbpResponse;
                }
  
                wsWrapper = SQLWSCallout(claimFields, '', networks, selectedProcedures, providerNumber, tpaAcro, networkNames, userEmail, patientId);
                servicePrices=wsWrapper.response;
                servicesPrices = NSA_MRFToApex.parse(servicePrices);
- 
+System.debug('**servicesPrices =' + Json.serialize(servicesPrices));
            }
        }
        //inserting eob first  
@@ -982,7 +1007,7 @@ public with sharing class NSA_EOBEntryFormController {
        List < SaveResultWrapper > srwList = new List < SaveResultWrapper > ();
        ClaimSaveResultWrapper csrw = new ClaimSaveResultWrapper();
        String claimId;
-         Savepoint sp;
+       Savepoint sp;
        if(!Test.isRunningTest())
        {
          sp = Database.setSavepoint();  
@@ -996,6 +1021,7 @@ public with sharing class NSA_EOBEntryFormController {
                hasError = false;
            }
        }
+System.debug('**claimResult =' + Json.serialize(claimResult));
        if (!hasError) {
            System.debug('eob inserted ');
  
@@ -1030,22 +1056,17 @@ public with sharing class NSA_EOBEntryFormController {
                      System.debug('getting price from rbp WSin for loop'+results);
                        if (selectedProcedures[cc].Code == results.ProcedureCode) {
                          System.debug('in if '+results.Allowed);
-                         System.debug('in if '+results.Allowed);
                          lineItem.IntPS_NSA__RBP_Initial_Price__c = results != null && results.Allowed != null && results.Allowed!=''  ? Decimal.valueOf(results.Allowed) : null;
                          if(lineItem.IntPS_NSA__RBP_Initial_Price__c!=null){
                              lineItem.IntPS_NSA__Service_Line_Allowed_Unit_Price__c = (Decimal.valueOf(results.Allowed)*hon.IntPS_NSA__RbP_Percentage__c)/100;
                              atLeastOneServiceWithPrice=true;
                              lineItem.isRateAvailableInMRF__c=true;
- 
                          }
                          else{
                              lineItemWithNoRate=true;
                              lineItem.isRateAvailableInMRF__c=false;
- 
                          }
-                        
-                           System.debug('lineItem.IntPS_NSA__Service_Line_Allowed_Unit_Price__c ' + lineItem.IntPS_NSA__Service_Line_Allowed_Unit_Price__c);
- 
+                         System.debug('lineItem.IntPS_NSA__Service_Line_Allowed_Unit_Price__c ' + lineItem.IntPS_NSA__Service_Line_Allowed_Unit_Price__c);
                        }
                    }
                  }
@@ -1055,7 +1076,6 @@ public with sharing class NSA_EOBEntryFormController {
                      if(priceResult==null ||  !priceResult.isRbp){
                          priceResult = validateNetworksPricesByPriority(networkNames[0], servicesPrices, selectedProcedures[cc].Code, selectedProcedures[cc].PlaceOfService);
                          //calling again to get the maximum price in that selected network
-                    
                      }
                      else{
                          if(rbpPriceByProcedure==null){
@@ -1160,21 +1180,32 @@ public with sharing class NSA_EOBEntryFormController {
                lineItem.IntPS__L2110_Service_Date__c = serviceDate;
                lineItem.IntPS__L2110_Service_End_Date__c = serviceDate;
                lineItem.IntPS__L2110_Service_Start_Date__c = serviceDate;
-               
+////////////               
+System.debug('*** selectedProcedures[cc].Code=' + selectedProcedures[cc].Code);
+System.debug('*** selectedProcedures[cc].PregnancyOption=' + selectedProcedures[cc].PregnancyOption);
+System.debug('*** selectedProcedures[cc].ProviderType=' + selectedProcedures[cc].ProviderType);
+System.debug('*** selectedProcedures[cc].PlaceOfService=' + selectedProcedures[cc].PlaceOfService);
+System.debug('*** healthPlanId=' + healthPlanId);
+System.debug('*** networkOption=' + networkOption);
                ProceduresMappedWithHP procHPI= MapProceduresToHPI(selectedProcedures[cc].Code, selectedProcedures[cc].PregnancyOption, selectedProcedures[cc].ProviderType, selectedProcedures[cc].PlaceOfService,healthPlanId,networkOption);
+System.debug('*** procHPI=' + procHPI);
+
                if(networkOption=='Out-Of-Network' || networkUsed!=null || procHPI.healthPlanItemID!=null){
                  lineItem.IntPS_NSA__Health_Plan_Item__c = procHPI.healthPlanItemID;
                }
                lineItem.IntPS_NSA__Child_Procedure_Code_Name__c=procHPI.procedureCode;
                lineItem.IntPS_NSA__NSA_Clasification_Name__c=procHPI.nsaClassificationName;
+System.debug('*** lineItem=' + Json.serialize(lineItem));
+////////////
                if(INNRbp){
-                 networkOptionSelected=networkOption;
- 
+System.debug('*** INNRbp=networkOptionSelected=networkOption=' + networkOption);
+                 networkOptionSelected=networkOption; 
                }
                else{
-                 networkOptionSelected=procHPI.providerNetworkOption;
- 
+System.debug('*** networkOptionSelected=procHPI.providerNetworkOption=' + procHPI.providerNetworkOption);
+                 networkOptionSelected=procHPI.providerNetworkOption; 
                }
+////////////
                System.debug('lineItem.IntPS_NSA__Health_Plan_Item__c ' + lineItem.IntPS_NSA__Health_Plan_Item__c);
                System.debug('counter ' + counter+' networkUsed'+networkUsed +' networkOption '+networkOption);
  
@@ -1285,17 +1316,20 @@ public with sharing class NSA_EOBEntryFormController {
      }
      
      
+System.debug('**eobAdded.IntPS_NSA__Provider_Network__c=networkOptionSelected =' + networkOptionSelected);
         
        eobAdded.IntPS_NSA__Provider_Network__c=networkOptionSelected;
-       try {
+       try 
+       {
            update(eobAdded);
-           System.debug('eob updated' + eobAdded);
-       } catch (Exception e) {
+System.debug('**eob updated' + eobAdded);
+       } 
+       catch (Exception e) 
+       {
            IntPS_NSA__NSA_Error_Log__c nsaerror = createErrorLogs(eobAdded,patientId, claimId, e.getMessage(), userEmail, 'When doing the mrf date/name update ');
            throw new AuraHandledException(e.getMessage());
- 
        }
-       System.debug('claimId ' + claimId);
+System.debug('**claimId ' + claimId);
        return claimId;
    }
  
@@ -1343,7 +1377,7 @@ public with sharing class NSA_EOBEntryFormController {
            
            }
            for (IntPS__EOB_Line_Item__c lineItem: lineItems) {
-             System.debug('calculating line items IntPS_NSA__Patient_Responsibility__c ');
+               System.debug('calculating line items IntPS_NSA__Patient_Responsibility__c ');
                //lineItem.IntPS_NSA__Patient_Responsibility__c = lineItem.IntPS_NSA__Deductible_Amount__c 
                //                                              + lineItem.IntPS_NSA__Copay_Amount__c 
                //                                              + lineItem.IntPS_NSA__Coinsurance_Amount__c 
@@ -1477,6 +1511,7 @@ public with sharing class NSA_EOBEntryFormController {
        WebServiceCalloutWrapper wsWrapper=new WebServiceCalloutWrapper();
        wsWrapper.request='';
        wsWrapper.response='';
+       
        //inserting eob first  
        System.debug('inserting eob first ');
  
@@ -1983,7 +2018,8 @@ public with sharing class NSA_EOBEntryFormController {
          } else {
              try {
                  prList = [SELECT Id, Name, IntPS__Consumer_Description__c, IntPS__Code_Type__c FROM IntPS__Procedure_Code__c where IntPS_NSA__Shoppable_Item__c=true and IntPS__Parent_Procedure_Code__c = ''
-                     and name Like: searchKeyword and IntPS_NSA__Inactive__c=false
+                   
+                           and name Like: searchKeyword and IntPS_NSA__Inactive__c=false
                  ];
              } catch (Exception e) {
                  throw new AuraHandledException(e.getMessage());
