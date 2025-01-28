@@ -49,8 +49,8 @@ jobs:
   #   - name: 'Instll SFDX Texei Plugin'
   #     run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
 
-     - name: 'Instll SFDX SFDMU Plugin'  
-       run:  sfdx plugins:install sfdmu 
+     - name: 'Install SFDX SFDMU Plugin'  
+       run:  echo y | sf plugins install sfdmu
        
      - name: 'Checkout source code'
        uses: actions/checkout@main
