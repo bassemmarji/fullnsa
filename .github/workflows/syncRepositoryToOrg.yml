@@ -77,12 +77,6 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sfdx force:source:retrieve --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-     - name: 'Read Org Objects'
-       id: read-objects
-       uses: satya-500/read-file-github-action@v1
-       with:
-         path: './custom_objects.txt'
-
      - name: 'Export Org Data'
        run: | 
          if test -d "./$DATA_FOLDERNAME"; then
