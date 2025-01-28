@@ -76,15 +76,15 @@ jobs:
      
          cd "./$METADATA_FOLDERNAME"
          sfdx force:source:retrieve --target-org $ORG_ALIAS --manifest manifest/package.xml
-
+         
      - name: 'ReadOrg Objects'
-         id: read-objects
+       id: read-objects
        uses: igorskyflyer/action-readfile@v1.0.0
-        with:
-          path: './org_objects.txt'
+       with:
+         path: './org_objects.txt'
 
      - name: List Org Objects
-        run: |
+       run: |
           echo 'Objects To Backup:'
           echo "${{ steps.read-objects.outputs.content }}"
           
