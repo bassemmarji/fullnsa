@@ -78,15 +78,15 @@ jobs:
          sfdx force:source:retrieve --target-org $ORG_ALIAS --manifest manifest/package.xml
 
      - name: ReadOrg Objects
-        id: read-objects-file
-        uses: igorskyflyer/action-readfile@v1.0.0
+         id: read-objects
+       uses: igorskyflyer/action-readfile@v1.0.0
         with:
           path: './org_objects.txt'
 
      - name: List Org Objects
         run: |
           echo 'Objects To Backup:'
-          echo "${{ steps.read-objects-file.outputs.content }}"
+          echo "${{ steps.read-objects.outputs.content }}"
           
      - name: 'Export Org Data'
        run: | 
