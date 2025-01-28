@@ -56,14 +56,11 @@ jobs:
        uses: actions/setup-node@v4
        with:
           node-version: '20.x'
+
+     - name: 'Get node version'
        run: |
            node --version
            echo 'y' | sfdx plugins:install sfdmu
-
-     #- name: 'Get node version'
-     #  run: |
-     #      node --version
-     #      echo 'y' | sfdx plugins:install sfdmu
            
      #- name: 'Install SFDMU'
      #  run: echo 'y' | sfdx plugins:install sfdmu
