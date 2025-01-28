@@ -83,7 +83,8 @@ jobs:
             echo "./$DATA_FOLDERNAME" folder exists
          else   
             mkdir -p "./$DATA_FOLDERNAME"
-            echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
+            # echo 'y' | sfdx texei:data:export --objects Account,Contact --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
+            echo 'y' | sfdx texei:data:export --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
          fi
 
      # Extract the git author email and store it in the global variable owner_email
