@@ -46,8 +46,11 @@ jobs:
          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
          ~/sfdx/bin/sfdx version         
          
-     - name: 'Instll SFDX Texei Plugin'
+     - name: 'Install SFDX Texei Plugin'
        run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
+
+     - name: 'Install Code Analyzer'
+        run: echo 'y' | sfdx plugins:install @salesforce/sfdx-scanner@latest
        
      - name: 'Checkout source code'
        uses: actions/checkout@main
