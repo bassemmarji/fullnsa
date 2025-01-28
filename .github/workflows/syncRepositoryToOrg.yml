@@ -79,7 +79,7 @@ jobs:
          
      - name: 'ReadOrg Objects'
        id: read-objects
-       uses: igorskyflyer/action-readfile@v1.0.0
+       uses: satya-500/read-file-github-action@v1
        with:
          path: './org_objects.txt'
 
