@@ -95,8 +95,8 @@ jobs:
          else   
             mkdir -p "./$DATA_FOLDERNAME"
          fi
-         #echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
-         echo 'y' | sfdx texei:data:export --objects "${{ steps.read-objects.outputs.content }}" --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
+         echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
+         #echo 'y' | sfdx texei:data:export --objects "${{ steps.read-objects.outputs.content }}" --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
 
      # Extract the git author email and store it in the global variable owner_email
      # This is done by sending a statement setting it to the $GITHUB_ENV file.
