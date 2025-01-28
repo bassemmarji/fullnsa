@@ -46,11 +46,8 @@ jobs:
          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
          ~/sfdx/bin/sfdx version         
          
-  #   - name: 'Instll SFDX Texei Plugin'
-  #     run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
-
-     - name: 'Install SFDX SFDMU Plugin'  
-       run:  sfdx plugins:install sfdmu
+     - name: 'Instll SFDX Texei Plugin'
+       run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
        
      - name: 'Checkout source code'
        uses: actions/checkout@main
@@ -98,7 +95,7 @@ jobs:
          else   
             mkdir -p "./$DATA_FOLDERNAME"
          fi
-       # echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" --target-org  $ORG_ALIAS
+         echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" --target-org  $ORG_ALIAS
        # echo 'y' | sfdx texei:data:export --objects "${{ steps.read-objects.outputs.content }}" --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
 
      # Extract the git author email and store it in the global variable owner_email
