@@ -83,9 +83,9 @@ jobs:
        with:
          path: './custom_objects.txt'
 
-     - name: List Org Objects
+     - name: 'List Org Objects'
        run: |
-          echo 'Objects To Backup:'
+          echo "Objects To Backup:"
           echo "${{ steps.read-objects.outputs.content }}"
           
      - name: 'Export Org Data'
