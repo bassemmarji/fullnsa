@@ -84,7 +84,8 @@ jobs:
          else   
             mkdir -p "./$DATA_FOLDERNAME"
          fi
-         echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
+         echo 'y' | sfdx texei:data:export --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
+         # echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" -o $ORG_ALIAS
 
      # Extract the git author email and store it in the global variable owner_email
      # This is done by sending a statement setting it to the $GITHUB_ENV file.
@@ -105,7 +106,7 @@ jobs:
          git config user.name "${{ github.repository_owner }}"
          git add .
          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
-         echo "Backup Folder Modified = ${{ env.modified }}"
+         echo "Backup Folder Modified = ${{ steps.git-check.outputs.modified }}"
 
      # If there are uncommitted changes.
      #  Commit a snapshot of all changes in the working directory. This only includes modifications to tracked files (those that have been added with git add at some point in their history).
