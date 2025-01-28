@@ -50,7 +50,7 @@ jobs:
   #     run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
 
      - name: 'Install SFDX SFDMU Plugin'  
-       run:  echo y | sf plugins install sfdmu
+       run:  echo y | sfdx plugins install sfdmu
        
      - name: 'Checkout source code'
        uses: actions/checkout@main
