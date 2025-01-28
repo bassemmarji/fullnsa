@@ -50,7 +50,7 @@ jobs:
        run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
 
      - name: 'Install Code Analyzer'
-        run: echo 'y' | sfdx plugins:install @salesforce/sfdx-scanner@latest
+       run: echo 'y' | sfdx plugins:install @salesforce/sfdx-scanner@latest
        
      - name: 'Checkout source code'
        uses: actions/checkout@main
