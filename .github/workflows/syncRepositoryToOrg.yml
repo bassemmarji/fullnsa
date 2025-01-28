@@ -46,7 +46,7 @@ jobs:
          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
          ~/sfdx/bin/sfdx version         
          
-     - name: 'Instll SFDX Texei Plugin'
+  #   - name: 'Instll SFDX Texei Plugin'
   #     run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
 
      - name: 'Instll SFDX SFDMU Plugin'  
