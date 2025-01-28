@@ -15,9 +15,9 @@ on:
    inputs:
      # this will be refered to as ${{ github.event.inputs.commit_text }}
      commit_text:
-       description: 'Commit text to use'    
+       description: 'Commit Message'    
        required: true
-       default: 'New Manual Sync commit'
+       default: 'Backup of Org'
 
 env:
   # Defining Global environment variables accessible to all jobs and steps. 
@@ -113,7 +113,6 @@ jobs:
      - name: Commit and push if there are modified files
        if: steps.git-check.outputs.modified == 'true'
        run: |
-         echo "Commit Message = ${{ github.event.inputs.commit_text }} on ${{ github.event.repository.updated_at }}"
          git commit -m "${{ github.event.inputs.commit_text }} on ${{ github.event.repository.updated_at }}"
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
 
