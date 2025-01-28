@@ -79,7 +79,7 @@ jobs:
 
      - name: 'ReadOrg Objects'
        id: read-objects
-       uses: satya-500/read-file-github-action@v1
+       uses: juliangruber/read-file-action@v1
        with:
          path: './custom_objects.txt'
 
