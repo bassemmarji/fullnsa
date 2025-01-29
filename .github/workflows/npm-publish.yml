@@ -36,6 +36,26 @@ jobs:
         run: |
           npm install @salesforce/cli --global
           
+      - name: 'Install Salesforce Code Analyzer'
+        run: |
+          sf plugins install @salesforce/sfdx-scanner@latest
+          
+      - name: 'Install Salesforce Move Data Utility'
+        run: |
+          sf plugins install sfdmu
+
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --setdefaultusername --sfdx-url-stdin
 
+     - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
+       run: |
+         if test -d "./$METADATA_FOLDERNAME/force-app"; then
+           echo "./$METADATA_FOLDERNAME/force-app folder exists"
+         else
+           sf project generate --name $METADATA_FOLDERNAME --manifest
+         fi
+         
+         if test -f "./package.xml"; then
+           echo "package.xml file exists"
+           cp ./package.xml ./$METADATA_FOLDERNAME/manifest
+         fi
