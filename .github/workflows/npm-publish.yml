@@ -105,7 +105,7 @@ jobs:
         uses: forcedotcom/run-code-analyzer@v1
         with:
           run-command: run
-          run-arguments: --normalize-severity --target . --outfile ./$SCAN_FOLDERNAME/sf-code-analyzer-results.html
+          run-arguments: --normalize-severity --target . --outfile sf-code-analyzer-results.html
           results-artifact-name: salesforce-code-analyzer-results
 
       - name: Check the outputs to determine whether to fail
