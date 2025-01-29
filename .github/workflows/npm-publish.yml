@@ -83,15 +83,31 @@ jobs:
          cp "./config/export.json" "./$DATA_FOLDERNAME"
          sf sfdmu:run --quiet --sourceusername $ORG_ALIAS --targetusername csvfile --path ./$DATA_FOLDERNAME 
 
-      - name: 'Run Salesforce Code Analyzer'
-        run: |
-         if test -d "./$SCAN_FOLDERNAME"; then
-            echo "./$SCAN_FOLDERNAME folder exists"
-         else   
-            mkdir -p "./$SCAN_FOLDERNAME"
-         fi
-         sf scanner run --target="./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
+      #- name: 'Run Salesforce Code Analyzer'
+      #  run: |
+      #   if test -d "./$SCAN_FOLDERNAME"; then
+      #      echo "./$SCAN_FOLDERNAME folder exists"
+      #   else   
+      #      mkdir -p "./$SCAN_FOLDERNAME"
+      #   fi
+      #   sf scanner run --target="./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
+
+      - name: Run Salesforce Code Analyzer
+        id: run-code-analyzer
+        uses: forcedotcom/run-code-analyzer@v1
+        with:
+          run-command: run
+          run-arguments: --normalize-severity --target . --outfile "./$SCAN_FOLDERNAME/sf-code-analyzer-results.html"
+          results-artifact-name: salesforce-code-analyzer-results
+
+      - name: Check the outputs to determine whether to fail
+        if: |
+          steps.run-code-analyzer.outputs.exit-code > 0 ||
+          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
+          steps.run-code-analyzer.outputs.num-violations > 10
+        run: exit 1
+       
       - name: 'Run tests'
         run: sf apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human > ./$SCAN_FOLDERNAME/testresult.txt
         
