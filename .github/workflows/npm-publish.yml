@@ -99,13 +99,14 @@ jobs:
          else   
             mkdir -p "./$SCAN_FOLDERNAME"
          fi
+         cd "./$SCAN_FOLDERNAME"
 
       - name: Run Salesforce Code Analyzer
         id: run-code-analyzer
         uses: forcedotcom/run-code-analyzer@v1
         with:
           run-command: run
-          run-arguments: --normalize-severity --target . --format csv --outfile "./$SCAN_FOLDERNAME/sf-code-analyzer-results.html"
+          run-arguments: --normalize-severity --target . --format csv --outfile sf-code-analyzer-results.html
           results-artifact-name: salesforce-code-analyzer-results
 
       #- name: Check the outputs to determine whether to fail
