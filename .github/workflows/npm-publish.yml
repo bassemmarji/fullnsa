@@ -55,7 +55,11 @@ jobs:
            sf project generate --name $METADATA_FOLDERNAME --manifest
          fi
          
-         if test -f "./package.xml"; then
-           echo "package.xml file exists"
-           cp ./package.xml ./$METADATA_FOLDERNAME/manifest
-         fi           
+         if test -f "./config/package.xml"; then
+           echo "./config/package.xml file exists"
+           cp ./config/package.xml ./$METADATA_FOLDERNAME/manifest
+         fi
+
+         cd "./$METADATA_FOLDERNAME"
+         sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
