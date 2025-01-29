@@ -93,7 +93,7 @@ jobs:
          sf scanner run --target="./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
       - name: 'Run tests'
-        run: sfdx apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human --output-dir=./$SCAN_FOLDERNAME
+        run: sfdx apex run test -c --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human > ./$SCAN_FOLDERNAME/testlog.txt
 
       # Extract the git author email and store it in the global variable owner_email
       # This is done by sending a statement setting it to the $GITHUB_ENV file.
