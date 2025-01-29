@@ -15,9 +15,11 @@ on:
        default: 'Manual Backup Commit'
 
 env:
-  # Defining a Global environment variable accessible to all jobs and steps. 
+  # Defining Global environment variables accessible to all jobs and steps. 
   ORG_ALIAS: org_alias 
-
+  METADATA_FOLDERNAME: backupMetadata
+  DATA_FOLDERNAME: backupData
+  
 jobs:
   backup_job:
     runs-on: ubuntu-latest
@@ -35,11 +37,5 @@ jobs:
           npm install @salesforce/cli --global
           
       - name: 'Authorize to the org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias DevHub --set-default-dev-hub --sfdx-url-stdin
-
-     - name: 'Create file to authenticate to the org via SFDX'
-       run: echo ${{ secrets.ORG_SFDX_URL }} > DEV-LOGIN.txt
-      
-     - name: 'Authenticate to the org using SFDX'
-       run: sfdx force:auth:sfdxurl:store -f DEV-LOGIN.txt -d -a backupfiles
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --setdefaultusername --sfdx-url-stdin
 
