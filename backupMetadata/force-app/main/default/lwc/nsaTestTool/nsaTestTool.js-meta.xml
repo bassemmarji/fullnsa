@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>55.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__AppPage</target>
+        <target>lightning__UtilityBar</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig
+            targets="lightning__AppPage,lightning__UtilityBar">
+            <property name="requestCardName" label="Card Name:" type="String"/>
+            <property name="customerServiceMode" label="Customer Service Mode" type="Boolean" default="false" />
+            <property name="inputJSON" label="TPA Acronym JSON:" description="TPA Options for Customer Service"
+                type="String"></property>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>
