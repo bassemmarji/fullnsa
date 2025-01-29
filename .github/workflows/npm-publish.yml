@@ -90,7 +90,7 @@ jobs:
          else   
             mkdir -p "./$SCAN_FOLDERNAME"
          fi
-         sf scanner run --target="$ORG_ALIAS" --projectdir="./$METADATA_FOLDERNAME" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
+         sf scanner run --projectdir="./$METADATA_FOLDERNAME" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
       # Extract the git author email and store it in the global variable owner_email
       # This is done by sending a statement setting it to the $GITHUB_ENV file.
