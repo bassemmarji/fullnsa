@@ -82,7 +82,7 @@ jobs:
          cp "./config/export.json" "./$DATA_FOLDERNAME"
          sf sfdmu:run --sourceusername $ORG_ALIAS --targetusername csvfile --path ./$DATA_FOLDERNAME --quiet --nopromp
 
-      - name: 'Analyze Org By Running SF Code Scanner'
+      - name: 'Run Salesforce Code Analyzer'
         run: |
          sf scanner run --target="$ORG_ALIAS" --outfile sf-code-scanner-results.html
 
