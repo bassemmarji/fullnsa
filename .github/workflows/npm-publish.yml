@@ -24,6 +24,15 @@ jobs:
   backup_job:
     runs-on: ubuntu-latest
     steps:
+      - name: 'Print Workflow Context Variables'
+        run: |
+          echo "This job was triggered by:"
+          echo " * Actor = ${{ github.actor }}" 
+          echo " * Event = ${{ github.event_name }}"  
+          echo " * Repository = ${{ github.repository }}"
+          echo " * Branch = ${{ github.ref }}"
+          echo " * OS = ${{runner.os}} server hosted by Github."
+    
       - name: 'Checkout'
         uses: actions/checkout@v4
 
@@ -62,4 +71,32 @@ jobs:
 
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 'Analyze Org By Running SF Code Scanner'
+        run: |
+         sf scanner run --target="$ORG_ALIAS" --outfile sf-code-scanner-results.html
+
+      # Extract the git author email and store it in the global variable owner_email
+      # This is done by sending a statement setting it to the $GITHUB_ENV file.
+      - name: 'Save repository owner email'
+        run: |
+         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+
+      # Create a new git repository
+      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
+      # Change the name you associate with your Git commits.
+      # Add the entire directory to your commit recursively.
+      # Determine if there are uncommitted changes in the GIT Tree
+      - name: 'Stage files and check for modified files'
+        id: git-check
+        run: |
+         git init
+         git config user.email "${{ env.owner_email }}"
+         git config user.name "${{ github.repository_owner }}"
+         git add .
+         echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+         
+         
+         
+         
 
