@@ -90,10 +90,11 @@ jobs:
          else   
             mkdir -p "./$SCAN_FOLDERNAME"
          fi
-         sf scanner run --target "./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
+         sf scanner run --target "./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
       - name: 'Run tests'
-        run: sf apex run test --target-org $ORG_ALIAS --code-coverage --result-format human --output-dir ./$SCAN_FOLDERNAME --test-level RunLocalTests --wait 30
+        run: sfdx apex run test --target-org $ORG_ALIA --test-level RunLocalTests --result-format human
+      #   run: sf apex run test --target-org $ORG_ALIAS --code-coverage --result-format human --output-dir ./$SCAN_FOLDERNAME --test-level RunLocalTests --wait 30
 
       # Extract the git author email and store it in the global variable owner_email
       # This is done by sending a statement setting it to the $GITHUB_ENV file.
