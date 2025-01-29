@@ -34,4 +34,12 @@ jobs:
         run: |
           npm install @salesforce/cli --global
           
+      - name: 'Authorize to the org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias DevHub --set-default-dev-hub --sfdx-url-stdin
+
+     - name: 'Create file to authenticate to the org via SFDX'
+       run: echo ${{ secrets.ORG_SFDX_URL }} > DEV-LOGIN.txt
+      
+     - name: 'Authenticate to the org using SFDX'
+       run: sfdx force:auth:sfdxurl:store -f DEV-LOGIN.txt -d -a backupfiles
 
