@@ -9,6 +9,11 @@
         "query": "select Id, FirstName, LastName, Email from Contact ORDER BY Email,LastName,FirstName ASC",
         "operation": "Upsert",
         "externalId": "Email;LastName;FirstName"
+    },
+    {
+        "query": "select Id, Name from Opportunity ORDER BY Name ASC",
+        "operation": "Upsert",
+        "externalId": "Name"
     }
   ],
  "pollingIntervalMs": 5000,
