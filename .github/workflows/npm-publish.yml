@@ -79,7 +79,6 @@ jobs:
          else   
             mkdir -p "./$DATA_FOLDERNAME"
          fi
-        # echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" --target-org  $ORG_ALIAS
          sf sfdmu:run --sourceusername $ORG_ALIAS --targetusername csvfile --path "./config"
 
       - name: 'Analyze Org By Running SF Code Scanner'
