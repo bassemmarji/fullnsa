@@ -48,28 +48,15 @@ jobs:
          
      - name: 'Install SFDX Texei Plugin'
        run: echo 'y' | sfdx plugins:install texei-sfdx-plugin
-       
-     - name: Checkout
-       uses: actions/checkout@v4
-
-     - name: Use Node.js
-       uses: actions/setup-node@v4
-       with:
-          node-version: '20.x'
-
-     - name: 'Get node version'
-       run: |
-           node --version
-           echo 'y' | sfdx plugins:install sfdmu
            
-     #- name: 'Install SFDMU'
-     #  run: echo 'y' | sfdx plugins:install sfdmu
+     - name: 'Install SFDMU'
+       run: echo 'y' | sfdx plugins:install sfdmu
 
      #- name: 'Install Code Analyzer'
      #  run: echo 'y' | sfdx plugins:install @salesforce/sfdx-scanner@latest
        
-     # - name: 'Checkout source code'
-     #  uses: actions/checkout@main
+     - name: 'Checkout source code'
+       uses: actions/checkout@main
       
      - name: 'Create file to authenticate to the org via SFDX'
        run: echo ${{ secrets.ORG_SFDX_URL }} > DEV-LOGIN.txt
