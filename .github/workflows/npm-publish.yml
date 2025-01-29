@@ -93,7 +93,7 @@ jobs:
          sf scanner run --target="./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
       - name: 'Run tests'
-        run: sfdx apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human --synchronous > ./$SCAN_FOLDERNAME/testresult.txt
+        run: sfdx apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human --synchronous
         
 
       # Extract the git author email and store it in the global variable owner_email
