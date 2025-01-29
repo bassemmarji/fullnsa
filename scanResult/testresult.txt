@@ -1,2 +1,2 @@
-Run "sf apex get test -i 707Qy00000IWIKP -o fullnsafullnsa@gmail.com" to retrieve test results
+Run "sf apex get test -i 707Qy00000IW4ul -o fullnsafullnsa@gmail.com" to retrieve test results
 [2mRun with --synchronous or increase --wait timeout to wait for results.[22m
