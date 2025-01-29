@@ -72,6 +72,16 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
+      - name: 'Export Org Data'
+        run: | 
+         if test -d "./$DATA_FOLDERNAME"; then
+            echo "./$DATA_FOLDERNAME folder exists"
+         else   
+            mkdir -p "./$DATA_FOLDERNAME"
+         fi
+        # echo 'y' | sfdx texei:data:export --objects Account,Contact,Opportunity --outputdir "./$DATA_FOLDERNAME" --target-org  $ORG_ALIAS
+         sf sfdmu:run --sourceusername $ORG_ALIAS --targetusername csvfile --path "./config"
+
       - name: 'Analyze Org By Running SF Code Scanner'
         run: |
          sf scanner run --target="$ORG_ALIAS" --outfile sf-code-scanner-results.html
