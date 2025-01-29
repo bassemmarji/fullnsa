@@ -47,8 +47,8 @@ jobs:
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --setdefaultusername --sfdx-url-stdin
 
-     - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
-       run: |
+      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
+        run: |
          if test -d "./$METADATA_FOLDERNAME/force-app"; then
            echo "./$METADATA_FOLDERNAME/force-app folder exists"
          else
@@ -58,4 +58,4 @@ jobs:
          if test -f "./package.xml"; then
            echo "package.xml file exists"
            cp ./package.xml ./$METADATA_FOLDERNAME/manifest
-         fi
+         fi           
