@@ -93,7 +93,7 @@ jobs:
          sf scanner run --target="./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
       - name: 'Run tests'
-        run: sfdx apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human --output-dir=./$SCAN_FOLDERNAME --synchronous 
+        run: sfdx apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human --synchronous > --output-dir=./$SCAN_FOLDERNAME/testresult.txt
         
 
       # Extract the git author email and store it in the global variable owner_email
@@ -122,5 +122,5 @@ jobs:
       - name: 'Commit and push if there are modified files'
         if: steps.git-check.outputs.modified == 'true'
         run: |
-         git commit -m "${{ github.event.inputs.commit_text }} on ${{ github.event.repository.updated_at }}"
+         git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
