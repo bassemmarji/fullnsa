@@ -1,6 +1,6 @@
 # This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
 # For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
-name: Backup Org
+name: Backup And Analyze Org
 
 # When the workflow will run
 on:
@@ -92,15 +92,6 @@ jobs:
       #   fi
       #   sf scanner run --target="./**/*.cls" --projectdir="./$METADATA_FOLDERNAME" --category="Design,Best Practices" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
-      - name: 'Create Scan Folder'
-        run: |
-         if test -d "./$SCAN_FOLDERNAME"; then
-            echo "./$SCAN_FOLDERNAME folder exists"
-         else   
-            mkdir -p "./$SCAN_FOLDERNAME"
-         fi
-        
-
       - name: Run Salesforce Code Analyzer
         id: run-code-analyzer
         uses: forcedotcom/run-code-analyzer@v1
@@ -109,16 +100,20 @@ jobs:
           run-arguments: --normalize-severity --target . --format csv --outfile sf-code-analyzer-results.csv
           results-artifact-name: salesforce-code-analyzer-results
 
-      #- name: Check the outputs to determine whether to fail
-      #  if: |
-      #    steps.run-code-analyzer.outputs.exit-code > 0 ||
-      #    steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
-      #    steps.run-code-analyzer.outputs.num-violations > 10
-      #  run: exit 0
+      - name: Move Code Analyzer Result
+        run: |
+         if test -d "./$SCAN_FOLDERNAME"; then
+            echo "./$SCAN_FOLDERNAME folder exists"
+         else   
+            mkdir -p "./$SCAN_FOLDERNAME"
+         fi
+         if test -f "./sf-code-analyzer-results.csv"; then
+           echo "./sf-code-analyzer-results.csv file exists"
+           cp ./sf-code-analyzer-results.csv ./$SCAN_FOLDERNAME
+         fi
        
-      - name: 'Run tests'
-        run: sf apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human > ./$SCAN_FOLDERNAME/testresult.txt
-        
+      # - name: 'Run tests'
+      #  run: sf apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human > ./$SCAN_FOLDERNAME/testresult.txt
 
       # Extract the git author email and store it in the global variable owner_email
       # This is done by sending a statement setting it to the $GITHUB_ENV file.
