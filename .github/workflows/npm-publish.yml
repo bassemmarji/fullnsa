@@ -79,7 +79,9 @@ jobs:
          else   
             mkdir -p "./$DATA_FOLDERNAME"
          fi
-         sf sfdmu:run --sourceusername $ORG_ALIAS --targetusername csvfile --path "./config"
+         cd "./$DATA_FOLDERNAME"
+         cp ./config/export.json ./$DATA_FOLDERNAME
+         sf sfdmu:run --sourceusername $ORG_ALIAS --targetusername csvfile --path "./$DATA_FOLDERNAME"
 
       - name: 'Analyze Org By Running SF Code Scanner'
         run: |
