@@ -1,14 +1,32 @@
 {
   "objects": [
     {
-        "query": "select Id, Name from Account",
+        "query": "select Id, Name From Account Order By Name ASC",
         "operation": "Upsert",
         "externalId": "Name"
     },
     {
-        "query": "select Id, FirstName, LastName from Contact",
+        "query": "select Id, FirstName, LastName, Email from Contact ORDER BY Email,LastName,FirstName ASC",
         "operation": "Upsert",
-        "externalId": ""
+        "externalId": "Email;LastName;FirstName"
     }
-  ]
+  ],
+ "pollingIntervalMs": 5000,
+ "bulkThreshold": 200,
+ "bulkApiVersion": "1.0",
+ "concurrencyMode": "Serial",
+ "bulkApiV1BatchSize": 9500,
+ "keepObjectOrderWhileExecute": false,
+ "allOrNone": false,
+ "promptOnUpdateError": true,
+ "promptOnMissingParentObjects": false,
+ "promptOnIssuesInCSVFiles": false,
+ "validateCSVFilesOnly": false,
+ "apiVersion": "58.0",
+ "createTargetCSVFiles": true,
+ "importCSVFilesAsIs": false,
+ "alwaysUseRestApiToUpdateRecords": false,
+ "excludeIdsFromCSVFiles": false,
+ "fileLog": true,
+ "allowFieldTruncation": false
 }
