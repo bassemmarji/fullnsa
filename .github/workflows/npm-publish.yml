@@ -109,7 +109,7 @@ jobs:
          fi
          if test -f "./sf-code-analyzer-results.csv"; then
            echo "./sf-code-analyzer-results.csv file exists"
-           cp ./sf-code-analyzer-results.csv ./$SCAN_FOLDERNAME
+           mv ./sf-code-analyzer-results.csv ./$SCAN_FOLDERNAME
          fi
        
       # - name: 'Run tests'
