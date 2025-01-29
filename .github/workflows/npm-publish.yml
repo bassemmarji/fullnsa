@@ -19,7 +19,8 @@ env:
   ORG_ALIAS: org_alias 
   METADATA_FOLDERNAME: backupMetadata
   DATA_FOLDERNAME: backupData
-  
+  SCAN_FOLDERNAME: scanResult
+
 jobs:
   backup_job:
     runs-on: ubuntu-latest
@@ -80,11 +81,16 @@ jobs:
             mkdir -p "./$DATA_FOLDERNAME"
          fi
          cp "./config/export.json" "./$DATA_FOLDERNAME"
-         sf sfdmu:run --sourceusername $ORG_ALIAS --targetusername csvfile --path ./$DATA_FOLDERNAME --quiet --nopromp
+         sf sfdmu:run --quiet --sourceusername $ORG_ALIAS --targetusername csvfile --path ./$DATA_FOLDERNAME 
 
       - name: 'Run Salesforce Code Analyzer'
         run: |
-         sf scanner run --target="$ORG_ALIAS" --outfile sf-code-scanner-results.html
+         if test -d "./$SCAN_FOLDERNAME"; then
+            echo "./$SCAN_FOLDERNAME folder exists"
+         else   
+            mkdir -p "./$SCAN_FOLDERNAME"
+         fi
+         sf scanner run --target="$ORG_ALIAS" --projectdir="./$METADATA_FOLDERNAME" --outfile="./$SCAN_FOLDERNAME/sf-code-scanner-results.html"
 
       # Extract the git author email and store it in the global variable owner_email
       # This is done by sending a statement setting it to the $GITHUB_ENV file.
