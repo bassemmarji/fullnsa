@@ -132,8 +132,10 @@ jobs:
         run: |
          echo 'check-for-changes'
          if [[ ${{ github.event_name }} == 'pull_request' ]]; then
+            echo 'in pull'
             changed_files=$(git diff --name-only -r HEAD^1 HEAD)
          else
+            echo 'in pull else'
             changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
          fi
          echo 'List Of Changes'
