@@ -136,7 +136,9 @@ jobs:
         if: steps.git-check.outputs.modified == 'true'
         run: |
          git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
-         git log --name-status HEAD^..HEAD
+         git log --name-status --oneline HEAD^..HEAD > ./$SCAN_FOLDERNAME/changes.txt
+         git add ./$SCAN_FOLDERNAME/changes.txt
+         git commit --amend --no-edit
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
 
 #      - name: 'Check for changes'
