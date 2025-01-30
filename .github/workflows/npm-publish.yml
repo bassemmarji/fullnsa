@@ -127,7 +127,7 @@ jobs:
          git config user.email "${{ env.owner_email }}"
          git config user.name "${{ github.repository_owner }}"
          git add .
-         changed_files=$(git diff-index --quiet HEAD --)
+         changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
          echo 'List Of Changes'
          echo $changed_files
          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
