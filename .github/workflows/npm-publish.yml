@@ -130,14 +130,17 @@ jobs:
       - name: 'Check for changes'
         id: check-for-changes
         run: |
+         echo 'check-for-changes'
          if [[ ${{ github.event_name }} == 'pull_request' ]]; then
             changed_files=$(git diff --name-only -r HEAD^1 HEAD)
          else
             changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
          fi
+         echo 'List Of Changes'
+         echo $changed_files
          echo 'List Of Changes' > ./$SCAN_FOLDERNAME/changes.txt
          for file in $changed_files; do
-              echo "File changed: '"$file"' " >> ./$SCAN_FOLDERNAME/changes.txt
+             echo "File changed: '"$file"' " >> ./$SCAN_FOLDERNAME/changes.txt
          done
 
       # If there are uncommitted changes.
