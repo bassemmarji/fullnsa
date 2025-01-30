@@ -136,7 +136,7 @@ jobs:
         if: steps.git-check.outputs.modified == 'true'
         run: |
          git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
-         git log --raw
+         git log --name-status HEAD^..HEAD
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
 
 #      - name: 'Check for changes'
