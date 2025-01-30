@@ -135,8 +135,9 @@ jobs:
          else
             changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
          fi
+         echo 'List Of Changes' > ./$SCAN_FOLDERNAME/changes.txt
          for file in $changed_files; do
-              echo "File changed: '"$file"' "
+              echo "File changed: '"$file"' " >> ./$SCAN_FOLDERNAME/changes.txt
          done
 
       # If there are uncommitted changes.
