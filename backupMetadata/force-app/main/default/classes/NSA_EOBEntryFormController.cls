@@ -1000,7 +1000,7 @@ System.debug('**hpn.size()>0=' + hpn.size());
                servicePrices=wsWrapper.response;
                servicesPrices = NSA_MRFToApex.parse(servicePrices);
 System.debug('**servicesPrices =' + Json.serialize(servicesPrices));
-           }
+           } 
        }
        //inserting eob first  
        System.debug('inserting eob first ');
