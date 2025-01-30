@@ -20,7 +20,7 @@ env:
   SCAN_FOLDERNAME: scanResult
 
 jobs:
-  backup_job:
+  backup_analyze_job:
     runs-on: ubuntu-latest
     steps:
       - name: 'Print Workflow Context Variables'
@@ -89,7 +89,7 @@ jobs:
           run-arguments: --normalize-severity --target . --format csv --outfile sf-code-analyzer-results.csv
           results-artifact-name: salesforce-code-analyzer-results
 
-      - name: 'Store Code Analyzer Result'
+      - name: 'Copy Salesforce Code Analyzer Results'
         run: |
          if test -d "./$SCAN_FOLDERNAME"; then
             echo "./$SCAN_FOLDERNAME folder exists"
@@ -97,15 +97,13 @@ jobs:
             mkdir -p "./$SCAN_FOLDERNAME"
          fi
          if test -f "./sf-code-analyzer-results.csv"; then
-           echo "./sf-code-analyzer-results.csv file exists"
            mv ./sf-code-analyzer-results.csv ./$SCAN_FOLDERNAME
          fi
-       
-      # - name: 'Run tests'
-      #  run: sf apex run test --target-org=$ORG_ALIAS --test-level=RunLocalTests --result-format=human > ./$SCAN_FOLDERNAME/testresult.txt
+         if test -f "./SalesforceCodeAnalyzerResults.json"; then
+           mv ./SalesforceCodeAnalyzerResults.json ./$SCAN_FOLDERNAME
+         fi
 
       # Extract the git author email and store it in the global variable owner_email
-      # This is done by sending a statement setting it to the $GITHUB_ENV file.
       - name: 'Save repository owner email'
         run: |
          echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
