@@ -127,8 +127,8 @@ jobs:
          git add .
          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
 
-      - name: Check and Alert if watched files changed
-        id: check-and-alert
+      - name: 'Check for changes'
+        id: check-for-changes
         run: |
          if [[ ${{ github.event_name }} == 'pull_request' ]]; then
             changed_files=$(git diff --name-only -r HEAD^1 HEAD)
