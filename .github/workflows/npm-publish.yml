@@ -2,6 +2,11 @@ name: Backup And Analyze Org
 
 # When the workflow will run
 on:
+
+ schedule:
+  # Runs at 12:00 UTC every day.
+   - cron: '0 12 * * *'
+  
  workflow_dispatch:
    # Define parameters for the workflow to pass them when triggered.
    # This makes the workflow more flexible and adaptable.
