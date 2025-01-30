@@ -1,0 +1,149 @@
+
+ [19:21:49.706] Execution of the command sfdmu:run has been started.
+
+ LOADING AND VALIDATING THE EXPORT.JSON SCRIPT ...
+
+ OBJECT SET #1 STARTED
+
+ {
+   "Running Plugin version": "4.38.0"
+}
+ {
+   "Running Add-On API version": "1.6.0"
+}
+
+ [19:21:49.715] Loading Core Add-On Module declarations ...
+ [19:21:49.785] Connecting to the org_alias using SFDX sf org display ...
+ [19:21:51.524] Successfully connected to the org_alias.
+ {
+   "Source": "org_alias.",
+   "Target": "csvfile.",
+   "Package script": "/home/runner/work/fullnsa/fullnsa/backupData/export.json."
+}
+
+ GETTING AND ANALYSING OBJECT METADATA ...
+ [19:21:52.433] Processing the object Account ...
+ [19:21:52.434] Fetching metadata of the Account (Source) ...
+ [19:21:53.981] Processing the object Contact ...
+ [19:21:53.982] Fetching metadata of the Contact (Source) ...
+ [19:21:54.825] Processing the object Opportunity ...
+ [19:21:54.826] Fetching metadata of the Opportunity (Source) ...
+ [19:21:55.479] Fetching metadata of the Group (Source) ...
+ [19:21:55.965] Processing the object Opportunity ...
+ [19:21:55.965] Processing the object Contact ...
+ [19:21:55.965] Processing the object Account ...
+
+ PREPARING DATA MIGRATION JOB ...
+ [19:21:55.966] Building the migration strategy ...
+ {
+   "Order of objects to query": "Account; Contact; Opportunity"
+}
+ {
+   "Order of objects to delete": "Opportunity; Contact; Account"
+}
+ {
+   "Order of objects to update": "Account; Contact; Opportunity"
+}
+ [19:21:55.968] Preparing of the data migration job has been completed.
+
+ ANALYSING DATA...
+ [19:21:56.161] {Account} The original query string of this object is returning 18 records from the Source org.
+ [19:21:56.369] {Contact} The original query string of this object is returning 21 records from the Source org.
+ [19:21:56.928] {Opportunity} The original query string of this object is returning 31 records from the Source org.
+
+ TRIGGERING ADD-ON EVENTS ...
+ [19:21:56.929] No Add-On modules found to run.
+
+ [19:21:56.929] Ready to process the data.
+
+ DELETING OLD DATA FROM THE TARGET ...
+ [19:21:56.930] {Opportunity} No records to delete.
+ [19:21:56.930] {Contact} No records to delete.
+ [19:21:56.930] {Account} No records to delete.
+ [19:21:56.930] Deleting data was skipped.
+
+ SOURCE:
+ ===========
+
+ FETCHING THE DATA (STAGE 1) ...
+ [19:21:56.932] {Account} Fetching the Source data from Org (STAGE 1: all records) ...
+ [19:21:56.932] {Account} Query string: SELECT Id, Name  FROM  Account ORDER BY Name ASC.
+ [19:21:56.934] {Account} Using REST API to retrieve the data ...
+ [19:21:57.127] {Account} Data retrieval (Source) has been completed. Got 18 new records.
+ [19:21:57.128] {Contact} Fetching the Source data from Org (STAGE 1: all records) ...
+ [19:21:57.128] {Contact} Query string: SELECT Id, FirstName, LastName, Email, $$Email$LastName$FirstName  FROM  Contact ORDER BY Email, LastName, FirstName ASC.
+ [19:21:57.129] {Contact} Using REST API to retrieve the data ...
+ [19:21:57.310] {Contact} Data retrieval (Source) has been completed. Got 21 new records.
+ [19:21:57.310] {Opportunity} Fetching the Source data from Org (STAGE 1: all records) ...
+ [19:21:57.310] {Opportunity} Query string: SELECT Id, Name  FROM  Opportunity ORDER BY Name ASC.
+ [19:21:57.310] {Opportunity} Using REST API to retrieve the data ...
+ [19:21:57.879] {Opportunity} Data retrieval (Source) has been completed. Got 31 new records.
+ [19:21:57.879] Data retrieval (STAGE 1) has been completed.
+
+ FETCHING THE DATA (STAGE 2) ...
+ [19:21:57.879] PASS 1
+ ===========
+ [19:21:57.880] No records
+
+ [19:21:57.880] PASS 2
+ ===========
+ [19:21:57.880] No records
+
+ [19:21:57.880] PASS 3
+ ===========
+ [19:21:57.880] No records
+
+ [19:21:57.880] PASS 4
+ ===========
+ [19:21:57.881] No records
+
+ TARGET:
+ ===========
+ [19:21:57.881] No records
+ [19:21:57.881] Data retrieval (STAGE 2) has been completed.
+
+ TRIGGERING ADD-ON EVENTS ...
+ [19:21:57.882] No Add-On modules found to run.
+
+
+ DATA RETRIEVAL SUMMARY.
+ [19:21:57.882] {Account} The total amount of the retrieved records: 18/0.
+ [19:21:57.882] {Contact} The total amount of the retrieved records: 21/0.
+ [19:21:57.882] {Opportunity} The total amount of the retrieved records: 31/0.
+
+ UPDATING THE TARGET (STAGE 1) ...
+ [19:21:57.883] {Account} Creating the file /home/runner/work/fullnsa/fullnsa/backupData/Account.csv ...
+ [19:21:57.887] {Account} The Target has been updated. Totally processed 18 records.
+
+ [19:21:57.887] {Contact} Creating the file /home/runner/work/fullnsa/fullnsa/backupData/Contact.csv ...
+ [19:21:57.889] {Contact} The Target has been updated. Totally processed 21 records.
+
+ [19:21:57.889] {Opportunity} Creating the file /home/runner/work/fullnsa/fullnsa/backupData/Opportunity.csv ...
+ [19:21:57.890] {Opportunity} The Target has been updated. Totally processed 31 records.
+
+
+ [19:21:57.891] The Target (STAGE 1) has been updated. Totally processed 70 records.
+
+ UPDATING THE TARGET (STAGE 2) ...
+
+ [19:21:57.891] Nothing was updated.
+
+ TRIGGERING ADD-ON EVENTS ...
+ [19:21:57.891] No Add-On modules found to run.
+
+
+ DATA PROCESSING SUMMARY.
+ [19:21:57.891] {Account} Totally processed 18 records.
+ [19:21:57.892] {Contact} Totally processed 21 records.
+ [19:21:57.892] {Opportunity} Totally processed 31 records.
+
+ [19:21:57.892] Writing to /home/runner/work/fullnsa/fullnsa/backupData/MissingParentRecordsReport.csv ...
+
+
+ TRIGGERING ADD-ON EVENTS ...
+ [19:21:57.892] No Add-On modules found to run.
+
+
+ [19:21:57.893] Command succeeded.
+ [19:21:57.893] Execution of the command sfdmu:run has been completed. Exit code 0 (SUCCESS).
+ [19:21:57.893] Total time elapsed: 00h 00m 08s 188ms .
