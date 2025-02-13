@@ -1,1 +1,140 @@
+name: Backup And Analyze Org
 
+# When the workflow will run
+on:
+
+ schedule:
+  # Runs at 12:00 UTC every day.
+   - cron: '0 12 * * *'
+  
+ workflow_dispatch:
+   # Define parameters for the workflow to pass them when triggered.
+   # This makes the workflow more flexible and adaptable.
+   inputs:
+     # this will be refered to as ${{ github.event.inputs.commit_text }}
+     commit_message:
+       description: 'Commit message to use'    
+       required: true
+       default: 'Manual Backup Commit'
+
+env:
+  # Defining Global environment variables accessible to all jobs and steps. 
+  ORG_ALIAS: org_alias 
+  METADATA_FOLDERNAME: backupMetadata
+  DATA_FOLDERNAME: backupData
+  SCAN_FOLDERNAME: scanResult
+
+jobs:
+  backup_analyze_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Print Workflow Context Variables'
+        run: |
+          echo "This job was triggered by:"
+          echo " * Actor = ${{ github.actor }}" 
+          echo " * Event = ${{ github.event_name }}"  
+          echo " * Repository = ${{ github.repository }}"
+          echo " * Branch = ${{ github.ref }}"
+          echo " * OS = ${{runner.os}} server hosted by Github."
+    
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce Client'
+        run: |
+          npm install @salesforce/cli --global
+          
+      - name: 'Install Salesforce Code Analyzer'
+        run: |
+          sf plugins install @salesforce/sfdx-scanner@latest
+          
+      - name: 'Install Salesforce Move Data Utility'
+        run: |
+          sf plugins install sfdmu
+
+      - name: 'Authorize to the org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --setdefaultusername --sfdx-url-stdin
+
+      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
+        run: |
+         if test -d "./$METADATA_FOLDERNAME/force-app"; then
+           echo "./$METADATA_FOLDERNAME/force-app folder exists"
+         else
+           sf project generate --name $METADATA_FOLDERNAME --manifest
+         fi
+         
+         if test -f "./config/package.xml"; then
+           echo "./config/package.xml file exists"
+           cp ./config/package.xml ./$METADATA_FOLDERNAME/manifest
+         fi
+
+         cd "./$METADATA_FOLDERNAME"
+         sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 'Export Org Data'
+        run: | 
+         if test -d "./$DATA_FOLDERNAME"; then
+            echo "./$DATA_FOLDERNAME folder exists"
+         else   
+            mkdir -p "./$DATA_FOLDERNAME"
+         fi
+         cp "./config/export.json" "./$DATA_FOLDERNAME"
+         sf sfdmu:run --quiet --sourceusername $ORG_ALIAS --targetusername csvfile --path ./$DATA_FOLDERNAME 
+
+      - name: 'Run Salesforce Code Analyzer'
+        id: run-code-analyzer
+        uses: forcedotcom/run-code-analyzer@v1
+        with:
+          run-command: run
+          run-arguments: --normalize-severity --target . --format csv --outfile sf-code-analyzer-results.csv
+          results-artifact-name: salesforce-code-analyzer-results
+
+      - name: 'Copy Salesforce Code Analyzer Results'
+        run: |
+         if test -d "./$SCAN_FOLDERNAME"; then
+            echo "./$SCAN_FOLDERNAME folder exists"
+         else   
+            mkdir -p "./$SCAN_FOLDERNAME"
+         fi
+         if test -f "./sf-code-analyzer-results.csv"; then
+           mv ./sf-code-analyzer-results.csv ./$SCAN_FOLDERNAME
+         fi
+         if test -f "./SalesforceCodeAnalyzerResults.json"; then
+           mv ./SalesforceCodeAnalyzerResults.json ./$SCAN_FOLDERNAME
+         fi
+
+      # Extract the git author email and store it in the global variable owner_email
+      - name: 'Save repository owner email'
+        run: |
+         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+
+      # Create a new git repository
+      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
+      # Change the name you associate with your Git commits.
+      # Add the entire directory to your commit recursively.
+      # Determine if there are uncommitted changes in the GIT Tree
+      - name: 'Stage files and check for modified files'
+        id: git-check
+        run: |
+         git init
+         git config user.email "${{ env.owner_email }}"
+         git config user.name "${{ github.repository_owner }}"
+         git add .
+         echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+         
+      # If there are uncommitted changes.
+      #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
+      # git push sync the local repository with its associated remote repository and updates it.
+      - name: 'Commit and push if there are modified files'
+        if: steps.git-check.outputs.modified == 'true'
+        run: |
+         git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
+         git log --name-status --oneline HEAD^..HEAD > ./$SCAN_FOLDERNAME/changes.txt
+         git add ./$SCAN_FOLDERNAME/changes.txt
+         git commit --amend --no-edit
+         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
