@@ -57,7 +57,7 @@ jobs:
           sf plugins install sfdmu
 
       - name: 'Authorize to the org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --setdefaultusername --sfdx-url-stdin
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
       - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
         run: |
