@@ -55,7 +55,11 @@ jobs:
       - name: 'Install Salesforce Move Data Utility'
         run: |
           sf plugins install sfdmu
-
+          
+      - name: 'Install Salesforce Prettier'
+        run: |
+          sf plugins install sfdx-plugin-prettier
+          
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
