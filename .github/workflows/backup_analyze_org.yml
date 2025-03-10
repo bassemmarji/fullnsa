@@ -75,7 +75,7 @@ jobs:
         run: | 
          echo "Exporting Salesforce Audit Trail"
          mkdir -p "./$METADATA_FOLDERNAME/auditTrail"
-         sf data query --query "SELECT CreatedDate, CreatedBy.UserName, Action, Section, Display FROM SetupAuditTrail WHERE CreatedBy.UserName != Null and CreatedDate >=LAST_MONTH ORDER BY CreatedDate DESC" --output-file LastMonthAuditTrail.csv --result-format csv
+         sf data query --query "SELECT CreatedDate, CreatedBy.UserName, Action, Section, Display FROM SetupAuditTrail WHERE CreatedBy.UserName != Null and CreatedDate >=LAST_MONTH ORDER BY CreatedDate DESC" --output-file "./$METADATA_FOLDERNAME/auditTrail/LastMonthAuditTrail.csv" --result-format csv
 
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
