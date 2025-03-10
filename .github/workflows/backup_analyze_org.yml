@@ -1,4 +1,4 @@
-name: Backup And Analyze Org
+name: Backup And Document Org
 
 # When the workflow will run
 on:
@@ -19,7 +19,7 @@ on:
 env:
   # Defining Global environment variables accessible to all jobs and steps. 
   ORG_ALIAS: org_alias 
-  METADATA_FOLDERNAME: backupMetadata
+  METADATA_FOLDERNAME: orgMetadata
   DATA_FOLDERNAME: backupData
   SCAN_FOLDERNAME: scanResult
 
@@ -50,15 +50,7 @@ jobs:
           
       - name: 'Install Salesforce Code Analyzer'
         run: |
-          sf plugins install @salesforce/sfdx-scanner@latest
-          
-      - name: 'Install Salesforce Move Data Utility'
-        run: |
-          sf plugins install sfdmu
-          
-      - name: 'Install Salesforce Prettier'
-        run: |
-          sf plugins install sfdx-plugin-prettier
+          sf plugins install sfdocs-sfdx-plugin
           
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
@@ -79,37 +71,9 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 'Export Org Data'
+      - name: 'Export Org Docs'
         run: | 
-         if test -d "./$DATA_FOLDERNAME"; then
-            echo "./$DATA_FOLDERNAME folder exists"
-         else   
-            mkdir -p "./$DATA_FOLDERNAME"
-         fi
-         cp "./config/export.json" "./$DATA_FOLDERNAME"
-         sf sfdmu:run --quiet --sourceusername $ORG_ALIAS --targetusername csvfile --path ./$DATA_FOLDERNAME 
-
-      - name: 'Run Salesforce Code Analyzer'
-        id: run-code-analyzer
-        uses: forcedotcom/run-code-analyzer@v1
-        with:
-          run-command: run
-          run-arguments: --normalize-severity --target . --format csv --outfile sf-code-analyzer-results.csv
-          results-artifact-name: salesforce-code-analyzer-results
-
-      - name: 'Copy Salesforce Code Analyzer Results'
-        run: |
-         if test -d "./$SCAN_FOLDERNAME"; then
-            echo "./$SCAN_FOLDERNAME folder exists"
-         else   
-            mkdir -p "./$SCAN_FOLDERNAME"
-         fi
-         if test -f "./sf-code-analyzer-results.csv"; then
-           mv ./sf-code-analyzer-results.csv ./$SCAN_FOLDERNAME
-         fi
-         if test -f "./SalesforceCodeAnalyzerResults.json"; then
-           mv ./SalesforceCodeAnalyzerResults.json ./$SCAN_FOLDERNAME
-         fi
+         echo "Exporting Salesforce Docs"
 
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
@@ -137,7 +101,4 @@ jobs:
         if: steps.git-check.outputs.modified == 'true'
         run: |
          git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
-         git log --name-status --oneline HEAD^..HEAD > ./$SCAN_FOLDERNAME/changes.txt
-         git add ./$SCAN_FOLDERNAME/changes.txt
-         git commit --amend --no-edit
          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
