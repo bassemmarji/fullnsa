@@ -52,10 +52,6 @@ jobs:
         run: |
           echo "Y" | sf plugins install smock-it
 
-      - name: 'Install Salesforce Docs Generator'
-        run: |
-          echo "Y" | sf plugins install sfdocs-sfdx-plugin
-          
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
@@ -75,12 +71,10 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 'Export Docs'
+      - name: 'Configure smockit'
         run: | 
-         echo "Exporting Salesforce Docs"
-         mkdir -p "./$METADATA_FOLDERNAME/docs"
-         cd "./$METADATA_FOLDERNAME"
-         sf docs generate --output-dir="docs" --format=json --reset
+         echo "Generating Template"
+         sf template init
     
       - name: 'Export Audit Trail'
         run: | 
