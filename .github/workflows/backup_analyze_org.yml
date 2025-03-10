@@ -75,7 +75,8 @@ jobs:
         run: | 
          echo "Exporting Salesforce Docs"
          mkdir -p "./$METADATA_FOLDERNAME/docs"
-         sf docs generate --output-dir="./$METADATA_FOLDERNAME/docs" --format=json --reset
+         cd "./$METADATA_FOLDERNAME"
+         sf docs generate --output-dir="docs" --format=json --reset
     
       - name: 'Export Audit Trail'
         run: | 
