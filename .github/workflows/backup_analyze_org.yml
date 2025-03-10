@@ -71,11 +71,16 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 'Export Org Docs'
+      - name: 'Export Audit Trail'
         run: | 
-         echo "Exporting Salesforce Docs"
-         mkdir -p "./$METADATA_FOLDERNAME/docs"
-         sf docs generate --output-dir="./$METADATA_FOLDERNAME/docs" 
+         echo "Exporting Salesforce Audit Trail"
+         mkdir -p "./$METADATA_FOLDERNAME/auditTrail"
+         sf data query --query "SELECT CreatedDate, CreatedBy.UserName,
+              Action, Section, Display FROM SetupAuditTrail WHERE
+              CreatedBy.UserName != Null and CreatedDate >=LAST_MONTH ORDER BY
+              CreatedDate DESC" --output-file
+              "./$METADATA_FOLDERNAME/auditTrail/auditTrail/LastMonthAuditTrail.csv" --result-format csv
+              --target-org $ORG_ALIAS
 
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
