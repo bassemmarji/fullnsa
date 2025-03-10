@@ -79,7 +79,7 @@ jobs:
               Action, Section, Display FROM SetupAuditTrail WHERE
               CreatedBy.UserName != Null and CreatedDate >=LAST_MONTH ORDER BY
               CreatedDate DESC" --output-file
-              "./$METADATA_FOLDERNAME/auditTrail/auditTrail/LastMonthAuditTrail.csv" --result-format csv
+              LastMonthAuditTrail.csv --result-format csv
               --target-org $ORG_ALIAS
 
       # Extract the git author email and store it in the global variable owner_email
