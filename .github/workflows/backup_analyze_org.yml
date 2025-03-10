@@ -71,11 +71,11 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 'Export Audit Trail'
+      - name: 'Export Docs'
         run: | 
          echo "Exporting Salesforce Docs"
          mkdir -p "./$METADATA_FOLDERNAME/docs"
-         sf docs generate --output-dir="docs" --format=json --reset
+         sf docs generate --output-dir="./$METADATA_FOLDERNAME/docs" --format=json --reset
     
       - name: 'Export Audit Trail'
         run: | 
