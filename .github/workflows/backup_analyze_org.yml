@@ -48,6 +48,10 @@ jobs:
         run: |
           npm install @salesforce/cli --global
           
+      - name: 'Install Salesforce plugin smock-it'
+        run: |
+          echo "Y" | sf plugins install smock-it
+
       - name: 'Install Salesforce Docs Generator'
         run: |
           echo "Y" | sf plugins install sfdocs-sfdx-plugin
