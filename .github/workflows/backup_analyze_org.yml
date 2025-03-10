@@ -48,7 +48,7 @@ jobs:
         run: |
           npm install @salesforce/cli --global
           
-      - name: 'Install Salesforce Code Analyzer'
+      - name: 'Install Salesforce Docs Generator'
         run: |
           sf plugins install sfdocs-sfdx-plugin
           
