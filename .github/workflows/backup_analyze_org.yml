@@ -24,7 +24,7 @@ env:
   SCAN_FOLDERNAME: scanResult
 
 jobs:
-  backup_analyze_job:
+  backup_document_job:
     runs-on: ubuntu-latest
     steps:
       - name: 'Print Workflow Context Variables'
@@ -74,7 +74,8 @@ jobs:
       - name: 'Export Org Docs'
         run: | 
          echo "Exporting Salesforce Docs"
-         sf docs generate --packages force-app --output-dir="./$METADATA_FOLDERNAME/docs" 
+         mkdir -p "./$METADATA_FOLDERNAME/docs"
+         sf docs generate --packages="force-app" --format="json" --output-dir="./$METADATA_FOLDERNAME/docs" 
 
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
