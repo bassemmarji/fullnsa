@@ -76,9 +76,9 @@ jobs:
          echo "Generating Template"
          mkdir -p "./$METADATA_FOLDERNAME/auditTrail"
          sf template init
-         cp "/home/runner/work/fullnsa/fullnsa/data_gen" "data_gen"
+         cp -r "/home/runner/work/fullnsa/fullnsa/data_gen" "data_gen"
          sf data generate -t “templateName.json”
-         cp "/home/runner/work/fullnsa/fullnsa/data_gen" "data_gen"
+         cp -r "/home/runner/work/fullnsa/fullnsa/data_gen" "data_gen"
           
       - name: 'Export Audit Trail'
         run: | 
