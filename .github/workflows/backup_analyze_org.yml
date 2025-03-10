@@ -50,7 +50,7 @@ jobs:
           
       - name: 'Install Salesforce Docs Generator'
         run: |
-          sf plugins install sfdocs-sfdx-plugin
+          echo "Y" | sf plugins install sfdocs-sfdx-plugin
           
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
@@ -71,6 +71,12 @@ jobs:
          cd "./$METADATA_FOLDERNAME"
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
+      - name: 'Export Audit Trail'
+        run: | 
+         echo "Exporting Salesforce Docs"
+         mkdir -p "./$METADATA_FOLDERNAME/docs"
+         sf docs generate --output-dir="docs" --format=json --reset
+    
       - name: 'Export Audit Trail'
         run: | 
          echo "Exporting Salesforce Audit Trail"
