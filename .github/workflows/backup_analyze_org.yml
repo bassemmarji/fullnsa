@@ -74,6 +74,7 @@ jobs:
       - name: 'Export Org Docs'
         run: | 
          echo "Exporting Salesforce Docs"
+         sf docs generate --packages force-app --output-dir="./$METADATA_FOLDERNAME/docs" 
 
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
