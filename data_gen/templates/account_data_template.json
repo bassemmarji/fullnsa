@@ -10,17 +10,8 @@
   "count": 200,  
   "sObjects": [  
     {  
-       "account": {  
-        "count": 50,  
-        "language": "en",  
-        "fieldsToExclude": ["fax"],  
-        "fieldsToConsider": {  
-          "name": [],  
-          "email": [],  
-		      "phone":[],
-          "dp-country__c": ["USA"],  
-          "dp-state__c": ["California"]  
-        },  
+       { "account": {} },
+       { "contact": {} }, 
         "pickLeftFields": true  
       }  
     }  
