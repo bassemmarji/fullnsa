@@ -1,0 +1,47 @@
+{
+  "outputFormat": [
+    "di",
+    "csv",
+    "json"
+  ],
+  "sObjects": [
+    {
+      "sObject": "IntPS__RemarkCode__c",
+      "language": "en",
+      "count": 5,
+      "fields": {
+        "OwnerId": {
+          "type": "reference",
+          "referenceTo": "Group",
+          "values": [],
+          "relationshipType": "master-detail"
+        },
+        "Name": {
+          "type": "text",
+          "values": []
+        },
+        "IntPS__Code__c": {
+          "type": "text",
+          "values": []
+        },
+        "IntPS__EOB_Description__c": {
+          "type": "text",
+          "values": []
+        },
+        "IntPS__Remark_Code__c": {
+          "type": "text",
+          "values": []
+        },
+        "IntPS__Type__c": {
+          "type": "picklist",
+          "values": [
+            "Ineligible Claim Code",
+            "User Claim Hold Code",
+            "IPS",
+            "NSA"
+          ]
+        }
+      }
+    }
+  ]
+}
