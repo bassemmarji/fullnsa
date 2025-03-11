@@ -72,10 +72,11 @@ jobs:
          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
       - name: generate data using smock-it
-        run: | 
-         export MOCKAROO_API_KEY=${{ secrets.MOCKAROO_API_KEY }}
-         sf template validate -t "./config/templateName.json" -a $ORG_ALIAS
-         sf data generate -t "./config/templateName.json" -a $ORG_ALIAS
+        uses: concretios/smock-it@main
+        with:
+             templates: templateName.json
+             org-alias: $ORG_ALIAS
+             mockaroo-api-key: ${{ secrets.MOCKAROO_API_KEY }}
             
       - name: upload artifacts
         uses: actions/upload-artifact@v4
