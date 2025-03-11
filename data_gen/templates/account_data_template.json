@@ -9,7 +9,6 @@
   "language": "en",  
   "count": 5,  
   "sObjects": [  
-       { "account": {} },
-       { "contact": {} }
+       { "IntPS__RemarkCode__c": {} }
   ]  
 }
