@@ -1,0 +1,37 @@
+[
+  {
+    "Name": "Waly Babbs",
+    "IntPS__Code__c": "Tres-Zap",
+    "IntPS__EOB_Description__c": "Duobam",
+    "IntPS__Remark_Code__c": "Temp",
+    "IntPS__Type__c": "Ineligible Claim Code"
+  },
+  {
+    "Name": "Gui Durning",
+    "IntPS__Code__c": "Bigtax",
+    "IntPS__EOB_Description__c": "Tempsoft",
+    "IntPS__Remark_Code__c": "Fintone",
+    "IntPS__Type__c": "User Claim Hold Code"
+  },
+  {
+    "Name": "Rosamond Brogini",
+    "IntPS__Code__c": "Andalax",
+    "IntPS__EOB_Description__c": "Greenlam",
+    "IntPS__Remark_Code__c": "Stringtough",
+    "IntPS__Type__c": "User Claim Hold Code"
+  },
+  {
+    "Name": "Fidelity Feben",
+    "IntPS__Code__c": "Home Ing",
+    "IntPS__EOB_Description__c": "Tempsoft",
+    "IntPS__Remark_Code__c": "Trippledex",
+    "IntPS__Type__c": "IPS"
+  },
+  {
+    "Name": "Katleen Conduit",
+    "IntPS__Code__c": "Duobam",
+    "IntPS__EOB_Description__c": "Zamit",
+    "IntPS__Remark_Code__c": "Latlux",
+    "IntPS__Type__c": "IPS"
+  }
+]

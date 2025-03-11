@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ContentAsset xmlns="http://soap.sforce.com/2006/04/metadata">
+    <isVisibleByExternalUsers>true</isVisibleByExternalUsers>
+    <language>en_US</language>
+    <masterLabel>IntegratedPayorSolutions62820211126</masterLabel>
+    <originNetwork>NSA Price Comparison Portal</originNetwork>
+    <relationships>
+        <network>
+            <access>VIEWER</access>
+            <name>NSA Price Comparison Portal</name>
+        </network>
+        <workspace>
+            <access>INFERRED</access>
+            <isManagingWorkspace>true</isManagingWorkspace>
+            <name>sfdc_asset_company_assets</name>
+        </workspace>
+    </relationships>
+    <versions>
+        <version>
+            <number>1</number>
+            <pathOnClient>Integrated-Payor-Solutions-6-28-2021-11-26-24-AM.png</pathOnClient>
+        </version>
+    </versions>
+</ContentAsset>
