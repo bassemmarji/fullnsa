@@ -75,7 +75,7 @@ jobs:
         uses: concretios/smock-it@main
         with:
             templates: ${{ inputs.templates }}
-            org-alias: ${{ inputs.org-alias }}
+            org-alias: $ORG_ALIAS
             mockaroo-api-key: ${{ secrets.MOCKAROO_API_KEY }}
             
       - name: upload artifacts
