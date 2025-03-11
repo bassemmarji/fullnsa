@@ -77,7 +77,7 @@ jobs:
           # mkdir -p objectsData
           
           # Find all flow files
-          CLASS_DIR="force-app/main/default/classes"
+          CLASS_DIR="./$METADATA_FOLDERNAME/force-app/main/default/classes"
           if [ -d "$CLASS_DIR" ]; then
             # Loop through each class file
             for cls_file in $CLASS_DIR/*.cls-meta.xml; do
