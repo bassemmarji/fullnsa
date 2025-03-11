@@ -74,7 +74,7 @@ jobs:
       - name: generate data using smock-it
         uses: concretios/smock-it@main
         with:
-             templates: templateName.json
+             templates: account_data_template
              org-alias: $ORG_ALIAS
              mockaroo-api-key: ${{ secrets.MOCKAROO_API_KEY }}
             
