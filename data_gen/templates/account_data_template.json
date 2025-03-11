@@ -9,10 +9,8 @@
   "language": "en",  
   "count": 200,  
   "sObjects": [  
-    {  
        { "account": {} },
        { "contact": {} }, 
         "pickLeftFields": true  
-    }  
   ]  
 }
