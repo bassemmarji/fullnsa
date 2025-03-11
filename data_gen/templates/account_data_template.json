@@ -13,7 +13,6 @@
        { "account": {} },
        { "contact": {} }, 
         "pickLeftFields": true  
-      }  
     }  
   ]  
 }
