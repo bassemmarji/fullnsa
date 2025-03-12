@@ -91,7 +91,7 @@ jobs:
                 # Extract class API name from filename
                 cls_name=$(basename "$cls_file" .cls-meta.xml)
                 echo "Processing class: $cls_name"
-                
+                sf apex run test --class-names $cls_name --result-format human
                 # Generate documentation for each flow
               fi
             done
@@ -109,7 +109,7 @@ jobs:
       - name: 'Create A Scratch Org'
         run: | 
          echo "Creating a Scratch Org"
-         sf org create scratch --definition-file -f "./config/project-scratch-def.json" --alias "scratch- ${{ github.run_id}}" --duration-days ${{inputs.scratch_duration}} --admin-email "${{ env.owner_email }}"
+         sf org create scratch --definition-file "./config/project-scratch-def.json" --alias "scratch- ${{ github.run_id}}" --duration-days ${{inputs.scratch_duration}} --admin-email "${{ env.owner_email }}"
       
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
