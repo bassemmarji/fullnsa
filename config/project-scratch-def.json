@@ -1,0 +1,1 @@
+{  "OrgName": "Acme",  "country": "US",  "edition": "Enterprise",  "features": "MultiCurrency;AuthorApex",  "OrgPreferences": {    "enabled": ["S1DesktopEnabled", "ChatterEnabled"],    "disabled": ["SelfSetPasswordInApi"]  }}
