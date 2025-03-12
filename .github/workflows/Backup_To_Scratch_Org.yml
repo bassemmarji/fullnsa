@@ -1,1 +1,161 @@
+name: Create A Scratch Org
 
+# When the workflow will run
+on:
+ schedule:
+  # Runs at 10 AM at the first of each month
+   - cron: '0 10 1 * *'
+  
+ workflow_dispatch:
+   # Define parameters for the workflow to pass them when triggered.
+   # This makes the workflow more flexible and adaptable.
+   inputs:
+     # this will be refered to as ${{ github.event.inputs.commit_text }}
+     commit_message:
+       type: string
+       required: true
+       description: 'Commit message to use'    
+       default: 'Manual Backup Commit'
+
+     scratch_email:
+       type: string
+       required: true
+       description: 'Scratch Org Admin Email'    
+       default: ${{ env.owner_email }}
+       
+     scratch_duration:
+       type: string
+       required: true
+       description: 'Days until the scratch org expires (1 to 30)'
+       default: '1'
+env:
+  # Defining Global environment variables accessible to all jobs and steps. 
+  ORG_ALIAS: org_alias 
+  METADATA_FOLDERNAME: orgMetadata
+  DATA_FOLDERNAME: backupData
+  SCAN_FOLDERNAME: scanResult
+
+jobs:
+  backup_document_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Print Workflow Context Variables'
+        run: |
+          echo "This job was triggered by:"
+          echo " * Actor = ${{ github.actor }}" 
+          echo " * Event = ${{ github.event_name }}"  
+          echo " * Repository = ${{ github.repository }}"
+          echo " * Branch = ${{ github.ref }}"
+          echo " * OS = ${{runner.os}} server hosted by Github."
+    
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce Client'
+        run: |
+          npm install @salesforce/cli --global
+          
+      - name: 'Install Salesforce plugin texei'
+        run: |
+          echo "Y" | sf plugins install texei-sfdx-plugin
+
+      - name: 'Install Salesforce plugin smock-it'
+        run: |
+          echo "Y" | sf plugins install smock-it
+
+      - name: 'Authorize to the org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
+        run: |
+         if test -d "./$METADATA_FOLDERNAME/force-app"; then
+           echo "./$METADATA_FOLDERNAME/force-app folder exists"
+         else
+           sf project generate --name $METADATA_FOLDERNAME --manifest
+         fi
+         
+         if test -f "./config/package.xml"; then
+           echo "./config/package.xml file exists"
+           cp ./config/package.xml ./$METADATA_FOLDERNAME/manifest
+         fi
+
+         cd "./$METADATA_FOLDERNAME"
+         sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 'Display Classes'
+        run: |
+          # Create output directory
+          # mkdir -p objectsData
+          
+          # Find all flow files
+          CLASS_DIR="./$METADATA_FOLDERNAME/force-app/main/default/classes"
+          if [ -d "$CLASS_DIR" ]; then
+            # Loop through each class file
+            for cls_file in $CLASS_DIR/*.cls-meta.xml; do
+              if [ -f "$cls_file" ]; then
+                # Extract class API name from filename
+                cls_name=$(basename "$cls_file" .cls-meta.xml)
+                echo "Processing class: $cls_name"
+                
+                # Generate documentation for each flow
+              fi
+            done
+          else
+            echo "No classes directory found at $CLASS_DIR"
+            exit 1
+          fi
+      
+      
+      - name: generate data using smock-it
+        uses: concretios/smock-it@main
+        with:
+             templates: "account_data_template.json"
+             org-alias: $ORG_ALIAS
+             mockaroo-api-key: ${{ secrets.MOCKAROO_API_KEY }}
+            
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4
+        with: 
+            name: SmockItOutputFiles
+            path: data_gen/output/
+            retention-days: 15
+            if-no-files-found: warn 
+          
+      - name: 'Export Audit Trail'
+        run: | 
+         echo "Exporting Salesforce Audit Trail"
+         mkdir -p "./$METADATA_FOLDERNAME/auditTrail"
+         sf data query --query "SELECT CreatedDate, CreatedBy.UserName, Action, Section, Display FROM SetupAuditTrail WHERE CreatedBy.UserName != Null and CreatedDate >=LAST_MONTH ORDER BY CreatedDate DESC" --output-file "./$METADATA_FOLDERNAME/auditTrail/LastMonthAuditTrail.csv" --result-format csv
+
+      # Extract the git author email and store it in the global variable owner_email
+      - name: 'Save repository owner email'
+        run: |
+         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+
+      # Create a new git repository
+      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
+      # Change the name you associate with your Git commits.
+      # Add the entire directory to your commit recursively.
+      # Determine if there are uncommitted changes in the GIT Tree
+      - name: 'Stage files and check for modified files'
+        id: git-check
+        run: |
+         git init
+         git config user.email "${{ env.owner_email }}"
+         git config user.name "${{ github.repository_owner }}"
+         git add .
+         echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+         
+      # If there are uncommitted changes.
+      #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
+      # git push sync the local repository with its associated remote repository and updates it.
+      - name: 'Commit and push if there are modified files'
+        if: steps.git-check.outputs.modified == 'true'
+        run: |
+         git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
+         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
