@@ -17,12 +17,6 @@ on:
        description: 'Commit message to use'    
        default: 'Manual Backup Commit'
 
-     scratch_email:
-       type: string
-       required: true
-       description: 'Scratch Org Admin Email'    
-       default: ${{ env.owner_email }}
-       
      scratch_duration:
        type: string
        required: true
@@ -112,6 +106,11 @@ jobs:
          mkdir -p "./$DATA_FOLDERNAME"
          sf texei:data:export --objects Account,Contact --outputdir "./$DATA_FOLDERNAME" --targetusername $ORG_ALIAS
 
+      - name: 'Create A Scratch Org'
+        run: | 
+         echo "Creating a Scratch Org"
+         sf org create scratch 
+      
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
         run: |
