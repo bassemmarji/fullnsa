@@ -64,14 +64,10 @@ jobs:
         run: |
           echo "Y" | sf plugins install texei-sfdx-plugin
 
-      - name: 'Install Salesforce plugin smock-it'
-        run: |
-          echo "Y" | sf plugins install smock-it
-
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
-      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
+      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata'
         run: |
          if test -d "./$METADATA_FOLDERNAME/force-app"; then
            echo "./$METADATA_FOLDERNAME/force-app folder exists"
@@ -109,28 +105,12 @@ jobs:
             echo "No classes directory found at $CLASS_DIR"
             exit 1
           fi
-      
-      
-      - name: generate data using smock-it
-        uses: concretios/smock-it@main
-        with:
-             templates: "account_data_template.json"
-             org-alias: $ORG_ALIAS
-             mockaroo-api-key: ${{ secrets.MOCKAROO_API_KEY }}
-            
-      - name: upload artifacts
-        uses: actions/upload-artifact@v4
-        with: 
-            name: SmockItOutputFiles
-            path: data_gen/output/
-            retention-days: 15
-            if-no-files-found: warn 
-          
-      - name: 'Export Audit Trail'
+
+      - name: 'Export Org Data'
         run: | 
-         echo "Exporting Salesforce Audit Trail"
-         mkdir -p "./$METADATA_FOLDERNAME/auditTrail"
-         sf data query --query "SELECT CreatedDate, CreatedBy.UserName, Action, Section, Display FROM SetupAuditTrail WHERE CreatedBy.UserName != Null and CreatedDate >=LAST_MONTH ORDER BY CreatedDate DESC" --output-file "./$METADATA_FOLDERNAME/auditTrail/LastMonthAuditTrail.csv" --result-format csv
+         echo "Exporting Salesforce Org Data"
+         mkdir -p "./$DATA_FOLDERNAME"
+         sf texei:data:export --objects Account,Contact --outputdir "./$DATA_FOLDERNAME" --targetusername $ORG_ALIAS
 
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
