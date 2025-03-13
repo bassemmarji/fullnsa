@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<CustomFieldTranslation xmlns="http://soap.sforce.com/2006/04/metadata">
-    <label><!-- EHIM TPA --></label>
-    <name>EHIM_TPA__c</name>
-    <relationshipLabel><!-- Employer and TPA Plans (EHIM TPA) --></relationshipLabel>
-</CustomFieldTranslation>
