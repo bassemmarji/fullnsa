@@ -1,0 +1,46 @@
+.datatable-full-size {
+  width: 100% !important;
+  display: inline-block;
+  z-index: 0;
+    overflow-y: auto;
+  --slds-c-radio-shadow-focus:0px;
+  --sds-c-radio-color-border-checked: #272952;
+  --sds-c-radio-color-border-size: 20px;
+  --sds-c-radio-mark-color-foreground: #ffffff;
+ --slds-c-radio-color-background: #ffffffff;
+--slds-c-radio-color-background-checked:var(--sds-c-radio-color-border-checked)
+
+}
+
+.eligInput{
+width: 100%
+}
+.procList{
+    width:45%;
+    float: left;
+}
+.selectedProcListFull{
+width:100%;
+
+}
+.selectedProcList{
+   width:55%;
+    float: left;
+}
+.procHome{
+  width: 100%;
+  display: inline-block;
+}
+.eligibilityDetails{
+visibility: visible
+display: block;
+width: 100%;
+}
+.NPIDetails{
+visibility: visible
+display: block;
+}
+.proceduresDetails{
+visibility: visible
+display: block;
+}
