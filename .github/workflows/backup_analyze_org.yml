@@ -4,7 +4,7 @@ name: Backup And Document Org
 on:
  schedule:
   # Runs at 12:00 UTC every day.
-   - cron: '0 12 * * *'
+   - cron: '0 10 1 * *'
   
  workflow_dispatch:
    # Define parameters for the workflow to pass them when triggered.
