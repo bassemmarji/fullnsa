@@ -97,7 +97,7 @@ jobs:
                 # Extract class API name from filename
                 cls_name=$(basename "$cls_file" .cls-meta.xml)
                 echo "Processing class: $cls_name"
-                sf apex run test --class-names $cls_name --codecoverage --detailedcoverage --result-format junit >> "./$METADATA_FOLDERNAME/testResults/$cls_name.xml"
+                sf apex run test --class-names $cls_name --codecoverage --detailedcoverage --synchronous --result-format junit >> "./$METADATA_FOLDERNAME/testResults/$cls_name.xml"
                 # Generate documentation for each flow
               fi
             done
