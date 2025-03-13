@@ -58,6 +58,12 @@ jobs:
         run: |
           echo "Y" | sf plugins install texei-sfdx-plugin
 
+      - name: 'Installing junit-viewer '
+        run: |
+          #
+          echo "Installing junit-viewer"
+          npm install junit-viewer -g
+          
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
@@ -80,7 +86,7 @@ jobs:
       - name: 'Display Classes'
         run: |
           # Create output directory
-          # mkdir -p objectsData
+          mkdir -p "./$METADATA_FOLDERNAME/testResults"
           
           # Find all flow files
           CLASS_DIR="./$METADATA_FOLDERNAME/force-app/main/default/classes"
@@ -91,7 +97,7 @@ jobs:
                 # Extract class API name from filename
                 cls_name=$(basename "$cls_file" .cls-meta.xml)
                 echo "Processing class: $cls_name"
-                sf apex run test --class-names $cls_name --result-format human
+                sf apex run test --class-names $cls_name --codecoverage --detailedcoverage --result-format junit >> "./$METADATA_FOLDERNAME/testResults/$cls_name.xml"
                 # Generate documentation for each flow
               fi
             done
@@ -100,6 +106,12 @@ jobs:
             exit 1
           fi
 
+      - name: 'Display Test Results'
+        run: |
+          # Create output directory
+          echo "Converting Test Results"
+          junit-viewer --results="./$METADATA_FOLDERNAME/testResults" --save="./$METADATA_FOLDERNAME/testResults/testResults.html"
+          
       - name: 'Export Org Data'
         run: | 
          echo "Exporting Salesforce Org Data"
@@ -109,7 +121,7 @@ jobs:
       - name: 'Create A Scratch Org'
         run: | 
          echo "Creating a Scratch Org"
-         sf org create scratch --definition-file "./config/project-scratch-def.json" --alias "scratch- ${{ github.run_id}}" --duration-days ${{inputs.scratch_duration}} --admin-email "${{ env.owner_email }}"
+         #sf org create scratch --definition-file "./config/project-scratch-def.json" --alias "scratch- ${{ github.run_id}}" --duration-days ${{inputs.scratch_duration}} --admin-email "${{ env.owner_email }}"
       
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
