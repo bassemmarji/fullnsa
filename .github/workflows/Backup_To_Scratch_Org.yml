@@ -92,7 +92,7 @@ jobs:
           CLASS_DIR="./$METADATA_FOLDERNAME/force-app/main/default/classes"
           if [ -d "$CLASS_DIR" ]; then
             # Loop through each class file
-            for cls_file in $CLASS_DIR/*.cls-meta.xml; do
+            for cls_file in $CLASS_DIR/*TEST*.cls-meta.xml; do
               if [ -f "$cls_file" ]; then
                 # Extract class API name from filename
                 cls_name=$(basename "$cls_file" .cls-meta.xml)
