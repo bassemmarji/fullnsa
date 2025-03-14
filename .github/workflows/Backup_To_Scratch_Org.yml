@@ -1,156 +1,210 @@
-name: Create A Scratch Org
+name: Salesforce Org Backup and Analysis
 
-# When the workflow will run
 on:
- schedule:
-  # Runs at 10 AM at the first of each month
-   - cron: '0 10 1 * *'
+  schedule:
+    - cron: '0 10 1 * *'  # Runs at 10 AM on the first of each month
   
- workflow_dispatch:
-   # Define parameters for the workflow to pass them when triggered.
-   # This makes the workflow more flexible and adaptable.
-   inputs:
-     # this will be refered to as ${{ github.event.inputs.commit_text }}
-     commit_message:
-       type: string
-       required: true
-       description: 'Commit message to use'    
-       default: 'Manual Backup Commit'
+  workflow_dispatch:
+    inputs:
+      commit_message:
+        type: string
+        required: true
+        description: 'Commit message for the backup'
+        default: 'Monthly Org Backup'
+      scratch_duration:
+        type: choice
+        description: 'Scratch org duration (days)'
+        options:
+          - '1'
+          - '7'
+          - '30'
+        default: '1'
+        required: true
 
-     scratch_duration:
-       type: string
-       required: true
-       description: 'Days until the scratch org expires (1 to 30)'
-       default: '1'
 env:
-  # Defining Global environment variables accessible to all jobs and steps. 
-  ORG_ALIAS: org_alias 
-  METADATA_FOLDERNAME: orgMetadata
-  DATA_FOLDERNAME: backupData
-  SCAN_FOLDERNAME: scanResult
+  ORG_ALIAS: backup_org
+  PROJECT_DIR: orgBackup
+  METADATA_DIR: force-app
+  TEST_RESULTS_DIR: test-results
+  DATA_BACKUP_DIR: data-backup
+  NODE_VERSION: '20'
 
 jobs:
-  backup_document_job:
+  backup_and_analyze:
     runs-on: ubuntu-latest
-    steps:
-      - name: 'Print Workflow Context Variables'
-        run: |
-          echo "This job was triggered by:"
-          echo " * Actor = ${{ github.actor }}" 
-          echo " * Event = ${{ github.event_name }}"  
-          echo " * Repository = ${{ github.repository }}"
-          echo " * Branch = ${{ github.ref }}"
-          echo " * OS = ${{runner.os}} server hosted by Github."
     
-      - name: 'Checkout'
+    steps:
+      - name: Log Context Information
+        run: |
+          echo "Workflow Details:"
+          echo "- Triggered by: ${{ github.actor }}"
+          echo "- Event: ${{ github.event_name }}"
+          echo "- Repository: ${{ github.repository }}"
+          echo "- Branch: ${{ github.ref }}"
+          echo "- Runner OS: ${{ runner.os }}"
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 'Install Node.js'
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: 'Install Salesforce Client'
+      - name: Install Dependencies
         run: |
+          # Install system dependencies
+          sudo apt-get update
+          sudo apt-get install -y xmlstarlet
+
+          # Install Salesforce CLI and plugins
           npm install @salesforce/cli --global
-          
-      - name: 'Install Salesforce plugin texei'
-        run: |
           echo "Y" | sf plugins install texei-sfdx-plugin
-
-      - name: 'Installing junit-viewer '
-        run: |
-          #
-          echo "Installing junit-viewer"
           npm install junit-viewer -g
-          
-      - name: 'Authorize to the org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
-      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata'
+      - name: Authenticate to Salesforce
         run: |
-         if test -d "./$METADATA_FOLDERNAME/force-app"; then
-           echo "./$METADATA_FOLDERNAME/force-app folder exists"
-         else
-           sf project generate --name $METADATA_FOLDERNAME --manifest
-         fi
-         
-         if test -f "./config/package.xml"; then
-           echo "./config/package.xml file exists"
-           cp ./config/package.xml ./$METADATA_FOLDERNAME/manifest
-         fi
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias ${{ env.ORG_ALIAS }} \
+            --set-default \
+            --sfdx-url-stdin
 
-         cd "./$METADATA_FOLDERNAME"
-         sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
-
-      - name: 'Display Classes'
+      - name: Setup Project Structure
         run: |
-          # Create output directory
-          mkdir -p "./$METADATA_FOLDERNAME/testResults"
+          # Create project if it doesn't exist
+          if [ ! -d "./${{ env.PROJECT_DIR }}/${{ env.METADATA_DIR }}" ]; then
+            sf project generate --name ${{ env.PROJECT_DIR }} --manifest
+          fi
           
-          # Find all flow files
-          CLASS_DIR="./$METADATA_FOLDERNAME/force-app/main/default/classes"
-          if [ -d "$CLASS_DIR" ]; then
-            # Loop through each class file
-            for cls_file in $CLASS_DIR/*TEST*.cls-meta.xml; do
-              if [ -f "$cls_file" ]; then
-                # Extract class API name from filename
-                cls_name=$(basename "$cls_file" .cls-meta.xml)
-                echo "Processing class: $cls_name"
-                sf apex run test --synchronous --class-names $cls_name --codecoverage --detailedcoverage --result-format junit >> "./$METADATA_FOLDERNAME/testResults/$cls_name.xml"
-                # Generate documentation for each flow
+          # Copy package.xml if exists
+          if [ -f "./config/package.xml" ]; then
+            cp ./config/package.xml ./${{ env.PROJECT_DIR }}/manifest/
+          fi
+
+      - name: Retrieve Metadata
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          sf project retrieve start \
+            --target-org ${{ env.ORG_ALIAS }} \
+            --manifest manifest/package.xml
+
+      - name: Run Test Classes
+        id: run-tests
+        run: |
+          # Create test results directory
+          mkdir -p "${{ env.PROJECT_DIR }}/${{ env.TEST_RESULTS_DIR }}"
+          
+          # Find and run test classes
+          TEST_DIR="${{ env.PROJECT_DIR }}/${{ env.METADATA_DIR }}/main/default/classes"
+          if [ -d "$TEST_DIR" ]; then
+            for test_file in $TEST_DIR/*TEST*.cls-meta.xml; do
+              if [ -f "$test_file" ]; then
+                test_name=$(basename "$test_file" .cls-meta.xml)
+                echo "Running test: $test_name"
+                sf apex run test \
+                  --synchronous \
+                  --class-names "$test_name" \
+                  --codecoverage \
+                  --detailedcoverage \
+                  --result-format junit \
+                  --output-dir "${{ env.PROJECT_DIR }}/${{ env.TEST_RESULTS_DIR }}"
               fi
             done
           else
-            echo "No classes directory found at $CLASS_DIR"
-            exit 1
+            echo "No test classes found in $TEST_DIR"
           fi
 
-      - name: 'Display Test Results'
+      - name: Generate Test Report
+        if: always()
         run: |
-          # Create output directory
-          echo "Converting Test Results"
-          junit-viewer --results="./$METADATA_FOLDERNAME/testResults" --save="./$METADATA_FOLDERNAME/testResults/testResults.html"
-          SUMMARY=$'###Code Coverage Summary###'
-          echo "$SUMMARY" >> $GITHUB_STEP_SUMMARY
-          cat "./$METADATA_FOLDERNAME/testResults/testResults.html" >> $GITHUB_STEP_SUMMARY
-
+          echo "# Apex Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-      - name: 'Export Org Data'
-        run: | 
-         echo "Exporting Salesforce Org Data"
-         mkdir -p "./$METADATA_FOLDERNAME/$DATA_FOLDERNAME"
-         sf texei:data:export --objects Account,Contact --outputdir "./$METADATA_FOLDERNAME/$DATA_FOLDERNAME"
+          # Process test results and create markdown report
+          for result_file in ${{ env.PROJECT_DIR }}/${{ env.TEST_RESULTS_DIR }}/*.xml; do
+            if [ -f "$result_file" ]; then
+              # Extract test class name
+              class_name=$(basename "$result_file" .xml)
+              echo "## $class_name" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              
+              # Extract and format test results using xmlstarlet
+              echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+              echo "| Test Method | Status | Time (s) |" >> $GITHUB_STEP_SUMMARY
+              echo "|------------|--------|-----------|" >> $GITHUB_STEP_SUMMARY
+              
+              xmlstarlet sel -t \
+                -m "//testcase" \
+                -v "concat('| ', @name, ' | ', 
+                    if (failure) then '❌ Failed' else '✅ Passed',
+                    ' | ', format-number(@time, '#.###'), ' |')" \
+                -n "$result_file" >> $GITHUB_STEP_SUMMARY
+              
+              # Extract coverage information if available
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Coverage Details" >> $GITHUB_STEP_SUMMARY
+              
+              covered=$(xmlstarlet sel -t -v "//coverage/@covered" "$result_file" || echo "0")
+              total=$(xmlstarlet sel -t -v "//coverage/@total" "$result_file" || echo "0")
+              
+              if [ "$total" != "0" ]; then
+                coverage=$((covered * 100 / total))
+                echo "Coverage: ${coverage}% ($covered/$total lines)" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "No coverage information available" >> $GITHUB_STEP_SUMMARY
+              fi
+              
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "---" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          
+          # Add summary footer
+          echo "Report generated on $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
 
-      - name: 'Create A Scratch Org'
-        run: | 
-         echo "Creating a Scratch Org"
-         #sf org create scratch --definition-file "./config/project-scratch-def.json" --alias "scratch- ${{ github.run_id}}" --duration-days ${{inputs.scratch_duration}} --admin-email "${{ env.owner_email }}"
-      
-      # Extract the git author email and store it in the global variable owner_email
-      - name: 'Save repository owner email'
+      - name: Export Org Data
         run: |
-         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+          mkdir -p "${{ env.PROJECT_DIR }}/${{ env.DATA_BACKUP_DIR }}"
+          sf texei:data:export \
+            --objects "Account,Contact" \
+            --outputdir "${{ env.PROJECT_DIR }}/${{ env.DATA_BACKUP_DIR }}"
 
-      # Create a new git repository
-      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
-      # Change the name you associate with your Git commits.
-      # Add the entire directory to your commit recursively.
-      # Determine if there are uncommitted changes in the GIT Tree
-      - name: 'Stage files and check for modified files'
-        id: git-check
+      - name: Create Scratch Org
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          OWNER_EMAIL: ${{ github.event.sender.email }}
         run: |
-         git init
-         git config user.email "${{ env.owner_email }}"
-         git config user.name "${{ github.repository_owner }}"
-         git add .
-         echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
-         
-      # If there are uncommitted changes.
-      #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
-      # git push sync the local repository with its associated remote repository and updates it.
-      - name: 'Commit and push if there are modified files'
-        if: steps.git-check.outputs.modified == 'true'
+          if [ -f "./config/project-scratch-def.json" ]; then
+            sf org create scratch \
+              --definition-file "./config/project-scratch-def.json" \
+              --alias "backup-${{ github.run_id }}" \
+              --duration-days ${{ github.event.inputs.scratch_duration }} \
+              --admin-email "$OWNER_EMAIL"
+          else
+            echo "Warning: project-scratch-def.json not found"
+          fi
+
+      - name: Commit Changes
         run: |
-         git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
-         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT
+          # Configure git
+          git config user.email "${{ github.event.sender.email }}"
+          git config user.name "${{ github.actor }}"
+          
+          # Stage and check for changes
+          git add .
+          if ! git diff-index --quiet HEAD --; then
+            git commit -m "${{ github.event.inputs.commit_message }} - $(date +'%Y-%m-%d')"
+            git push origin ${{ github.ref }}
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Logout from orgs
+          sf org logout --all --no-prompt
+          
+          # Clean up temporary files
+          rm -rf .sf
