@@ -1,0 +1,939 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+    <labels>
+        <fullName>NSA_AdminOverrideEmployer</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Used to let the admin use patients of an employer that is not released</shortDescription>
+        <value>false</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ApplicationVersion</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>NSA_ApplicationVersion</shortDescription>
+        <value>2.0</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Available_Status</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>EOB&apos;s Available status list of values</shortDescription>
+        <value>Mailed – Paper,Reviewed – Paper,Reviewed – Portal,Emailed – Paper,Auto Sent - Portal</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPTSearchCharacterError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when the user writes less than 3 charactes in cpt search</shortDescription>
+        <value>You should fill out at least 3 characters in order to start searching.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPTSearchTimeout</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>CPT Code search timeout limit</shortDescription>
+        <value>10000</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPTSearchTimeoutError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown if cpt search took alot of time</shortDescription>
+        <value>A technical difficulty occured, please try again.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_ByCodeExample</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Example shown if the user wants to search for a cpt code by Code not description</shortDescription>
+        <value>i.e. enter 11057 for Removal of more than 4 thickened skin growths</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_ByCodeTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Text shown on the checkbox that lets the user select to search by cpt code</shortDescription>
+        <value>I want to search by Procedure Codes</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_ByDescriptionExample</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Example shown if the user desires to search for cpt code by description</shortDescription>
+        <value>i.e. enter Removal of more than 4 thickened skin growths</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_ByDescriptionTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Text shown on the checkbox that lets the user select to search by cpt&apos;s descrip</shortDescription>
+        <value>I want to search by Procedure Description</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_ConfirmButtonMessage</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>The confirm cpt code button&apos;s text</shortDescription>
+        <value>Confirm Selected Procedures</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_PreConfirmMessage</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Text shown before the user clicks on the confirm cpt code button</shortDescription>
+        <value>If you are done selecting your needed procedures and their respective quantities, please confirm to go the next step where you will have to answer some questions for each procedure selected</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_SearchResults</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>CPT Code search result title</shortDescription>
+        <value>Search Results</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CPT_SelectedProcedures</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Selected Procedures table title</shortDescription>
+        <value>Selected Procedures</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CheckEligibilityIntro</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>The NSA&apos;s intro text that gives a brief explanation of the NSA Application</shortDescription>
+        <value>In compliance with the No Surprises Act, you can now search for a service, procedure, or item within your health plan network and see your estimated costs</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Confirm_Message1</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Used after choosing the cpt codes so the user knows the next step</shortDescription>
+        <value>Please make sure to choose the correct answers for your case , knowing that these answers affect the estimated costs.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Confirm_Message2</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Last message before Submitting the request</shortDescription>
+        <value>If you are done reviewing your answers and your procedure(s), you can submit a request in order to get the estimated costs.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Confirm_TableTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Title of the table listing the final selection of the cpt codes</shortDescription>
+        <value>Selected Procedures</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Confirm_Title</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>The big title of the last phase after choosing the cpt codes</shortDescription>
+        <value>Confirm Your Selected Procedures Details</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CptSearchNoResultError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error message shown when no result is found for the cpt search</shortDescription>
+        <value>No Matches Found.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_CustomerSupportProfileId</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Customer service profile Id</shortDescription>
+        <value>00e3I000000QITtQAO</value>
+    </labels>
+    <labels>
+        <fullName>NSA_DateofServiceError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>error shown to let the user know the date of service range</shortDescription>
+        <value>Dates Of Service should be</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EOBMessageDisplayed</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Message shown after clicking on submit request, and validation is in progress</shortDescription>
+        <value>We have successfully received your request! You will receive a detailed report by email once we are done processing the request within 24 hours</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EOBNoValidationStatus</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>EOB status used when validation is turned off</shortDescription>
+        <value>Review Not Required</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EOBUrl</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>EOB basic Url</shortDescription>
+        <value>https://bsicompanies--partial.sandbox.lightning.force.com/lightning/r/IntPS__EOB__c/</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EligibilityInfo</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Eligibility Information section title</shortDescription>
+        <value>Eligibility Information</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EligibilityInfo_Client</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>in the eligibility section, this will be the employer group title</shortDescription>
+        <value>Group :</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EligibilityInfo_EligibilityTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>in the eligibility section, this will be the eligibility details title</shortDescription>
+        <value>Eligibility :</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EligibilityInfo_Networks</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>in the eligibility section, this will be the list of available networks title</shortDescription>
+        <value>Health Plan Available Networks :</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EligibilityMessage</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>in the eligibilty section, the text shown before choosing the patient</shortDescription>
+        <value>Choose The Patient You Want To Get The Pricing Request for:</value>
+    </labels>
+    <labels>
+        <fullName>NSA_EligibilityTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>The eligibility section big title</shortDescription>
+        <value>Check Your Eligibility</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ElligibilityFound</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Text shown when eligibility for the selected patient is found</shortDescription>
+        <value>Patient and health plan have been found. Please proceed.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ElligibilityNotFound</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>error message shown when no eligibility is found for the selected patient</shortDescription>
+        <value>This member does not have an active health plan. Contact Customer Support with questions</value>
+    </labels>
+    <labels>
+        <fullName>NSA_FillAllQuestionsError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when the user did not answer all needed questions before submit requ</shortDescription>
+        <value>Please fill All the Questions Correctly before submitting</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Footer</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>footer text containing copyrights</shortDescription>
+        <value>Confidential Information |  © Copyright Integrated Payor Solutions       www.cms.gov/healthplan-price-transparency</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Initial_EOB_Status</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Initial EOB Status when request is submitted and validation is turned on</shortDescription>
+        <value>Request Submitted</value>
+    </labels>
+    <labels>
+        <fullName>NSA_InpatientHospError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when inpatient hosp is selected  for wrong cpt</shortDescription>
+        <value>The selected procedure codes cannot be performed in an Inpatient Hospital. Please select another Place of Service.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_JiraAPIUrl</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Jira API URL used to create a related jira ticket for each eob</shortDescription>
+        <value>https://integrated-payor-solutions.atlassian.net</value>
+    </labels>
+    <labels>
+        <fullName>NSA_JiraIssueType</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Internal Jira type for the created tickets</shortDescription>
+        <value>10019</value>
+    </labels>
+    <labels>
+        <fullName>NSA_JiraProject</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Jira project in which the tickets will be created</shortDescription>
+        <value>BNVS</value>
+    </labels>
+    <labels>
+        <fullName>NSA_JiraToken</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Jira API security token</shortDescription>
+        <value>YWF6emlAaW50ZWdyYXRlZHBheW9yc29sdXRpb25zLmNvbTpGZzNhcXc4M0k4bHg5WjVNMzZqejc1NzA=</value>
+    </labels>
+    <labels>
+        <fullName>NSA_JiraUrl</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Jira URL used to create a related jira ticket for each eob</shortDescription>
+        <value>https://integrated-payor-solutions.atlassian.net/browse/</value>
+    </labels>
+    <labels>
+        <fullName>NSA_MRF_Webservice_Timeout</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>MRF API timeout limit</shortDescription>
+        <value>20000</value>
+    </labels>
+    <labels>
+        <fullName>NSA_MedicareNegotiatedPriceType</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Accepted negotiated rate type returned by the MRF API</shortDescription>
+        <value>fee schedule,negotiated,derived</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NPIRegResultLimit</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Number of providers returned by the NPI Reg API</shortDescription>
+        <value>50</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NPI_Result</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Title of the datatable containing the result of the Provider search</shortDescription>
+        <value>Providers Result</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NPI_Selected</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Title of the section containing the selected provider details</shortDescription>
+        <value>Selected Provider</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NPI_Title</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider Search section&apos;s big title</shortDescription>
+        <value>Search for a Provider</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NeedsValidation</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Validation turned On or OFF?</shortDescription>
+        <value>false</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NewQuery</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>New Query button&apos;s text at the bottom of the page</shortDescription>
+        <value>Start A New Query</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NoNetworkRateRemarkCode</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Remark code when no price was found in any network. Used on EOB level</shortDescription>
+        <value>NSA0051</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NoPatientEligibilityError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error message shown when the selected patient has no active eligibility</shortDescription>
+        <value>The Selected Patient Has No Active Eligibility.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NoPatientSelected</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error Message Shown to let the user select a patient to view the eligibility</shortDescription>
+        <value>You Must Select A Patient first In Order To View the Eligibility Details.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NoProceduresSelected</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Message shown when the user did not select any cpt yet. No datatable is shown</shortDescription>
+        <value>No Procedures Selected</value>
+    </labels>
+    <labels>
+        <fullName>NSA_NoRateRemarkCode</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Remark code when no price was found in any network. Used on EOB Line Item level</shortDescription>
+        <value>NSA0050</value>
+    </labels>
+    <labels>
+        <fullName>NSA_OONError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when provider is OON and the patient&apos;s health plan doesnt support</shortDescription>
+        <value>This provider doesn’t exist or is considered out-of-network. Your pricing request cannot be calculated.  If you require further assistance, please call Customer Service at the number on the back of your insurance card.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_OrgName</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>TPA Org name</shortDescription>
+        <value>BSI Companies</value>
+    </labels>
+    <labels>
+        <fullName>NSA_PageTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Big title of the whole application</shortDescription>
+        <value>Understand the Costs Before a Treatment, Service or Procedure</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProcedureIntro</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Procedure code search Introduction text</shortDescription>
+        <value>You can now search for any services and items that have been predefined by the U.S. government.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProcedureListText</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Procedure code list text</shortDescription>
+        <value>500 Items and Services | CMS</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProcedureListURL</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>List of available Procedure Codes</shortDescription>
+        <value>https://www.cms.gov/healthplan-price-transparency/resources/500-items-services</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProcedureSearchOption1</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>text shown next to the search by cpt code or description checkbox</shortDescription>
+        <value>I Know the Procedure Code Details, I Want To Search by Procedure Code/Description</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProcedureSearchOption2</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Text shown on the checkbox that lets the user select to search by cpt speciality</shortDescription>
+        <value>I Want To Search By Speciality</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProcedureSpecialityIntro</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Message shown when user selects to search by procedure speciality</shortDescription>
+        <value>We are Searching by Procedure Speciality</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderExample</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider search example</shortDescription>
+        <value>You are now searching by Provider Code i.e. enter 1992156863 for BRITTANY HARRIS</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine1</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider search text part 1</shortDescription>
+        <value>You can search for a specific provider to see the estimated costs for service with that provider.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine2</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider search text part 2</shortDescription>
+        <value>You now have 3 Provider Searching Abilities :</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine3</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider search text part 3</shortDescription>
+        <value>1. Search By NPI (National Provider ID). This can be used only if you already know the NPI of the needed Provider.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine4</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider search text part 4</shortDescription>
+        <value>2. Search By Individual. This can be used if the Provider is an individual which you know his name and/or his address</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine5</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Organization provider search option explained</shortDescription>
+        <value>3. Search By Organization. This can be used if the Provider is an organization which you know its name and/or its address.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine6</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider search advice to add as many criterias as we can</shortDescription>
+        <value>- It is advised to use as many searching criteria as you can in order to get an optimal result.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderLine7</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown to let the user know that his health plan does not support OON prov</shortDescription>
+        <value>Your Health Plan does not support any Out Of Network service.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderNPILink</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Public NPI Registry link</shortDescription>
+        <value>https://npiregistry.cms.hhs.gov/search</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_CityPlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>City Input Placeholder</shortDescription>
+        <value>Search City</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_FNameLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>First Name Input Label</shortDescription>
+        <value>Enter Individual Provider First Name</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_FNamePlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>First Name Input Placeholder</shortDescription>
+        <value>Search First Name</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_GenericSearchError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when state is the only field filles</shortDescription>
+        <value>We cannot perform a generic search. Please include another search criteria.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_ICityLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Individual City Input Label</shortDescription>
+        <value>Enter Individual Provider City</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_IPostalCodeLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Individual Postal Code Input Label</shortDescription>
+        <value>Enter Individual Provider Postal Code</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_IStateLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Individual State Input Label</shortDescription>
+        <value>Enter Individual Provider State</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_LNameLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Last Name Input Label</shortDescription>
+        <value>Enter Individual Provider Last Name</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_LNamePlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Last Name Input Placeholder</shortDescription>
+        <value>Search Last Name</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_MissingAddressError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when no address fields are filled</shortDescription>
+        <value>Please include at least an address input.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_MissingCriteriaError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when no criteria is entered</shortDescription>
+        <value>Please enter a search criteria.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_NameLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Organization Name Input Label</shortDescription>
+        <value>Enter Organization Provider Name</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_NamePlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Organization Name Input Placeholder</shortDescription>
+        <value>Search Name</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_OCityLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Organization City Input Label</shortDescription>
+        <value>Enter Organization Provider City</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_OPostalCodeLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Organization Postal Code Input Label</shortDescription>
+        <value>Enter Organization Provider Postal Code</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_OStateLabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Organization State Input Label</shortDescription>
+        <value>Enter Organization Provider State</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_PostalCodePlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Postal Code Input Placeholder</shortDescription>
+        <value>Search Postal Code</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_ProviderNotSupported</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when provider is not supported</shortDescription>
+        <value>Your Health Plan Does not support any Out Of Network services. Please Select only In-Network providers</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_SearchButton</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Search Button Label</shortDescription>
+        <value>Search</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_SelectionErrorTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when provider cannot be selected</shortDescription>
+        <value>Provider Cannot Be Selected</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_StatePlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>State Input Placeholder</shortDescription>
+        <value>Select State</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSeach_Title</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Provider Seach Title</shortDescription>
+        <value>Provider Search Engine</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSearchError</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when no provider is found</shortDescription>
+        <value>No Providers found for this searching criteria</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSearch_NPILabel</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>NPI Input Label</shortDescription>
+        <value>Enter Provider NPI</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ProviderSearch_NPIPlaceholder</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>NPI Input Placeholder</shortDescription>
+        <value>Search NPI</value>
+    </labels>
+    <labels>
+        <fullName>NSA_QuestionsDatatableTitle</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Title shown above the Pricing request questions</shortDescription>
+        <value>Pricing Request Questions</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer1</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 1</shortDescription>
+        <value>This estimate is based upon the members eligibility and benefits as of the date the estimate is created. A statement of cost sharing liability for a covered item or service is not a guarantee that benefits will be provided for that item or service. The actual charges for a covered item or service may be different from the estimate of cost sharing liability provided, depending on the actual items or services you or your dependent receive at the point of care.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer2</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 2</shortDescription>
+        <value>The cost sharing estimate provided is only an estimate based on the items and services selected by the members. It does not include any additional , reasonably expected to be furnished services , and is subject to change; Please also keep in mind the following:</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer3</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 3</shortDescription>
+        <value>If you or your dependents choose to see an out of network provider they may bill you for the difference between the provider&apos;s billed charges and the sum of the amount paid by your group health plan and the amount you paid in the form of a copayment or coinsurance amount (the difference referred to as balance billing), and that the cost sharing information provided above does not account for these potential additional amounts.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer4</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 4</shortDescription>
+        <value>The actual charges for a covered item or service may be different from the estimate of cost sharing liability provided, depending on the actual items or services you or your dependent receive at the point of care.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer5</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 5</shortDescription>
+        <value>A statement of cost sharing liability for a covered item or service is not a guarantee that benefits will be provided for that item or service.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer6</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 6</shortDescription>
+        <value>This statement of cost sharing liability does not take into account any copayment assistance or other third-party payments in the calculation of your out-of-pocket maximum.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer7</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 7</shortDescription>
+        <value>For items and services that are recommended preventive services under section 2713 of the Public Health Services Act, an in-network item or service may not be subject to cost-sharing if it is billed as a preventive service.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Disclaimer8</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Report Disclaimer part 8</shortDescription>
+        <value>and your Employer are not responsible for the accuracy of the provided source data including in network providers, negotiated rates, health plan benefit balances. In network providers and their rates are defined by the respective networks via machine readable files. These files are expected to be updated monthly and may not provide access to all providers.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_IPSName</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>our company&apos;s name</shortDescription>
+        <value>Integrated Payor Solutions</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Question</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>PDF Report Question disclaimer</shortDescription>
+        <value>If you have any questions regarding this claim, please call Customer Support on the phone number listed on your insurance card</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Report_Title</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>PDF report big title</shortDescription>
+        <value>Estimated Costs</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ServersDown</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when one of our server&apos;s API is down</shortDescription>
+        <value>The system is unavailable at this time. Please try again at a later time</value>
+    </labels>
+    <labels>
+        <fullName>NSA_Submit</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Text shown on the submit request button</shortDescription>
+        <value>Submit Request</value>
+    </labels>
+    <labels>
+        <fullName>NSA_SystemNotAvailableMessage</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Error shown when employer of the selected patient is not released yet</shortDescription>
+        <value>The NSA Price Comparison Portal has not yet been released for your employer. Please watch for communications from your employer as to when it will be available. If you have further questions, contact Customer Support at the number on the back of your member card.</value>
+    </labels>
+    <labels>
+        <fullName>NSA_ValenzAuth</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Valenz API security token</shortDescription>
+        <value>aXBzOkdYQmEkQTcyYGonOX4xanU=</value>
+    </labels>
+    <labels>
+        <fullName>NSA_adminProfileId</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>admin profile Id</shortDescription>
+        <value>00eQy000007tUj1IAE</value>
+    </labels>
+    <labels>
+        <fullName>NSA_isPodPlan</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Podplan TPA?</shortDescription>
+        <value>false</value>
+    </labels>
+    <labels>
+        <fullName>NSA_smallDisclaimer</fullName>
+        <categories>NSA</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>small disclaimer shown in the report pdf</shortDescription>
+        <value>Many services require pre-certification or penalties may apply. Check your plan before scheduling your service.</value>
+    </labels>
+</CustomLabels>

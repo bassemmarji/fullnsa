@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomFieldTranslation xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label><!-- Plan Type --></label>
+    <name>Plan_Type__c</name>
+    <picklistValues>
+        <masterLabel>Acu &amp; Chiro</masterLabel>
+        <translation><!-- Acu &amp; Chiro --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>CPAP</masterLabel>
+        <translation><!-- CPAP --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>Dental Care</masterLabel>
+        <translation><!-- Dental Care --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>Healthshare</masterLabel>
+        <translation><!-- Healthshare --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>Infertility</masterLabel>
+        <translation><!-- Infertility --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>Major Medical</masterLabel>
+        <translation><!-- Major Medical --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>Medical</masterLabel>
+        <translation><!-- Medical --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>RX</masterLabel>
+        <translation><!-- RX --></translation>
+    </picklistValues>
+    <picklistValues>
+        <masterLabel>Vision Care</masterLabel>
+        <translation><!-- Vision Care --></translation>
+    </picklistValues>
+</CustomFieldTranslation>

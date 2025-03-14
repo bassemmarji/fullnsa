@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionCalls>
+        <name>PDF_Email</name>
+        <label>PDF Email</label>
+        <locationX>176</locationX>
+        <locationY>335</locationY>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
+        <connector>
+            <targetReference>Update_Email_Sent_Date</targetReference>
+        </connector>
+        <inputParameters>
+            <name>emailBody</name>
+            <value>
+                <elementReference>emailtemp</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailAddresses</name>
+            <value>
+                <elementReference>$Record.IntPS_NSA__Patient__r.Portal_User__r.Email</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailSubject</name>
+            <value>
+                <stringValue> Estimated Cost Document</stringValue>
+            </value>
+        </inputParameters>
+    </actionCalls>
+    <interviewLabel>Portal PDF Link Sender {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Portal PDF Link Sender</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordUpdates>
+        <name>Update_Email_Sent_Date</name>
+        <label>Update Email Sent Date</label>
+        <locationX>176</locationX>
+        <locationY>455</locationY>
+        <inputAssignments>
+            <field>IntPS_NSA__Approved_Date__c</field>
+            <value>
+                <elementReference>$Flow.CurrentDateTime</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>IntPS__Status__c</field>
+            <value>
+                <stringValue>Auto Sent - Portal</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>PDF_Email_Sent_Date__c</field>
+            <value>
+                <elementReference>$Flow.CurrentDateTime</elementReference>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <startElementReference>PDF_Email</startElementReference>
+    <status>Active</status>
+    <textTemplates>
+        <name>emailtemp</name>
+        <text>Dear {!$Record.IntPS_NSA__Patient__r.Name},
+
+You can access the results of your recent NSA Price Comparison Request using the link below:
+
+{!$Record.Portal_PDF_Link__c}
+
+
+Sincerely,
+
+{!$Organization.Name}</text>
+    </textTemplates>
+</Flow>

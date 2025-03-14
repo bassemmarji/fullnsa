@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomFieldTranslation xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label><!-- To HMA 834 --></label>
+    <name>To_HMA_834__c</name>
+</CustomFieldTranslation>
