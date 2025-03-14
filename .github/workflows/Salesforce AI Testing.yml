@@ -63,12 +63,15 @@ jobs:
           # Install Salesforce CLI
           npm install @salesforce/cli --global
           
-          # Install Python for AI processing
+          # Install Python and pip
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
           
-          # Install Python dependencies
-          pip3 install openai pytest pytest-xdist salesforce-pytest
+          # Upgrade pip
+          python3 -m pip install --upgrade pip
+          
+          # Install Python dependencies from requirements.txt
+          pip3 install -r requirements.txt
 
       - name: Authenticate to Salesforce
         run: |
