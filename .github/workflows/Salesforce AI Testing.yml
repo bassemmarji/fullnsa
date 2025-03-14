@@ -20,6 +20,11 @@ on:
         type: string
         description: 'Apex Class Name (required if test_scope is specific-class)'
         required: false
+      generate_ai_tests:
+        type: boolean
+        description: 'Generate AI-powered test classes'
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ env:
   ORG_ALIAS: test_org
   TEST_DIR: ai-tests
   NODE_VERSION: '20'
+  METADATA_DIR: force-app/main/default
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,13 +63,12 @@ jobs:
           # Install Salesforce CLI
           npm install @salesforce/cli --global
           
-          # Install TestZeus Hercules
-          npm install -g @testzeus/hercules-cli
-          
           # Install Python for AI processing
           sudo apt-get update
           sudo apt-get install -y python3 python3-pip
-          pip3 install salesforce-ai-testing
+          
+          # Install Python dependencies
+          pip3 install openai pytest pytest-xdist salesforce-pytest
 
       - name: Authenticate to Salesforce
         run: |
@@ -72,69 +77,158 @@ jobs:
             --set-default \
             --sfdx-url-stdin
 
-      - name: Generate AI Test Cases
+      - name: Generate AI Test Classes
+        if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          mkdir -p ${{ env.TEST_DIR }}
-          
-          # Generate test cases based on metadata
           if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ]; then
             if [ -z "${{ github.event.inputs.class_name }}" ]; then
               echo "Error: Class name is required when test_scope is specific-class"
               exit 1
             fi
-            hercules generate-tests \
-              --org ${{ env.ORG_ALIAS }} \
-              --output-dir ${{ env.TEST_DIR }} \
-              --class "${{ github.event.inputs.class_name }}" \
-              --format junit
+            
+            # Generate test for specific class
+            python3 scripts/ai_test_generator.py \
+              "${{ env.METADATA_DIR }}/classes/${{ github.event.inputs.class_name }}.cls"
           else
-            hercules generate-tests \
-              --org ${{ env.ORG_ALIAS }} \
-              --output-dir ${{ env.TEST_DIR }} \
-              --scope ${{ github.event.inputs.test_scope }} \
-              --format junit
+            # Get classes to generate tests for
+            if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
+              # Get changed Apex classes (excluding test classes)
+              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*\.cls$" | grep -v "Test\.cls$")
+            else
+              # Get all Apex classes (excluding test classes)
+              CHANGED_FILES=$(find "${{ env.METADATA_DIR }}/classes" -name "*.cls" | grep -v "Test\.cls$")
+            fi
+            
+            # Generate tests for each class
+            for class_file in $CHANGED_FILES; do
+              echo "Generating test for: $class_file"
+              python3 scripts/ai_test_generator.py "$class_file"
+            done
           fi
 
-      - name: Execute AI Generated Tests
+      - name: Deploy Generated Tests
+        if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
+        run: |
+          # Deploy the generated test classes
+          sf project deploy start \
+            --source-dir "${{ env.METADATA_DIR }}/classes" \
+            --target-org ${{ env.ORG_ALIAS }} \
+            --test-level RunLocalTests
+
+      - name: Generate and Run Tests
         id: test-execution
         run: |
+          mkdir -p "${{ env.TEST_DIR }}"
+          
+          # Run tests based on scope
           if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ]; then
-            hercules run-tests \
-              --org ${{ env.ORG_ALIAS }} \
-              --test-dir ${{ env.TEST_DIR }} \
-              --class "${{ github.event.inputs.class_name }}" \
-              --report-format junit,json \
-              --parallel 1
+            if [ -z "${{ github.event.inputs.class_name }}" ]; then
+              echo "Error: Class name is required when test_scope is specific-class"
+              exit 1
+            fi
+            
+            sf apex run test \
+              --target-org ${{ env.ORG_ALIAS }} \
+              --class-names "${{ github.event.inputs.class_name }}" \
+              --code-coverage \
+              --detailed-coverage \
+              --result-format json \
+              --output-dir "${{ env.TEST_DIR }}" \
+              --wait 20
           else
-            hercules run-tests \
-              --org ${{ env.ORG_ALIAS }} \
-              --test-dir ${{ env.TEST_DIR }} \
-              --report-format junit,json \
-              --parallel 5
+            # For full or changed-files scope
+            TESTS_TO_RUN=""
+            if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
+              # Get changed Apex test classes
+              TESTS_TO_RUN=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*Test\.cls$" | sed 's/.*\///g' | sed 's/\.cls$//g' | tr '\n' ',')
+            fi
+            
+            # If no specific tests found or full scope, run all tests
+            if [ -z "$TESTS_TO_RUN" ] || [ "${{ github.event.inputs.test_scope }}" = "full" ]; then
+              sf apex run test \
+                --target-org ${{ env.ORG_ALIAS }} \
+                --test-level RunAllTestsInOrg \
+                --code-coverage \
+                --detailed-coverage \
+                --result-format json \
+                --output-dir "${{ env.TEST_DIR }}" \
+                --wait 20
+            else
+              sf apex run test \
+                --target-org ${{ env.ORG_ALIAS }} \
+                --class-names "$TESTS_TO_RUN" \
+                --code-coverage \
+                --detailed-coverage \
+                --result-format json \
+                --output-dir "${{ env.TEST_DIR }}" \
+                --wait 20
+            fi
           fi
 
-      - name: Analyze Test Results
+      - name: Process Test Results
         if: always()
         run: |
-          echo "# AI Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "# Salesforce Test Results Summary" >> $GITHUB_STEP_SUMMARY
           
-          # Process test results
-          hercules analyze-results \
-            --results-dir ${{ env.TEST_DIR }}/results \
-            --format markdown >> $GITHUB_STEP_SUMMARY
+          if [ -f "${{ env.TEST_DIR }}/test-result.json" ]; then
+            # Process test results using Python
+            python3 - <<EOF
+          import json
+          import sys
           
-          # Add AI insights
-          echo "## AI Testing Insights" >> $GITHUB_STEP_SUMMARY
-          hercules generate-insights \
-            --results-dir ${{ env.TEST_DIR }}/results \
-            --format markdown >> $GITHUB_STEP_SUMMARY
+          with open('${{ env.TEST_DIR }}/test-result.json') as f:
+              results = json.load(f)
+          
+          # Overall summary
+          summary = results.get('summary', {})
+          print(f"## Overall Results", file=sys.stderr)
+          print(f"- Total Tests: {summary.get('testsRan', 0)}", file=sys.stderr)
+          print(f"- Passed: {summary.get('passing', 0)}", file=sys.stderr)
+          print(f"- Failed: {summary.get('failing', 0)}", file=sys.stderr)
+          print(f"- Duration: {summary.get('totalTime', 0)}s", file=sys.stderr)
+          print("", file=sys.stderr)
+          
+          # Coverage information
+          coverage = results.get('coverage', {})
+          print(f"## Code Coverage", file=sys.stderr)
+          print(f"- Overall Coverage: {coverage.get('coveragePercentage', 0)}%", file=sys.stderr)
+          print(f"- Lines Covered: {coverage.get('coveredLines', 0)}/{coverage.get('totalLines', 0)}", file=sys.stderr)
+          print("", file=sys.stderr)
+          
+          # Class coverage details
+          print("## Class Coverage Details", file=sys.stderr)
+          print("| Class Name | Coverage % | Lines Covered |", file=sys.stderr)
+          print("|------------|------------|---------------|", file=sys.stderr)
+          
+          for cls, data in coverage.get('coverage', {}).items():
+              print(f"| {cls} | {data.get('percentage', 0)}% | {data.get('coveredLines', 0)}/{data.get('totalLines', 0)} |", file=sys.stderr)
+          
+          # Failed tests
+          failures = [t for t in results.get('tests', []) if t.get('outcome') == 'Fail']
+          if failures:
+              print("\n## Failed Tests", file=sys.stderr)
+              print("| Test Name | Error Message |", file=sys.stderr)
+              print("|-----------|---------------|", file=sys.stderr)
+              for test in failures:
+                  print(f"| {test.get('fullName', 'N/A')} | {test.get('message', 'N/A')} |", file=sys.stderr)
+          EOF
+          else
+            echo " No test results found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Report generated on $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Test Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ai-test-results
-          path: ${{ env.TEST_DIR }}
+          path: |
+            ${{ env.TEST_DIR }}
+            ${{ env.METADATA_DIR }}/classes/*Test.cls
           retention-days: 14
           if-no-files-found: warn
           compression-level: 6
