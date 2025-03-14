@@ -176,11 +176,12 @@ jobs:
           OWNER_EMAIL: ${{ github.event.sender.email }}
         run: |
           if [ -f "./config/project-scratch-def.json" ]; then
-            sf org create scratch \
-              --definition-file "./config/project-scratch-def.json" \
-              --alias "backup-${{ github.run_id }}" \
-              --duration-days ${{ github.event.inputs.scratch_duration }} \
-              --admin-email "$OWNER_EMAIL"
+           echo "Creating Scratch Org"
+           # sf org create scratch \
+           #   --definition-file "./config/project-scratch-def.json" \
+           #   --alias "backup-${{ github.run_id }}" \
+           #   --duration-days ${{ github.event.inputs.scratch_duration }} \
+           #   --admin-email "$OWNER_EMAIL"
           else
             echo "Warning: project-scratch-def.json not found"
           fi
