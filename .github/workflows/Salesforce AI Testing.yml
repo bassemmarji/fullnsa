@@ -16,6 +16,10 @@ on:
           - 'specific-class'
         default: 'changed-files'
         required: true
+      class_name:
+        type: string
+        description: 'Apex Class Name (required if test_scope is specific-class)'
+        required: false
 
 permissions:
   contents: read
@@ -74,20 +78,41 @@ jobs:
           mkdir -p ${{ env.TEST_DIR }}
           
           # Generate test cases based on metadata
-          hercules generate-tests \
-            --org ${{ env.ORG_ALIAS }} \
-            --output-dir ${{ env.TEST_DIR }} \
-            --scope ${{ github.event.inputs.test_scope }} \
-            --format junit
+          if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ]; then
+            if [ -z "${{ github.event.inputs.class_name }}" ]; then
+              echo "Error: Class name is required when test_scope is specific-class"
+              exit 1
+            fi
+            hercules generate-tests \
+              --org ${{ env.ORG_ALIAS }} \
+              --output-dir ${{ env.TEST_DIR }} \
+              --class "${{ github.event.inputs.class_name }}" \
+              --format junit
+          else
+            hercules generate-tests \
+              --org ${{ env.ORG_ALIAS }} \
+              --output-dir ${{ env.TEST_DIR }} \
+              --scope ${{ github.event.inputs.test_scope }} \
+              --format junit
+          fi
 
       - name: Execute AI Generated Tests
         id: test-execution
         run: |
-          hercules run-tests \
-            --org ${{ env.ORG_ALIAS }} \
-            --test-dir ${{ env.TEST_DIR }} \
-            --report-format junit,json \
-            --parallel 5
+          if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ]; then
+            hercules run-tests \
+              --org ${{ env.ORG_ALIAS }} \
+              --test-dir ${{ env.TEST_DIR }} \
+              --class "${{ github.event.inputs.class_name }}" \
+              --report-format junit,json \
+              --parallel 1
+          else
+            hercules run-tests \
+              --org ${{ env.ORG_ALIAS }} \
+              --test-dir ${{ env.TEST_DIR }} \
+              --report-format junit,json \
+              --parallel 5
+          fi
 
       - name: Analyze Test Results
         if: always()
