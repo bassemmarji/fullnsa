@@ -62,7 +62,14 @@ jobs:
         run: |
           # Create necessary directories
           mkdir -p "${{ env.TEST_DIR }}"
+          mkdir -p "${{ env.METADATA_DIR }}/classes"
           mkdir -p scripts
+          
+          # Verify directory structure
+          if [ ! -d "${{ env.METADATA_DIR }}/classes" ]; then
+            echo "Error: Classes directory not found at ${{ env.METADATA_DIR }}/classes"
+            exit 1
+          fi
           
           # Create AI test generator script
           cat > scripts/ai_test_generator.py << 'EOL'
@@ -284,15 +291,47 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          # Verify OPENAI_API_KEY is set
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "Error: OPENAI_API_KEY is not set. Please add it to your repository secrets."
+            exit 1
+          fi
+          
+          # Verify Python and dependencies are installed
+          if ! command -v python3 &> /dev/null; then
+            echo "Error: Python 3 is not installed"
+            exit 1
+          fi
+          
+          if ! python3 -c "import openai" &> /dev/null; then
+            echo "Error: OpenAI package is not installed"
+            exit 1
+          fi
+          
+          # Process based on test scope
           if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ]; then
             if [ -z "${{ github.event.inputs.class_name }}" ]; then
               echo "Error: Class name is required when test_scope is specific-class"
               exit 1
             fi
             
+            # Check if class file exists
+            CLASS_FILE="${{ env.METADATA_DIR }}/classes/${{ github.event.inputs.class_name }}.cls"
+            if [ ! -f "$CLASS_FILE" ]; then
+              echo "Error: Class file not found: $CLASS_FILE"
+              exit 1
+            fi
+            
             # Generate test for specific class
-            python3 scripts/ai_test_generator.py \
-              "${{ env.METADATA_DIR }}/classes/${{ github.event.inputs.class_name }}.cls"
+            echo "Generating test for: $CLASS_FILE"
+            python3 scripts/ai_test_generator.py "$CLASS_FILE"
+            
+            # Verify test was generated
+            TEST_FILE="${{ env.METADATA_DIR }}/classes/${{ github.event.inputs.class_name }}Test.cls"
+            if [ ! -f "$TEST_FILE" ]; then
+              echo "Error: Failed to generate test class at: $TEST_FILE"
+              exit 1
+            fi
           else
             # Get classes to generate tests for
             if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
@@ -305,10 +344,31 @@ jobs:
             
             # Generate tests for each class
             if [ -n "$CHANGED_FILES" ]; then
+              SUCCESS=0
+              FAILED=0
+              
               for class_file in $CHANGED_FILES; do
-                echo "Generating test for: $class_file"
-                python3 scripts/ai_test_generator.py "$class_file"
+                if [ -f "$class_file" ]; then
+                  echo "Generating test for: $class_file"
+                  if python3 scripts/ai_test_generator.py "$class_file"; then
+                    ((SUCCESS++))
+                  else
+                    ((FAILED++))
+                    echo "Warning: Failed to generate test for: $class_file"
+                  fi
+                else
+                  ((FAILED++))
+                  echo "Warning: Class file not found: $class_file"
+                fi
               done
+              
+              echo "Test Generation Summary:"
+              echo "✅ Successfully generated: $SUCCESS"
+              echo "❌ Failed: $FAILED"
+              
+              if [ "$FAILED" -gt 0 ]; then
+                echo "Warning: Some test generations failed"
+              fi
             else
               echo "No classes found to generate tests for"
               exit 0
@@ -318,7 +378,14 @@ jobs:
       - name: Deploy Generated Tests
         if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
         run: |
-          # Deploy the generated test classes
+          # Check if any test classes exist
+          TEST_FILES=$(find "${{ env.METADATA_DIR }}/classes" -name "*Test.cls" || true)
+          if [ -z "$TEST_FILES" ]; then
+            echo "No test classes found to deploy"
+            exit 0
+          fi
+          
+          echo "Deploying generated test classes..."
           sf project deploy start \
             --source-dir "${{ env.METADATA_DIR }}/classes" \
             --target-org ${{ env.ORG_ALIAS }} \
@@ -329,6 +396,35 @@ jobs:
         run: |
           mkdir -p "${{ env.TEST_DIR }}"
           
+          # Helper function to run tests
+          run_tests() {
+            local test_classes="$1"
+            local test_level="$2"
+            local description="$3"
+            
+            echo "Running $description..."
+            
+            if [ -n "$test_level" ]; then
+              sf apex run test \
+                --target-org ${{ env.ORG_ALIAS }} \
+                --test-level "$test_level" \
+                --code-coverage \
+                --detailed-coverage \
+                --result-format json \
+                --output-dir "${{ env.TEST_DIR }}" \
+                --wait 20
+            else
+              sf apex run test \
+                --target-org ${{ env.ORG_ALIAS }} \
+                --class-names "$test_classes" \
+                --code-coverage \
+                --detailed-coverage \
+                --result-format json \
+                --output-dir "${{ env.TEST_DIR }}" \
+                --wait 20
+            fi
+          }
+          
           # Run tests based on scope
           if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ]; then
             if [ -z "${{ github.event.inputs.class_name }}" ]; then
@@ -336,56 +432,84 @@ jobs:
               exit 1
             fi
             
+            # Check if test class exists
             TEST_CLASS="${{ github.event.inputs.class_name }}Test"
-            echo "Running test for specific class: $TEST_CLASS"
+            TEST_FILE="${{ env.METADATA_DIR }}/classes/${TEST_CLASS}.cls"
             
-            sf apex run test \
-              --target-org ${{ env.ORG_ALIAS }} \
-              --class-names "$TEST_CLASS" \
-              --code-coverage \
-              --detailed-coverage \
-              --result-format json \
-              --output-dir "${{ env.TEST_DIR }}" \
-              --wait 20
+            if [ ! -f "$TEST_FILE" ]; then
+              echo "Error: Test class not found: $TEST_FILE"
+              exit 1
+            fi
+            
+            echo "Found test class: $TEST_CLASS"
+            run_tests "$TEST_CLASS" "" "specific test class: $TEST_CLASS"
+            
           else
             # For full or changed-files scope
             if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
               # Get changed Apex test classes
-              CHANGED_TESTS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*Test\.cls$" | sed 's/.*\///g' | sed 's/\.cls$//g' | tr '\n' ',' || true)
+              CHANGED_TESTS=$(find "${{ env.METADATA_DIR }}/classes" -name "*Test.cls" -exec basename {} .cls \; | tr '\n' ',' || true)
               
               if [ -n "$CHANGED_TESTS" ]; then
-                echo "Running changed test classes: $CHANGED_TESTS"
-                sf apex run test \
-                  --target-org ${{ env.ORG_ALIAS }} \
-                  --class-names "$CHANGED_TESTS" \
-                  --code-coverage \
-                  --detailed-coverage \
-                  --result-format json \
-                  --output-dir "${{ env.TEST_DIR }}" \
-                  --wait 20
+                echo "Found changed test classes: $CHANGED_TESTS"
+                run_tests "$CHANGED_TESTS" "" "changed test classes"
               else
                 echo "No changed test classes found, running all tests"
-                sf apex run test \
-                  --target-org ${{ env.ORG_ALIAS }} \
-                  --test-level RunAllTestsInOrg \
-                  --code-coverage \
-                  --detailed-coverage \
-                  --result-format json \
-                  --output-dir "${{ env.TEST_DIR }}" \
-                  --wait 20
+                run_tests "" "RunAllTestsInOrg" "all tests in org"
               fi
             else
               # Full test run
-              echo "Running all tests in org"
-              sf apex run test \
-                --target-org ${{ env.ORG_ALIAS }} \
-                --test-level RunAllTestsInOrg \
-                --code-coverage \
-                --detailed-coverage \
-                --result-format json \
-                --output-dir "${{ env.TEST_DIR }}" \
-                --wait 20
+              echo "Running full test suite"
+              run_tests "" "RunAllTestsInOrg" "all tests in org"
             fi
+          fi
+          
+          # Process test results
+          if [ -f "${{ env.TEST_DIR }}/test-result.json" ]; then
+            echo "Processing test results..."
+            python3 - <<'EOF'
+          import json
+          import sys
+          
+          try:
+              with open('${{ env.TEST_DIR }}/test-result.json') as f:
+                  results = json.load(f)
+              
+              summary = results.get('summary', {})
+              coverage = results.get('coverage', {})
+              
+              # Print test summary
+              print("\n=== Test Results Summary ===")
+              print(f"Total Tests Run: {summary.get('testsRan', 0)}")
+              print(f"✅ Passed: {summary.get('passing', 0)}")
+              print(f"❌ Failed: {summary.get('failing', 0)}")
+              print(f"⏱️ Duration: {summary.get('totalTime', 0)}s")
+              
+              # Print coverage summary
+              print("\n=== Code Coverage Summary ===")
+              print(f"Overall Coverage: {coverage.get('coveragePercentage', 0)}%")
+              print(f"Lines Covered: {coverage.get('coveredLines', 0)}/{coverage.get('totalLines', 0)}")
+              
+              # Check for failures
+              failures = [t for t in results.get('tests', []) if t.get('outcome') == 'Fail']
+              if failures:
+                  print("\n❌ Failed Tests:")
+                  for test in failures:
+                      print(f"- {test.get('fullName', 'Unknown Test')}")
+                      print(f"  Error: {test.get('message', 'No error message')}")
+                      print(f"  Stack Trace: {test.get('stackTrace', 'No stack trace')}")
+              
+              # Exit with error if any tests failed
+              if summary.get('failing', 0) > 0:
+                  sys.exit(1)
+              
+          except Exception as e:
+              print(f"Error processing test results: {str(e)}")
+              sys.exit(1)
+          EOF
+          else
+            echo "Error: Test results file not found"
+            exit 1
           fi
 
       - name: Process Test Results
