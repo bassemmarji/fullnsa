@@ -58,6 +58,205 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Setup Test Environment
+        run: |
+          # Create necessary directories
+          mkdir -p "${{ env.TEST_DIR }}"
+          mkdir -p scripts
+          
+          # Create AI test generator script
+          cat > scripts/ai_test_generator.py << 'EOL'
+          import os
+          import json
+          import openai
+          from pathlib import Path
+          import re
+          import sys
+          
+          class ApexTestGenerator:
+              def __init__(self, api_key):
+                  if not api_key:
+                      raise ValueError("OpenAI API key is required")
+                  
+                  try:
+                      openai.api_key = api_key
+                      # Verify API key works
+                      openai.Model.list()
+                  except Exception as e:
+                      raise ValueError(f"Invalid OpenAI API key: {str(e)}")
+                  
+                  self.test_template = """
+          @isTest
+          private class {class_name}Test {{
+              @testSetup
+              static void setup() {{
+                  // Setup test data
+          {setup_code}
+              }}
+              
+          {test_methods}
+          }}
+          """
+          
+              def extract_methods(self, apex_code):
+                  """Extract method signatures from Apex code."""
+                  method_pattern = r'(public|private|protected|global)\s+(static\s+)?\w+\s+\w+\s*\([^)]*\)'
+                  return re.findall(method_pattern, apex_code)
+          
+              def generate_test_method(self, method_signature, class_code):
+                  """Generate a test method using GPT."""
+                  try:
+                      prompt = f"""
+          Generate a comprehensive Apex test method for the following method:
+          {method_signature}
+          
+          Context from the class:
+          {class_code}
+          
+          Requirements:
+          1. Include positive and negative test scenarios
+          2. Add proper assertions
+          3. Follow Salesforce best practices
+          4. Include comments explaining the test
+          5. Handle bulk testing where appropriate
+          6. Test error conditions
+          7. Follow test method naming convention: test_methodName_scenario
+          """
+                      
+                      response = openai.ChatCompletion.create(
+                          model="gpt-4",
+                          messages=[
+                              {"role": "system", "content": "You are an expert Salesforce developer specializing in writing high-quality test classes."},
+                              {"role": "user", "content": prompt}
+                          ],
+                          temperature=0.7,
+                          max_tokens=2000,
+                          timeout=30
+                      )
+                      
+                      return response.choices[0].message.content
+                  except Exception as e:
+                      print(f"Error generating test method: {str(e)}")
+                      return None
+          
+              def generate_setup_code(self, class_code):
+                  """Generate test setup code using GPT."""
+                  try:
+                      prompt = f"""
+          Generate test setup code for the following Apex class:
+          {class_code}
+          
+          Requirements:
+          1. Create necessary test data
+          2. Handle required relationships
+          3. Include comments explaining the setup
+          4. Use Test.startTest() and Test.stopTest() where needed
+          5. Follow Salesforce best practices
+          """
+                      
+                      response = openai.ChatCompletion.create(
+                          model="gpt-4",
+                          messages=[
+                              {"role": "system", "content": "You are an expert Salesforce developer specializing in test data setup."},
+                              {"role": "user", "content": prompt}
+                          ],
+                          temperature=0.7,
+                          max_tokens=1500,
+                          timeout=30
+                      )
+                      
+                      return response.choices[0].message.content
+                  except Exception as e:
+                      print(f"Error generating setup code: {str(e)}")
+                      return None
+          
+              def generate_test_class(self, class_path):
+                  """Generate a complete test class for an Apex class."""
+                  try:
+                      with open(class_path, 'r') as f:
+                          class_code = f.read()
+                  except Exception as e:
+                      print(f"Error reading class file: {str(e)}")
+                      return None
+                  
+                  # Extract class name
+                  class_name = Path(class_path).stem
+                  
+                  # Extract methods
+                  methods = self.extract_methods(class_code)
+                  if not methods:
+                      print(f"Warning: No methods found in {class_path}")
+                      return None
+                  
+                  # Generate setup code
+                  setup_code = self.generate_setup_code(class_code)
+                  if not setup_code:
+                      print("Error: Failed to generate setup code")
+                      return None
+                  
+                  # Generate test methods
+                  test_methods = []
+                  for method in methods:
+                      test_method = self.generate_test_method(method, class_code)
+                      if test_method:
+                          test_methods.append(test_method)
+                  
+                  if not test_methods:
+                      print("Error: Failed to generate any test methods")
+                      return None
+                  
+                  # Combine into test class
+                  test_class = self.test_template.format(
+                      class_name=class_name,
+                      setup_code=setup_code,
+                      test_methods='\n'.join(test_methods)
+                  )
+                  
+                  return test_class
+          
+          def main():
+              try:
+                  # Get OpenAI API key from environment
+                  api_key = os.getenv('OPENAI_API_KEY')
+                  if not api_key:
+                      print("Error: OPENAI_API_KEY environment variable not set")
+                      sys.exit(1)
+                  
+                  generator = ApexTestGenerator(api_key)
+                  
+                  # Get class path from command line args
+                  if len(sys.argv) < 2:
+                      print("Usage: python ai_test_generator.py <path_to_apex_class>")
+                      sys.exit(1)
+                  
+                  class_path = sys.argv[1]
+                  test_class = generator.generate_test_class(class_path)
+                  
+                  if test_class:
+                      # Write test class to file
+                      test_path = Path(class_path).parent / f"{Path(class_path).stem}Test.cls"
+                      try:
+                          with open(test_path, 'w') as f:
+                              f.write(test_class)
+                          print(f"✅ Generated test class at: {test_path}")
+                      except Exception as e:
+                          print(f"Error writing test class: {str(e)}")
+                          sys.exit(1)
+                  else:
+                      print("❌ Failed to generate test class")
+                      sys.exit(1)
+                      
+              except Exception as e:
+                  print(f"Unexpected error: {str(e)}")
+                  sys.exit(1)
+          
+          if __name__ == '__main__':
+              main()
+          EOL
+          
+          # Make script executable
+          chmod +x scripts/ai_test_generator.py
+
       - name: Install Dependencies
         run: |
           # Install Salesforce CLI
@@ -70,8 +269,8 @@ jobs:
           # Upgrade pip
           python3 -m pip install --upgrade pip
           
-          # Install Python dependencies from requirements.txt
-          pip3 install -r requirements.txt
+          # Install Python dependencies directly
+          pip3 install openai>=1.0.0 pytest>=7.0.0 pytest-xdist>=3.0.0 requests>=2.31.0
 
       - name: Authenticate to Salesforce
         run: |
