@@ -1,0 +1,100 @@
+name: Salesforce AI Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      test_scope:
+        type: choice
+        description: 'Test Scope'
+        options:
+          - 'full'
+          - 'changed-files'
+          - 'specific-class'
+        default: 'changed-files'
+        required: true
+
+env:
+  ORG_ALIAS: test_org
+  TEST_DIR: ai-tests
+  NODE_VERSION: '20'
+
+jobs:
+  ai_testing:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Dependencies
+        run: |
+          # Install Salesforce CLI
+          npm install @salesforce/cli --global
+          
+          # Install TestZeus Hercules
+          npm install -g @testzeus/hercules-cli
+          
+          # Install Python for AI processing
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip
+          pip3 install salesforce-ai-testing
+
+      - name: Authenticate to Salesforce
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias ${{ env.ORG_ALIAS }} \
+            --set-default \
+            --sfdx-url-stdin
+
+      - name: Generate AI Test Cases
+        run: |
+          mkdir -p ${{ env.TEST_DIR }}
+          
+          # Generate test cases based on metadata
+          hercules generate-tests \
+            --org ${{ env.ORG_ALIAS }} \
+            --output-dir ${{ env.TEST_DIR }} \
+            --scope ${{ github.event.inputs.test_scope }} \
+            --format junit
+
+      - name: Execute AI Generated Tests
+        id: test-execution
+        run: |
+          hercules run-tests \
+            --org ${{ env.ORG_ALIAS }} \
+            --test-dir ${{ env.TEST_DIR }} \
+            --report-format junit,json \
+            --parallel 5
+
+      - name: Analyze Test Results
+        if: always()
+        run: |
+          echo "# AI Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          
+          # Process test results
+          hercules analyze-results \
+            --results-dir ${{ env.TEST_DIR }}/results \
+            --format markdown >> $GITHUB_STEP_SUMMARY
+          
+          # Add AI insights
+          echo "## AI Testing Insights" >> $GITHUB_STEP_SUMMARY
+          hercules generate-insights \
+            --results-dir ${{ env.TEST_DIR }}/results \
+            --format markdown >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Test Artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ai-test-results
+          path: ${{ env.TEST_DIR }}
+          retention-days: 14
