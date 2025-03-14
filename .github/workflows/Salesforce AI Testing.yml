@@ -297,17 +297,22 @@ jobs:
             # Get classes to generate tests for
             if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
               # Get changed Apex classes (excluding test classes)
-              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*\.cls$" | grep -v "Test\.cls$")
+              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*\.cls$" | grep -v "Test\.cls$" || true)
             else
               # Get all Apex classes (excluding test classes)
-              CHANGED_FILES=$(find "${{ env.METADATA_DIR }}/classes" -name "*.cls" | grep -v "Test\.cls$")
+              CHANGED_FILES=$(find "${{ env.METADATA_DIR }}/classes" -name "*.cls" | grep -v "Test\.cls$" || true)
             fi
             
             # Generate tests for each class
-            for class_file in $CHANGED_FILES; do
-              echo "Generating test for: $class_file"
-              python3 scripts/ai_test_generator.py "$class_file"
-            done
+            if [ -n "$CHANGED_FILES" ]; then
+              for class_file in $CHANGED_FILES; do
+                echo "Generating test for: $class_file"
+                python3 scripts/ai_test_generator.py "$class_file"
+              done
+            else
+              echo "No classes found to generate tests for"
+              exit 0
+            fi
           fi
 
       - name: Deploy Generated Tests
@@ -331,9 +336,12 @@ jobs:
               exit 1
             fi
             
+            TEST_CLASS="${{ github.event.inputs.class_name }}Test"
+            echo "Running test for specific class: $TEST_CLASS"
+            
             sf apex run test \
               --target-org ${{ env.ORG_ALIAS }} \
-              --class-names "${{ github.event.inputs.class_name }}" \
+              --class-names "$TEST_CLASS" \
               --code-coverage \
               --detailed-coverage \
               --result-format json \
@@ -341,26 +349,37 @@ jobs:
               --wait 20
           else
             # For full or changed-files scope
-            TESTS_TO_RUN=""
             if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
               # Get changed Apex test classes
-              TESTS_TO_RUN=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*Test\.cls$" | sed 's/.*\///g' | sed 's/\.cls$//g' | tr '\n' ',')
-            fi
-            
-            # If no specific tests found or full scope, run all tests
-            if [ -z "$TESTS_TO_RUN" ] || [ "${{ github.event.inputs.test_scope }}" = "full" ]; then
+              CHANGED_TESTS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*Test\.cls$" | sed 's/.*\///g' | sed 's/\.cls$//g' | tr '\n' ',' || true)
+              
+              if [ -n "$CHANGED_TESTS" ]; then
+                echo "Running changed test classes: $CHANGED_TESTS"
+                sf apex run test \
+                  --target-org ${{ env.ORG_ALIAS }} \
+                  --class-names "$CHANGED_TESTS" \
+                  --code-coverage \
+                  --detailed-coverage \
+                  --result-format json \
+                  --output-dir "${{ env.TEST_DIR }}" \
+                  --wait 20
+              else
+                echo "No changed test classes found, running all tests"
+                sf apex run test \
+                  --target-org ${{ env.ORG_ALIAS }} \
+                  --test-level RunAllTestsInOrg \
+                  --code-coverage \
+                  --detailed-coverage \
+                  --result-format json \
+                  --output-dir "${{ env.TEST_DIR }}" \
+                  --wait 20
+              fi
+            else
+              # Full test run
+              echo "Running all tests in org"
               sf apex run test \
                 --target-org ${{ env.ORG_ALIAS }} \
                 --test-level RunAllTestsInOrg \
-                --code-coverage \
-                --detailed-coverage \
-                --result-format json \
-                --output-dir "${{ env.TEST_DIR }}" \
-                --wait 20
-            else
-              sf apex run test \
-                --target-org ${{ env.ORG_ALIAS }} \
-                --class-names "$TESTS_TO_RUN" \
                 --code-coverage \
                 --detailed-coverage \
                 --result-format json \
