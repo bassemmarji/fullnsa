@@ -9,11 +9,12 @@ on:
           - full
           - changed-files
           - specific-class
-        default: changed-files
+        default: specific-class
         required: true
       class_name:
         type: string
         description: Apex Class Name (required if test_scope is specific-class)
+        default: InvoiceProcessing
         required: false
       generate_ai_tests:
         type: boolean
@@ -342,41 +343,40 @@ jobs:
 
           sf project retrieve start --target-org ${{ env.ORG_ALIAS }} --manifest
           manifest/package.xml
+          
       - name: Generate AI Test Classes
         if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: >
           # Verify OPENAI_API_KEY is set
-
           if [ -z "$OPENAI_API_KEY" ]; then
             echo "Error: OPENAI_API_KEY is not set. Please add it to your repository secrets."
             exit 1
           fi
-
+          echo "$OPENAI_API_KEY is set..."
 
           # Verify Python and dependencies are installed
-
           if ! command -v python3 &> /dev/null; then
             echo "Error: Python 3 is not installed"
             exit 1
           fi
-
+          echo "Python 3 is installed..."
 
           if ! python3 -c "import openai" &> /dev/null; then
             echo "Error: OpenAI package is not installed"
             exit 1
           fi
-
+          echo "OpenAI package is imported..."
 
           # Process based on test scope
-
           if [ "${{ github.event.inputs.test_scope }}" = "specific-class" ];
           then
             if [ -z "${{ github.event.inputs.class_name }}" ]; then
               echo "Error: Class name is required when test_scope is specific-class"
               exit 1
             fi
+            echo "The Class Selected = ${{ github.event.inputs.class_name }}"
             
             # Check if class file exists
             CLASS_FILE="${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/${{ github.event.inputs.class_name }}.cls"
@@ -384,10 +384,12 @@ jobs:
               echo "Error: Class file not found: $CLASS_FILE"
               exit 1
             fi
+            echo "The Class = ${{ github.event.inputs.class_name }} was found"
             
             # Generate test for specific class
-            echo "Generating test for: $CLASS_FILE"
+            echo "Generating test class for: $CLASS_FILE"
             python3 scripts/ai_test_generator.py "$CLASS_FILE"
+            echo "A Test Class was generated for the Class = ${{ github.event.inputs.class_name }}.."
             
             # Verify test was generated
             TEST_FILE="${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/${{ github.event.inputs.class_name }}Test.cls"
@@ -396,6 +398,7 @@ jobs:
               exit 1
             fi
           fi
+          
       - name: Deploy Generated Tests
         if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
         run: >
