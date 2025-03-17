@@ -285,6 +285,22 @@ jobs:
             --alias ${{ env.ORG_ALIAS }} \
             --set-default \
             --sfdx-url-stdin
+            
+      - name: 'Create project with manifest, Copy package.xml, Navigate to the project folder, Download metadata using SFDX'
+        run: |
+         if test -d "./$METADATA_FOLDERNAME/force-app"; then
+           echo "./$METADATA_FOLDERNAME/force-app folder exists"
+         else
+           sf project generate --name $METADATA_FOLDERNAME --manifest
+         fi
+         
+         if test -f "./config/package.xml"; then
+           echo "./config/package.xml file exists"
+           cp ./config/package.xml ./$METADATA_FOLDERNAME/manifest
+         fi
+
+         cd "./$METADATA_FOLDERNAME"
+         sf project retrieve start --target-org ${{ env.ORG_ALIAS }} --manifest manifest/package.xml
 
       - name: Generate AI Test Classes
         if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
