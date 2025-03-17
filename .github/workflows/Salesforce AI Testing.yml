@@ -19,7 +19,7 @@ on:
       generate_ai_tests:
         type: boolean
         description: Generate AI-powered test classes
-        default: false
+        default: true
         required: false
 permissions:
   contents: read
