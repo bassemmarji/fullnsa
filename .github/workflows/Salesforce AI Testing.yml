@@ -349,6 +349,7 @@ jobs:
             echo "Error: OPENAI_API_KEY is not set. Please add it to your repository secrets."
             exit 1
           fi
+          
           echo "$OPENAI_API_KEY is set..."
 
           # Verify Python and dependencies are installed
@@ -357,12 +358,14 @@ jobs:
             echo "Error: Python 3 is not installed"
             exit 1
           fi
+          
           echo "Python 3 is installed..."
 
           if ! python3 -c "import openai" &> /dev/null; then
             echo "Error: OpenAI package is not installed"
             exit 1
           fi
+          
           echo "OpenAI package is imported..."
 
           # Process based on test scope
@@ -373,6 +376,7 @@ jobs:
               echo "Error: Class name is required when test_scope is specific-class"
               exit 1
             fi
+            
             echo "The Class Selected = ${{ github.event.inputs.class_name }}"
             
             # Check if class file exists
@@ -382,12 +386,15 @@ jobs:
               echo "Error: Class file not found: $CLASS_FILE"
               exit 1
             fi
+            
             echo "The Class = ${{ github.event.inputs.class_name }} was found"
             
             # Generate test for specific class
             
             echo "Generating test class for: $CLASS_FILE"
+            
             python3 ${{ env.METADATA_FOLDERNAME }}/ai_test_generator.py "$CLASS_FILE"
+            
             echo "A Test Class was generated for the Class = ${{ github.event.inputs.class_name }}.."
             
             # Verify test was generated
