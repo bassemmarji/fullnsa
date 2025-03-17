@@ -53,37 +53,22 @@ jobs:
 
           mkdir -p "${{ env.TEST_DIR }}"
 
-          mkdir -p "${{ env.METADATA_FOLDERNAME
-          }}/force-app/main/default/classes"
-
-          mkdir -p scripts
-
+          mkdir -p "${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes"
 
           # Verify directory structure
-
-          if [ ! -d "${{ env.METADATA_FOLDERNAME
-          }}/force-app/main/default/classes" ]; then
+          if [ ! -d "${{ env.METADATA_FOLDERNAME}}/force-app/main/default/classes" ]; then
             echo "Error: Classes directory not found at ${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes"
             exit 1
           fi
 
-
           # Create AI test generator script
-
-          cat > scripts/ai_test_generator.py << 'EOL'
-
+          cat > ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py << 'EOL'
           import os
-
           import json
-
           import openai
-
           from pathlib import Path
-
           import re
-
           import sys
-
 
           class ApexTestGenerator:
               def __init__(self, api_key):
@@ -293,7 +278,7 @@ jobs:
 
           # Make script executable
 
-          chmod +x scripts/ai_test_generator.py
+          chmod +x ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py
       - name: Install Dependencies
         run: >
           # Install Salesforce CLI
@@ -388,7 +373,7 @@ jobs:
             
             # Generate test for specific class
             echo "Generating test class for: $CLASS_FILE"
-            python3 scripts/ai_test_generator.py "$CLASS_FILE"
+            python3 ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py "$CLASS_FILE"
             echo "A Test Class was generated for the Class = ${{ github.event.inputs.class_name }}.."
             
             # Verify test was generated
