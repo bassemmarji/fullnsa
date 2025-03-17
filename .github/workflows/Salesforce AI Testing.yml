@@ -278,7 +278,7 @@ jobs:
 
           # Make script executable
 
-          chmod +x ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py
+          chmod 777 ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py
       - name: Install Dependencies
         run: >
           # Install Salesforce CLI
