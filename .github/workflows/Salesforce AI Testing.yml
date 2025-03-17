@@ -56,8 +56,8 @@ jobs:
           mkdir -p "${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes"
 
           # Verify directory structure
-          if [ ! -d "${{ env.METADATA_FOLDERNAME}}/force-app/main/default/classes" ]; then
-            echo "Error: Classes directory not found at ${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes"
+          if [ ! -d "${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes" ]; then
+            echo "Error: Classes directory not found at ${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes"
             exit 1
           fi
 
