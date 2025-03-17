@@ -65,13 +65,20 @@ jobs:
           # Create AI test generator script
           
           cat > ${{ env.METADATA_FOLDERNAME }}/ai_test_generator.py << 'EOL'
+          
           import os
+          
           import json
+          
           import openai
+          
           from pathlib import Path
+          
           import re
+          
           import sys
 
+          
           class ApexTestGenerator:
               def __init__(self, api_key):
                   if not api_key:
