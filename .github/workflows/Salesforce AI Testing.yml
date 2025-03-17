@@ -53,16 +53,16 @@ jobs:
 
           mkdir -p "${{ env.TEST_DIR }}"
 
-          mkdir -p "${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes"
+          mkdir -p "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes"
 
           # Verify directory structure
-          if [ ! -d "${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes" ]; then
-            echo "Error: Classes directory not found at ${{env.METADATA_FOLDERNAME}}/force-app/main/default/classes"
+          if [ ! -d "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" ]; then
+            echo "Error: Classes directory not found at ${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes"
             exit 1
           fi
 
           # Create AI test generator script
-          cat > ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py << 'EOL'
+          cat > ${{ env.METADATA_FOLDERNAME }}/ai_test_generator.py << 'EOL'
           import os
           import json
           import openai
@@ -278,7 +278,7 @@ jobs:
 
           # Make script executable
 
-          chmod 777 ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py
+          chmod 777 ${{ env.METADATA_FOLDERNAME }}/ai_test_generator.py
       - name: Install Dependencies
         run: >
           # Install Salesforce CLI
@@ -373,7 +373,7 @@ jobs:
             
             # Generate test for specific class
             echo "Generating test class for: $CLASS_FILE"
-            python3 ${{env.METADATA_FOLDERNAME}}/ai_test_generator.py "$CLASS_FILE"
+            python3 ${{ env.METADATA_FOLDERNAME }}/ai_test_generator.py "$CLASS_FILE"
             echo "A Test Class was generated for the Class = ${{ github.event.inputs.class_name }}.."
             
             # Verify test was generated
@@ -389,8 +389,7 @@ jobs:
         run: >
           # Check if any test classes exist
 
-          TEST_FILES=$(find "${{ env.METADATA_FOLDERNAME
-          }}/force-app/main/default/classes" -name "*Test.cls" || true)
+          TEST_FILES=$(find "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" -name "*Test.cls" || true)
 
           if [ -z "$TEST_FILES" ]; then
             echo "No test classes found to deploy"
@@ -607,8 +606,7 @@ jobs:
           path: >
             ${{ env.TEST_DIR }}
 
-            ${{ env.METADATA_FOLDERNAME
-            }}/force-app/main/default/classes/*Test.cls
+            ${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/*Test.cls
           retention-days: 14
           if-no-files-found: warn
           compression-level: 6
