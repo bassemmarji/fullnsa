@@ -36,7 +36,7 @@ env:
   ORG_ALIAS: test_org
   TEST_DIR: ai-tests
   NODE_VERSION: '20'
-  METADATA_DIR: force-app/main/default
+  METADATA_FOLDERNAME: orgMetadata
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -62,12 +62,12 @@ jobs:
         run: |
           # Create necessary directories
           mkdir -p "${{ env.TEST_DIR }}"
-          mkdir -p "${{ env.METADATA_DIR }}/classes"
+          mkdir -p "${{ env.METADATA_FOLDERNAME }}/classes"
           mkdir -p scripts
           
           # Verify directory structure
-          if [ ! -d "${{ env.METADATA_DIR }}/classes" ]; then
-            echo "Error: Classes directory not found at ${{ env.METADATA_DIR }}/classes"
+          if [ ! -d "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" ]; then
+            echo "Error: Classes directory not found at ${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes"
             exit 1
           fi
           
@@ -332,7 +332,7 @@ jobs:
             fi
             
             # Check if class file exists
-            CLASS_FILE="${{ env.METADATA_DIR }}/classes/${{ github.event.inputs.class_name }}.cls"
+            CLASS_FILE="${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/${{ github.event.inputs.class_name }}.cls"
             if [ ! -f "$CLASS_FILE" ]; then
               echo "Error: Class file not found: $CLASS_FILE"
               exit 1
@@ -343,7 +343,7 @@ jobs:
             python3 scripts/ai_test_generator.py "$CLASS_FILE"
             
             # Verify test was generated
-            TEST_FILE="${{ env.METADATA_DIR }}/classes/${{ github.event.inputs.class_name }}Test.cls"
+            TEST_FILE="${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/${{ github.event.inputs.class_name }}Test.cls"
             if [ ! -f "$TEST_FILE" ]; then
               echo "Error: Failed to generate test class at: $TEST_FILE"
               exit 1
@@ -355,7 +355,7 @@ jobs:
               CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E ".*\.cls$" | grep -v "Test\.cls$" || true)
             else
               # Get all Apex classes (excluding test classes)
-              CHANGED_FILES=$(find "${{ env.METADATA_DIR }}/classes" -name "*.cls" | grep -v "Test\.cls$" || true)
+              CHANGED_FILES=$(find "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" -name "*.cls" | grep -v "Test\.cls$" || true)
             fi
             
             # Generate tests for each class
@@ -395,7 +395,7 @@ jobs:
         if: ${{ github.event.inputs.generate_ai_tests == 'true' }}
         run: |
           # Check if any test classes exist
-          TEST_FILES=$(find "${{ env.METADATA_DIR }}/classes" -name "*Test.cls" || true)
+          TEST_FILES=$(find "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" -name "*Test.cls" || true)
           if [ -z "$TEST_FILES" ]; then
             echo "No test classes found to deploy"
             exit 0
@@ -403,7 +403,7 @@ jobs:
           
           echo "Deploying generated test classes..."
           sf project deploy start \
-            --source-dir "${{ env.METADATA_DIR }}/classes" \
+            --source-dir "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" \
             --target-org ${{ env.ORG_ALIAS }} \
             --test-level RunLocalTests
 
@@ -450,7 +450,7 @@ jobs:
             
             # Check if test class exists
             TEST_CLASS="${{ github.event.inputs.class_name }}Test"
-            TEST_FILE="${{ env.METADATA_DIR }}/classes/${TEST_CLASS}.cls"
+            TEST_FILE="${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/${TEST_CLASS}.cls"
             
             if [ ! -f "$TEST_FILE" ]; then
               echo "Error: Test class not found: $TEST_FILE"
@@ -464,7 +464,7 @@ jobs:
             # For full or changed-files scope
             if [ "${{ github.event.inputs.test_scope }}" = "changed-files" ]; then
               # Get changed Apex test classes
-              CHANGED_TESTS=$(find "${{ env.METADATA_DIR }}/classes" -name "*Test.cls" -exec basename {} .cls \; | tr '\n' ',' || true)
+              CHANGED_TESTS=$(find "${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes" -name "*Test.cls" -exec basename {} .cls \; | tr '\n' ',' || true)
               
               if [ -n "$CHANGED_TESTS" ]; then
                 echo "Found changed test classes: $CHANGED_TESTS"
@@ -589,7 +589,7 @@ jobs:
           name: ai-test-results
           path: |
             ${{ env.TEST_DIR }}
-            ${{ env.METADATA_DIR }}/classes/*Test.cls
+            ${{ env.METADATA_FOLDERNAME }}/force-app/main/default/classes/*Test.cls
           retention-days: 14
           if-no-files-found: warn
           compression-level: 6
