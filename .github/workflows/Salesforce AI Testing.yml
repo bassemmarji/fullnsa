@@ -185,7 +185,7 @@ jobs:
           """
                       
                       response = openai.ChatCompletion.create(
-                          model="gpt-4",
+                          model="gpt-3",
                           messages=[
                               {"role": "system", "content": "You are an expert Salesforce developer specializing in test data setup."},
                               {"role": "user", "content": prompt}
