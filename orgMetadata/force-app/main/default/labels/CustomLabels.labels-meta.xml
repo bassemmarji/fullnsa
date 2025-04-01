@@ -936,4 +936,12 @@
         <shortDescription>small disclaimer shown in the report pdf</shortDescription>
         <value>Many services require pre-certification or penalties may apply. Check your plan before scheduling your service.</value>
     </labels>
+    <labels>
+        <fullName>IPS_TroubleshootingTeam</fullName>
+        <categories>Breckpoint</categories>
+        <language>en_US</language>
+        <protected>true</protected>
+        <shortDescription>IPS_TroubleshootingTeam</shortDescription>
+        <value>bmarji@integratedpayorsolutions.com,bassemmarji@gmail.com</value>
+    </labels>
 </CustomLabels>

@@ -1,18 +1,175 @@
 CreatedDate,CreatedBy.Username,Action,Section,Display
-2025-02-18T16:26:13.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationComplete,Permission Set Group,Permission set group calculation completed : Enablement_User
-2025-02-18T16:26:11.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationStarted,Permission Set Group,Permission set group calculation started : Enablement_User
-2025-02-18T16:26:09.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationComplete,Permission Set Group,Permission set group calculation completed : Enablement_Admin
-2025-02-18T16:26:09.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationComplete,Permission Set Group,Permission set group calculation completed : Partner_Enablement_User
-2025-02-18T16:26:09.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationComplete,Permission Set Group,Permission set group calculation completed : Commerce_Shopper
-2025-02-18T16:26:07.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationStarted,Permission Set Group,Permission set group calculation started : Enablement_Admin
-2025-02-18T16:26:06.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationStarted,Permission Set Group,Permission set group calculation started : Partner_Enablement_User
-2025-02-18T16:26:06.000+0000,autoproc@00dqy00000drikxmax,PermissionSetGroupCalculationStarted,Permission Set Group,Permission set group calculation started : Commerce_Shopper
-2025-02-15T01:41:48.000+0000,autoproc@00dqy00000drikxmax,createdFlexiPage,Lightning Pages,Created Lightning Page: Policy Center App Utility Bar
-2025-02-15T01:41:29.000+0000,autoproc@00dqy00000drikxmax,standardApprovalsEnabledOffOn,,Organization setup action: standardApprovalsEnabledOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,multiColumnSortRlOffOn,,Organization setup action: multiColumnSortRlOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,multiColumnSortLvOffOn,,Organization setup action: multiColumnSortLvOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,crtSetupLightningUiPrefOffOn,,Organization setup action: crtSetupLightningUiPrefOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,vertNavThemedIconsEnabledOffOn,,Organization setup action: vertNavThemedIconsEnabledOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,useIntLinkPwdResetPrefOffOn,,Organization setup action: useIntLinkPwdResetPrefOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,deferRenderingWorkspacePageOffOn,,Organization setup action: deferRenderingWorkspacePageOffOn has changed.
-2025-02-15T01:41:27.000+0000,autoproc@00dqy00000drikxmax,lWCFileUploadPrefOffOn,,Organization setup action: lWCFileUploadPrefOffOn has changed.
+2025-03-28T19:30:50.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-28T19:30:46.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-28T19:29:26.000+0000,fullnsafullnsa@gmail.com,changedStaticResource,Static Resource,Changed Static Resource html2canvas
+2025-03-28T19:26:02.000+0000,fullnsafullnsa@gmail.com,sendEmailAccessControl,Email Administration,Changed Access to Send Email level from All email to System email only 
+2025-03-28T19:06:16.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-28T18:44:46.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-28T18:36:09.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-28T18:32:22.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-28T18:18:13.000+0000,fullnsafullnsa@gmail.com,sendEmailAccessControl,Email Administration,Changed Access to Send Email level from System email only to All email 
+2025-03-28T18:13:00.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-28T18:12:58.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-28T18:10:11.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-28T18:10:06.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-28T17:55:45.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-28T17:19:15.000+0000,fullnsafullnsa@gmail.com,changedApexClass,Apex Class,Changed IPS_CustomerServiceController Apex Class code
+2025-03-28T17:08:36.000+0000,fullnsafullnsa@gmail.com,createdApexClass,Apex Class,Created IPS_CustomerServiceController Apex Class code
+2025-03-28T16:44:25.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-28T16:42:56.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-28T15:36:06.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-27T19:57:16.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-27T19:18:24.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-27T19:15:34.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-27T19:13:46.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator_v1 Lightning Web Component
+2025-03-27T19:08:52.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T19:08:41.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T19:05:08.000+0000,fullnsafullnsa@gmail.com,createdLightningWebComponent,Lightning Components,Created errorCaseCreator_v1 Lightning Web Component
+2025-03-27T18:23:16.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T18:23:15.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T18:21:56.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T18:21:51.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T18:20:23.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-27T17:56:43.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-27T17:46:54.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T17:46:52.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T17:44:31.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T17:44:27.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-27T17:44:16.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed iPS_CustomerService Lightning Web Component
+2025-03-27T17:39:51.000+0000,fullnsafullnsa@gmail.com,createdLightningWebComponent,Lightning Components,Created iPS_CustomerService Lightning Web Component
+2025-03-26T20:21:19.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T20:16:27.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T20:13:28.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T20:05:28.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T20:00:54.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:55:29.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:54:01.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:45:50.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:45:34.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:42:14.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:39:29.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:36:38.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:26:17.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:22:37.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:14:39.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:09:44.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T19:02:59.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:53:38.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:52:07.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:42:38.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:41:40.000+0000,fullnsafullnsa@gmail.com,changedStaticResource,Static Resource,Changed Static Resource domToImage
+2025-03-26T18:41:22.000+0000,fullnsafullnsa@gmail.com,createdStaticResource,Static Resource,Created Static Resource domToImage
+2025-03-26T18:37:33.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:34:02.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:29:23.000+0000,fullnsafullnsa@gmail.com,changedStaticResource,Static Resource,Changed Static Resource htmlToImage
+2025-03-26T18:22:37.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:22:04.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T18:20:47.000+0000,fullnsafullnsa@gmail.com,createdStaticResource,Static Resource,Created Static Resource htmlToImage
+2025-03-26T17:46:21.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T17:43:00.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T17:38:53.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T17:29:53.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T17:17:47.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T16:44:16.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T16:09:50.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T16:00:53.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T15:50:35.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T15:49:49.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T15:34:31.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-26T15:34:08.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T19:34:00.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T19:11:12.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T19:03:28.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T18:58:46.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T18:54:27.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T18:52:22.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T18:49:54.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed captureScreenshot Lightning Web Component
+2025-03-25T18:44:29.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T18:44:24.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T18:43:10.000+0000,fullnsafullnsa@gmail.com,createdLightningWebComponent,Lightning Components,Created captureScreenshot Lightning Web Component
+2025-03-25T18:22:08.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T18:20:01.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T18:14:01.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T18:10:09.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T18:03:06.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T18:02:13.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T17:59:57.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:59:51.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:58:12.000+0000,fullnsafullnsa@gmail.com,deletedApexClass,Apex Class,Deleted FlowErrorHandlerController Apex Class code
+2025-03-25T17:57:59.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:57:57.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:54:27.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:54:21.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:53:15.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T17:52:53.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:52:52.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:34:24.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:34:22.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:31:23.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:31:18.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:28:20.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T17:27:52.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:27:47.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-25T17:07:47.000+0000,fullnsafullnsa@gmail.com,changedApexClass,Apex Class,Changed FlowErrorHandlerController Apex Class code
+2025-03-25T17:06:01.000+0000,fullnsafullnsa@gmail.com,createdApexClass,Apex Class,Created FlowErrorHandlerController Apex Class code
+2025-03-25T15:44:29.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T15:43:03.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T15:33:27.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T15:25:43.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T15:21:56.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T15:19:46.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T15:00:35.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:57:47.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:51:58.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:49:09.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:36:38.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:33:33.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,lockerServiceNextControlOn,,Organization setup action: lockerServiceNextControlOn has changed.
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,lockerServiceNextOff,,Organization setup action: lockerServiceNextOff has changed.
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,lockerServiceNextOnOff,,Organization setup action: lockerServiceNextOnOff has changed.
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,insertAuthSecurityLevel,Session Settings,Session Security Level for Multi-Factor Authentication was set to High Assurance
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,insertAuthSecurityLevel,Session Settings,Session Security Level for Passwordless Login was set to Standard
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,insertAuthSecurityLevel,Session Settings,Session Security Level for Lightning Login was set to Standard
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,insertAuthSecurityLevel,Session Settings,Session Security Level for Activation was set to Standard
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,insertAuthSecurityLevel,Session Settings,Session Security Level for Delegated Authentication was set to Standard
+2025-03-25T14:24:22.000+0000,fullnsafullnsa@gmail.com,insertAuthSecurityLevel,Session Settings,Session Security Level for Username Password was set to Standard
+2025-03-25T14:18:15.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:12:56.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:10:09.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T14:07:11.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T13:57:37.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-25T13:53:31.000+0000,fullnsafullnsa@gmail.com,changedStaticResource,Static Resource,Changed Static Resource html2canvas
+2025-03-24T20:34:18.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T20:32:40.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T20:30:54.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:38:02.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:33:05.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:24:29.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:22:20.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:17:29.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:11:25.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:07:08.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T19:01:36.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:59:35.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:58:14.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:56:18.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:51:29.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:48:28.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:28:27.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:25:13.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:21:49.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:14:31.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:11:31.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T18:02:17.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T17:54:32.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T17:49:21.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T17:39:24.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T17:27:58.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T17:23:04.000+0000,fullnsafullnsa@gmail.com,changedLightningWebComponent,Lightning Components,Changed errorCaseCreator Lightning Web Component
+2025-03-24T16:20:29.000+0000,fullnsafullnsa@gmail.com,createdStaticResource,Static Resource,Created Static Resource html2canvas
+2025-03-24T16:08:00.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-24T16:07:54.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-24T16:01:11.000+0000,fullnsafullnsa@gmail.com,deletedinteractiondefversion,Flows,"Deleted flow version #-1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-24T16:00:52.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefversion,Flows,"Created flow version #1 ""Test Fault Path"" for flow with Unique Name ""Test_Fault_Path"""
+2025-03-24T15:56:55.000+0000,fullnsafullnsa@gmail.com,createdLightningWebComponent,Lightning Components,Created errorCaseCreator Lightning Web Component
+2025-03-24T15:49:42.000+0000,fullnsafullnsa@gmail.com,createdinteractiondefinition,Flows,"Created flow with Name ""Test Fault Path"" and Unique Name ""Test_Fault_Path"""

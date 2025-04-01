@@ -1,0 +1,37 @@
+[
+  {
+    "Name": "Riane Stennard",
+    "IntPS__Code__c": "Voyatouch",
+    "IntPS__EOB_Description__c": "Flexidy",
+    "IntPS__Remark_Code__c": "Vagram",
+    "IntPS__Type__c": "IPS"
+  },
+  {
+    "Name": "Alfonso Skydall",
+    "IntPS__Code__c": "Viva",
+    "IntPS__EOB_Description__c": "Gembucket",
+    "IntPS__Remark_Code__c": "Lotlux",
+    "IntPS__Type__c": "IPS"
+  },
+  {
+    "Name": "Guntar Duferie",
+    "IntPS__Code__c": "Otcom",
+    "IntPS__EOB_Description__c": "Stronghold",
+    "IntPS__Remark_Code__c": "Sonsing",
+    "IntPS__Type__c": "User Claim Hold Code"
+  },
+  {
+    "Name": "Siobhan Sinnatt",
+    "IntPS__Code__c": "Flexidy",
+    "IntPS__EOB_Description__c": "Flexidy",
+    "IntPS__Remark_Code__c": "Sonsing",
+    "IntPS__Type__c": "IPS"
+  },
+  {
+    "Name": "Kendre Scotson",
+    "IntPS__Code__c": "Keylex",
+    "IntPS__EOB_Description__c": "Ronstring",
+    "IntPS__Remark_Code__c": "Bitchip",
+    "IntPS__Type__c": "Ineligible Claim Code"
+  }
+]
