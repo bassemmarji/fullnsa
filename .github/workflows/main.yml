@@ -2,8 +2,6 @@ name: Call DeepSeek API
 
 on:
   workflow_dispatch:  # Manually trigger the workflow
-  schedule:
-    - cron: '0 12 * * *'  # Runs at 12 PM UTC daily (optional)
 
 jobs:
   call-api:
