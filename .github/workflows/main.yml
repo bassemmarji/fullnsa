@@ -29,7 +29,7 @@ jobs:
           import os
 
           API_KEY = os.getenv("API_KEY")
-          API_URL = "https://api.deepseek.com/v1/chat"  # Hypothetical endpoint
+          API_URL = "https://api.deepseek.com"  # Hypothetical endpoint
 
           headers = {
               "Authorization": f"Bearer {API_KEY}",
