@@ -5,7 +5,7 @@ on:
 
 env:
   ORG_ALIAS: org_alias
-  REPORT_RECIPIENT: bassemmarji@gmail.com
+  REPORT_RECIPIENT: "bassemmarji@gmail.com"
   
 jobs:
   scan_org_flows:
