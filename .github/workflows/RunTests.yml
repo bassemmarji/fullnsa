@@ -76,14 +76,15 @@ jobs:
       - name: 'Email Tests'
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.example.com
+          server_address: smtp.gmail.com
           server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
+          username: "bassemmarji@gmail.com"
+          password: "Bm@543629"
           subject: "Apex Test Classes List"
           to: ${{ github.repository_owner }}
           from: "github-actions@example.com"
           body: |
             Attached is the generated list of Apex test classes in JSON format.
-          attachments: testlist.json
-          
+          attachments: |
+            testlist.json
+            scanResult/flow-scan.json          
