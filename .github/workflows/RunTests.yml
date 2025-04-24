@@ -54,8 +54,7 @@ jobs:
       - name: 'Generate Apex Test List'
         id: testlist
         run: |
-          sf apextests list --format sf > testlist.txt
-          echo "TESTS=$(cat testlist.txt)" >> GITHUB_ENV
+          cat testlist.txt
           
       - name: 'Email Tests'
         uses: dawidd6/action-send-mail@v3
