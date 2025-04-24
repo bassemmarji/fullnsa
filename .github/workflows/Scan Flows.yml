@@ -46,6 +46,6 @@ jobs:
           from: "github-actions@example.com"
           body: |
             Attached are the Flow scan results.
-            Please investigate.
+            Please check.
           attachments: |
             scanResult/flow-scan.txt
