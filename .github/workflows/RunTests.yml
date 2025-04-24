@@ -54,7 +54,6 @@ jobs:
       - name: 'Generate Apex Test List'
         id: testlist
         run: |
-        run: |
           sf apextests list --json > testlist.json
           echo "TESTS=$(cat testlist.json)" >> GITHUB_ENV
 
