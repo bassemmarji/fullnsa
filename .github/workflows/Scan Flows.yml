@@ -50,7 +50,7 @@ jobs:
           server_port: 587
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Org Flows Scan Report - ${{ job.status }}"
+          subject: "Org Flows Scan Report"
           to: ${{ env.REPORT_RECIPIENT }}
           from: "github-actions@example.com"
           body: |
