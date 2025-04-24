@@ -34,13 +34,12 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p scanResult
-          sf flow scan --targetusername $ORG_ALIAS > scanResult/flow-scan.txt || echo "Flows scan failed" > scanResult/flow-scan.txt
-          exit 0
+          sf flow scan --targetusername $ORG_ALIAS > scanResult/flow-scan.txt
 
       - name: 'Create Job Summary'
         if: always()
         run: |
-          echo "### Flow Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "### Flows Scan Results" >> $GITHUB_STEP_SUMMARY
           cat scanResult/flow-scan.txt >> $GITHUB_STEP_SUMMARY
 
       - name: 'Email Scan Report'
