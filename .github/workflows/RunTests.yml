@@ -48,6 +48,10 @@ jobs:
         run: |
           echo "Y" | sf plugins install apextestlist
 
+      - name: 'Install Flow Scanner Plugin'
+        run: |
+          echo "Y" | sf plugins install flow
+      
       - name: 'Authorize to the org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
@@ -64,6 +68,11 @@ jobs:
             exit 1
           fi
 
+      - name: 'Scan Flows in Org'
+        run: |
+          mkdir -p $SCAN_FOLDERNAME
+          sf flow scan --target-org $ORG_ALIAS --json > $SCAN_FOLDERNAME/flow-scan.json
+      
       - name: 'Email Tests'
         uses: dawidd6/action-send-mail@v3
         with:
