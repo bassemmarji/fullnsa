@@ -2,6 +2,8 @@ name: Scan Flows
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday at midnight
 
 env:
   ORG_ALIAS: org_alias
@@ -32,7 +34,14 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p scanResult
-          sf flow scan --targetusername $ORG_ALIAS > scanResult/flow-scan.txt
+          sf flow scan --targetusername $ORG_ALIAS > scanResult/flow-scan.txt || echo "Flows scan failed" > scanResult/flow-scan.txt
+          exit 0
+
+      - name: 'Create Job Summary'
+        if: always()
+        run: |
+          echo "### Flow Scan Results" >> $GITHUB_STEP_SUMMARY
+          cat scanResult/flow-scan.txt >> $GITHUB_STEP_SUMMARY
 
       - name: 'Email Scan Report'
         uses: dawidd6/action-send-mail@v3
@@ -41,11 +50,10 @@ jobs:
           server_port: 587
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Org Flows Scan Report"
+          subject: "Org Flows Scan Report - ${{ job.status }}"
           to: ${{ env.REPORT_RECIPIENT }}
           from: "github-actions@example.com"
           body: |
-            Attached are the Flow scan results.
-            Please check.
-          attachments: |
-            scanResult/flow-scan.txt
+            Flows scan completed with status: ${{ job.status }}
+            Attached are the scan results.
+          attachments: scanResult/flow-scan.txt
