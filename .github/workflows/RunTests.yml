@@ -73,4 +73,22 @@ jobs:
         run: |
           mkdir -p $SCAN_FOLDERNAME
           sf flow scan --targetusername $ORG_ALIAS > $SCAN_FOLDERNAME/flow-scan.txt
+
+
+      - name: 'Email Tests and Scan Report'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.example.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Apex Test List and Flow Scan Report"
+          to: ${{ github.repository_owner }}
+          from: "github-actions@example.com"
+          body: |
+              Attached are the Apex test classes and Flow scan results.
+          attachments: |
+              testlist.json
+              scanResult/flow-scan.json
+     
           
