@@ -1,0 +1,50 @@
+name: Scan Flows
+
+on:
+  workflow_dispatch:
+
+env:
+  ORG_ALIAS: org_alias
+
+jobs:
+  scan_org_flows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
+
+      - name: 'Install lightning-flow-scanner Plugin'
+        run: echo "Y" | sf plugins install lightning-flow-scanner
+
+      - name: 'Authorize to the Org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Run Flow Scanner'
+        continue-on-error: true
+        run: |
+          mkdir -p scanResult
+          sf flow scan --targetusername $ORG_ALIAS > scanResult/flow-scan.txt
+
+      - name: 'Email Scan Report'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Org Flows Scan Report"
+          to: "bassemmarji@gmail.com"
+          from: "github-actions@example.com"
+          body: |
+            Attached are the Flow scan results.
+            Please check.
+          attachments: |
+            scanResult/flow-scan.txt
