@@ -5,7 +5,8 @@ on:
 
 env:
   ORG_ALIAS: org_alias
-
+  REPORT_RECIPIENT: bassemmarji@gmail.com
+  
 jobs:
   scan_org_flows:
     runs-on: ubuntu-latest
@@ -41,10 +42,10 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Org Flows Scan Report"
-          to: "bassemmarji@gmail.com"
+          to: ${{ env.REPORT_RECIPIENT }}
           from: "github-actions@example.com"
           body: |
             Attached are the Flow scan results.
-            Please check.
+            Please investigate.
           attachments: |
             scanResult/flow-scan.txt
