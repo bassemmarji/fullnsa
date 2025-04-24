@@ -83,7 +83,7 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Apex Test List and Flow Scan Report"
-          to: ${{ github.repository_owner }}
+          to: "bassemmarji@gmail.com"
           from: "github-actions@example.com"
           body: |
               Attached are the Apex test classes and Flow scan results.
