@@ -1,1 +1,73 @@
 name: Run Apex Tests and Email Results
+
+# When the workflow will run
+on:
+ workflow_dispatch:
+   # Define parameters for the workflow to pass them when triggered.
+   # This makes the workflow more flexible and adaptable.
+   inputs:
+     # this will be refered to as ${{ github.event.inputs.commit_text }}
+     commit_message:
+       description: 'Commit message to use'    
+       required: true
+       default: 'Manual Backup Commit'
+
+env:
+  # Defining Global environment variables accessible to all jobs and steps. 
+  ORG_ALIAS: org_alias 
+  METADATA_FOLDERNAME: orgMetadata
+  DATA_FOLDERNAME: backupData
+  SCAN_FOLDERNAME: scanResult
+
+jobs:
+  run_apex_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Print Workflow Context Variables'
+        run: |
+          echo "This job was triggered by:"
+          echo " * Actor = ${{ github.actor }}" 
+          echo " * Event = ${{ github.event_name }}"  
+          echo " * Repository = ${{ github.repository }}"
+          echo " * Branch = ${{ github.ref }}"
+          echo " * OS = ${{runner.os}} server hosted by Github."
+    
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce Client'
+        run: |
+          npm install @salesforce/cli --global
+          
+      - name: 'Install apextestlist plugin'
+        run: |
+          echo "Y" | sf plugins install apextestlist
+
+      - name: 'Authorize to the org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Generate Apex Test List'
+        id: testlist
+        run: |
+          sf apextests list --format sf > testlist.txt
+          echo "TESTS=$(cat testlist.txt)" >> GITHUB_ENV
+          
+      - name: 'Email Tests'
+        uses: dawidd66/action-send-mail@v3
+        with:
+          server_address: smtp.example.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "APEX Tests"
+          to: ${{ github.repository_owner }}
+          from: ${{ github-actions@example.com }}
+          body: |
+            Please find attached the Apex tests.
+          attachments: testlist.txt  
+          
