@@ -58,7 +58,7 @@ jobs:
           echo "TESTS=$(cat testlist.txt)" >> GITHUB_ENV
           
       - name: 'Email Tests'
-        uses: dawidd66/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.example.com
           server_port: 587
