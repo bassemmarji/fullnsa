@@ -97,10 +97,6 @@
         <type>CustomApplication</type>
     </appMenuItems>
     <appMenuItems>
-        <name>standard__ExpressionSetConsole</name>
-        <type>CustomApplication</type>
-    </appMenuItems>
-    <appMenuItems>
         <name>NSA Price Comparison Portal</name>
         <type>Network</type>
     </appMenuItems>

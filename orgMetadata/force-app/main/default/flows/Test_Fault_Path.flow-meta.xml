@@ -13,7 +13,7 @@
             </value>
         </assignmentItems>
         <connector>
-            <targetReference>Create_Contact</targetReference>
+            <targetReference>sc_Download_Report</targetReference>
         </connector>
     </assignments>
     <constants>
@@ -48,22 +48,48 @@
         <name>Create_Contact</name>
         <label>Create Contact Rec</label>
         <locationX>176</locationX>
-        <locationY>242</locationY>
+        <locationY>350</locationY>
         <faultConnector>
             <targetReference>sc_Error_Panel</targetReference>
         </faultConnector>
         <inputReference>contactRec</inputReference>
     </recordCreates>
     <screens>
+        <name>sc_Download_Report</name>
+        <label>sc_Download_Report</label>
+        <locationX>176</locationX>
+        <locationY>242</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <targetReference>Create_Contact</targetReference>
+        </connector>
+        <fields>
+            <name>ips_ReportDonwnloader</name>
+            <extensionName>c:reportDownloader</extensionName>
+            <fieldType>ComponentInstance</fieldType>
+            <inputParameters>
+                <name>reportId</name>
+                <value>
+                    <stringValue>00OQy00000DtTZ3MAN</stringValue>
+                </value>
+            </inputParameters>
+            <isRequired>true</isRequired>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
         <name>sc_Error_Panel</name>
         <label>sc_Error_Panel</label>
         <locationX>440</locationX>
-        <locationY>350</locationY>
+        <locationY>458</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <fields>
-            <name>err_Case_Creator_v1</name>
+            <name>errCaseCreator</name>
             <extensionName>c:errorCaseCreator_v1</extensionName>
             <fieldType>ComponentInstance</fieldType>
             <inputParameters>
@@ -84,7 +110,7 @@
         <showHeader>false</showHeader>
     </screens>
     <startElementReference>Assign_Contact_Record</startElementReference>
-    <status>Draft</status>
+    <status>Active</status>
     <variables>
         <name>contactRec</name>
         <dataType>SObject</dataType>

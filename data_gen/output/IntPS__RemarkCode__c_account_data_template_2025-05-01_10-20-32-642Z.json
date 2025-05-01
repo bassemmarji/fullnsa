@@ -1,0 +1,37 @@
+[
+  {
+    "Name": "Add a touch of boho flair with this fringed suede skirt  a stylish and trendy choice.",
+    "IntPS__Code__c": "JKLM1234",
+    "IntPS__EOB_Description__c": "Transcription for training materials",
+    "IntPS__Remark_Code__c": "HIJK9012",
+    "IntPS__Type__c": "Ineligible Claim Code"
+  },
+  {
+    "Name": "Stay warm and stylish in this faux fur trim parka  a cozy and chic outerwear option.",
+    "IntPS__Code__c": "ZABC9012",
+    "IntPS__EOB_Description__c": "Transcription for accounting departments",
+    "IntPS__Remark_Code__c": "BCDE5678",
+    "IntPS__Type__c": "Ineligible Claim Code"
+  },
+  {
+    "Name": "Step out in style with these faux snakeskin booties that add a trendy edge to your look.",
+    "IntPS__Code__c": "BCDE5678",
+    "IntPS__EOB_Description__c": "Transcription for accessibility purposes",
+    "IntPS__Remark_Code__c": "FGHI1234",
+    "IntPS__Type__c": "IPS"
+  },
+  {
+    "Name": "Stay cozy and chic in this cable knit sweater dress  a stylish and comfortable choice for the season.",
+    "IntPS__Code__c": "TUVW7890",
+    "IntPS__EOB_Description__c": "Transcription for healthcare providers",
+    "IntPS__Remark_Code__c": "DEFG3456",
+    "IntPS__Type__c": "User Claim Hold Code"
+  },
+  {
+    "Name": "Accessorize your look with this embellished clutch that adds a touch of glam.",
+    "IntPS__Code__c": "PQRS9012",
+    "IntPS__EOB_Description__c": "Transcribed text matching the spoken words",
+    "IntPS__Remark_Code__c": "RSTU9012",
+    "IntPS__Type__c": "NSA"
+  }
+]

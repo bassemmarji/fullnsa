@@ -1,8 +1,8 @@
 public class IPS_CustomerServiceController {
 	@AuraEnabled
-    public static void sendEmail(String emailSubject, String emailBody) {
+    public static void sendEmail(String emailSubject, String emailBody, String emailAddresses) {
         
-        String emailAddresses = System.Label.IPS_TroubleshootingTeam;
+        //String emailAddresses = System.Label.IPS_TroubleshootingTeam;
         List<String> toAddresses = new List<String>();
         
         // Split and trim collected email addresses
