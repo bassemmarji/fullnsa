@@ -34,4 +34,5 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p scanResult
-          sfdx flowdoc:generate --all -u $ORG_ALIAS -o scanResult
+          sf help flowdoc
+          sf flowdoc:generate --all -u $ORG_ALIAS -o scanResult
