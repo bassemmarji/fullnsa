@@ -35,4 +35,4 @@ jobs:
         run: |
           mkdir -p scanResult
           sf help flowdoc
-          sf flowdoc:pdf:generate --all -u $ORG_ALIAS -o scanResult
+          sf flowdoc pdf generate --all -u $ORG_ALIAS -o scanResult
