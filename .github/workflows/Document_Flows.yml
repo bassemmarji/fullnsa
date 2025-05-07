@@ -24,7 +24,7 @@ jobs:
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
 
-      - name: 'Install lightning-flow-scanner Plugin'
+      - name: 'Install flowdoc Plugin'
         run: echo "Y" | sf plugins:install sfdx-flowdoc-plugin
 
       - name: 'Authorize to the Org'
@@ -33,6 +33,13 @@ jobs:
       - name: 'Run Flow Scanner'
         continue-on-error: true
         run: |
-          mkdir -p scanResult
+          mkdir -p flow-documents
+          cd $GITHUB_WORKSPACE
           sf help flowdoc
-          sf flowdoc pdf generate --all -u $ORG_ALIAS -o scanResult
+          sf flowdoc pdf generate --all -u $ORG_ALIAS -o flow-documents
+      
+      - name: 'Upload Flow Documents'
+        uses: actions/upload-artifact@v3
+        with:
+          name: flow-documents
+          path: flow-documents/
