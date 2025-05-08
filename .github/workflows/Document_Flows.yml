@@ -33,14 +33,22 @@ jobs:
       - name: 'Authorize to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
+      - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
+        run: |
+          sfdx force:project:create --name "org-metadata" --manifest
+          cd "./org-metadata"
+          sfdx force:source:retrieve --target-org $ORG_ALIAS --manifest manifest/package.xml
+
       - name: 'Run Flow Documenter'
         run: |
           # Create directories
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
-          cd $GITHUB_WORKSPACE
           
           # Ensure we're authenticated
           sf org list
+
+          # Navigate to SFDX project
+          cd $GITHUB_WORKSPACE/org-metadata
 
           # Run query and handle errors
           QUERY_RESULT=$(sf data query --query "SELECT ApiName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
@@ -62,6 +70,7 @@ jobs:
           # Generate PDFs
           while read flow; do
                 echo "Generating PDF for: $flow"
+                cd $GITHUB_WORKSPACE/org-metadata
                 sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments || echo "Failed to generate $flow"
           done < top_flows.txt
 
