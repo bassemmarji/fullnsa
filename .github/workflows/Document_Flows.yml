@@ -69,7 +69,7 @@ jobs:
 
           cd $GITHUB_WORKSPACE/org-metadata
           #sf flowdoc pdf generate "Assign_tasks_to_Queue" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
-          sf flowdoc pdf generate "Assign_tasks_to_Queue.flow-meta.xml" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
+          sf flowdoc pdf generate Assign_tasks_to_Queue -o $GITHUB_WORKSPACE/flowDocuments
 
           # Generate PDFs
           #while read flow; do
