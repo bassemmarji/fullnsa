@@ -67,12 +67,12 @@ jobs:
              exit 1
           fi
 
-          cd $GITHUB_WORKSPACE/org-metadata
+          cd $GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows
           echo "Current directory: $(pwd)"
           ls -la $GITHUB_WORKSPACE/org-metadata
 
           # Check list of flows available locally:
-          find $GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows -name "*.flow-meta.xml" | sed 's/.*\///; s/\..*/ /'
+          #find $GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows -name "*.flow-meta.xml" | sed 's/.*\///; s/\..*/ /'
 
           #sf flowdoc pdf generate "Assign_tasks_to_Queue" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
           #sf flowdoc pdf generate Assign_tasks_to_Queue -o $GITHUB_WORKSPACE/flowDocuments
