@@ -62,6 +62,6 @@ jobs:
           # Generate PDFs
           while read flow; do
                 echo "Generating PDF for: $flow"
-                sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments || echo "Failed to generate $flow"
+                sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments || echo "Failed to generate $flow"
           done < top_flows.txt
 
