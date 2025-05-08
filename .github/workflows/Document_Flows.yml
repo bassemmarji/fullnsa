@@ -68,6 +68,9 @@ jobs:
           fi
 
           cd $GITHUB_WORKSPACE/org-metadata
+          echo "Current directory: $(pwd)"
+          ls -la $GITHUB_WORKSPACE/org-metadata
+
           # Check list of flows available locally:
           find force-app/main/default/flows -name "*.flow-meta.xml" | sed 's/.*\///; s/\..*/ /'
 
