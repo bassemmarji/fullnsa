@@ -47,19 +47,19 @@ jobs:
 
           # Modify package.xml to include Flows
           cat > manifest/package.xml <<EOF
-                <?xml version="1.0" encoding="UTF-8"?>
-                <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-                  <types>
-                      <members>*</members>
-                      <name>Flow</name>
-                  </types>
-                  <version>59.0</version>
-                </Package>
-              EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+    <members>*</members>
+    <name>Flow</name>
+  </types>
+  <version>59.0</version>
+</Package>
+EOF
 
           # Retrieve metadata (now including flows)
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
-
+          
       - name: 'List Retrieved Flows'
         run: |
           cd $GITHUB_WORKSPACE/org-metadata
