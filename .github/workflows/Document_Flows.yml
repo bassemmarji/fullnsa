@@ -35,9 +35,9 @@ jobs:
 
       - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
         run: |
-          sfdx force:project:create --name "org-metadata" --manifest
+          sf project generate --name "org-metadata"  --manifest
           cd "./org-metadata"
-          sfdx force:source:retrieve --target-org $ORG_ALIAS --manifest manifest/package.xml
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
       - name: 'Run Flow Documenter'
         run: |
