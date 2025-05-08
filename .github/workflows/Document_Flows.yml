@@ -38,9 +38,12 @@ jobs:
           # Create directories
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
           cd $GITHUB_WORKSPACE
+          
+          # Ensure we're authenticated
+          sf org list
 
           # Run query and handle errors
-          QUERY_RESULT=$(sf data query --query "SELECT DeveloperName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
+          QUERY_RESULT=$(sf data query --query "SELECT ApiName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
     
           # Debug: Print raw query result
           echo "Query Result: $QUERY_RESULT"
