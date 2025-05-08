@@ -27,13 +27,15 @@ jobs:
       - name: 'Install flowdoc Plugin'
         run: echo "Y" | sf plugins:install sfdx-flowdoc-plugin
 
+      - name: 'Run Flow Documenter'
+        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
+
       - name: 'Authorize to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
       - name: 'Run Flow Documenter'
         continue-on-error: true
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
           mkdir -p flow-documents
           cd $GITHUB_WORKSPACE
           # Retrieve top 10 most recent flows
