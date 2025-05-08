@@ -27,7 +27,7 @@ jobs:
       - name: 'Install flowdoc Plugin'
         run: echo "Y" | sf plugins:install sfdx-flowdoc-plugin
 
-      - name: 'Run Flow Documenter'
+      - name: 'Install jq'
         run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
 
       - name: 'Authorize to the Org'
@@ -36,12 +36,13 @@ jobs:
       - name: 'Run Flow Documenter'
         continue-on-error: true
         run: |
-          mkdir -p flow-documents
+          mkdir -p flowDocuments
           cd $GITHUB_WORKSPACE
           # Retrieve top 10 most recent flows
           QUERY_RESULT=$(sf data query --query "SELECT DeveloperName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
           echo "$QUERY_RESULT" | jq -r '.result.records[].DeveloperName' > top_flows.txt
           # Generate documentation for each flow
           while read flow; do
-            sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o flow-documents
+            echo "$flow"
+            sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o flowDocuments
           done < top_flows.txt      
