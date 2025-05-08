@@ -68,16 +68,16 @@ jobs:
           fi
 
           cd $GITHUB_WORKSPACE/org-metadata
-          sf flowdoc pdf generate "Assign_tasks_to_Queue" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
+          #sf flowdoc pdf generate "Assign_tasks_to_Queue" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
           sf flowdoc pdf generate "Assign_tasks_to_Queue.flow-meta.xml" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
 
           # Generate PDFs
-          while read flow; do
-                echo "Generating PDF for: $flow"
-                cd $GITHUB_WORKSPACE/org-metadata
-                sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments && \
-                   echo "✅ Successfully generated PDF for $flow"
-          done < top_flows.txt
+          #while read flow; do
+          #      echo "Generating PDF for: $flow"
+          #      cd $GITHUB_WORKSPACE/org-metadata
+          #      sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments && \
+          #         echo "✅ Successfully generated PDF for $flow"
+          #done < top_flows.txt
           
       - name: 'List Generated Files'
         run: |
