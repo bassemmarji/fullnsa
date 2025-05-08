@@ -33,8 +33,7 @@ jobs:
       - name: 'Authorize to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
-      - name: 'Run Flow Scanner'
-        continue-on-error: true
+      - name: 'Run Flow Documenter'
         run: |
           # Install dependencies
           echo "Y" | sudo apt-get update && sudo apt-get install -y jq
@@ -63,5 +62,5 @@ jobs:
           # Generate PDFs
           while read flow; do
             echo "Generating PDF for: $flow"
-            sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments || echo "Failed to generate $flow"
+            # sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments || echo "Failed to generate $flow"
           done < top_flows.txt
