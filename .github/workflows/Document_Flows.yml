@@ -27,22 +27,41 @@ jobs:
       - name: 'Install flowdoc Plugin'
         run: echo "Y" | sf plugins:install sfdx-flowdoc-plugin
 
-      - name: 'Install jq'
-        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
+#      - name: 'Install jq'
+#        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
 
       - name: 'Authorize to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
-      - name: 'Run Flow Documenter'
+      - name: 'Run Flow Scanner'
         continue-on-error: true
         run: |
-          mkdir -p flowDocuments
+          # Install dependencies
+          echo "Y" | sudo apt-get update && sudo apt-get install -y jq
+
+          # Create directories
+          mkdir -p $GITHUB_WORKSPACE/flowDocuments
           cd $GITHUB_WORKSPACE
-          # Retrieve top 10 most recent flows
+
+          # Run query and handle errors
           QUERY_RESULT=$(sf data query --query "SELECT DeveloperName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
-          echo "$QUERY_RESULT" | jq -r '.result.records[].DeveloperName' > top_flows.txt
-          # Generate documentation for each flow
+    
+          # Debug: Print raw query result
+          echo "Query Result: $QUERY_RESULT"
+
+          # Extract flow names or fail
+          if echo "$QUERY_RESULT" | jq -e '.result' > /dev/null; then
+             echo "$QUERY_RESULT" | jq -r '.result.records[].DeveloperName' > top_flows.txt
+             echo "Flows to document:"
+             cat top_flows.txt
+          else
+             echo "Error in query:"
+             echo "$QUERY_RESULT" | jq '.message'
+             exit 1
+          fi
+
+          # Generate PDFs
           while read flow; do
-            echo "$flow"
-            sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o flowDocuments
-          done < top_flows.txt      
+            echo "Generating PDF for: $flow"
+            sf flowdoc pdf generate -n "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments || echo "Failed to generate $flow"
+          done < top_flows.txt
