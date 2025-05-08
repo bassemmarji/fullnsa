@@ -69,8 +69,6 @@ jobs:
 
           #cd "./org-metadata/force-app/main/default/flows"
           echo "Current directory: $(pwd)"
-          ls -la "./org-metadata"
-          ls -la "./org-metadata/force-app/main/default"
           ls -la "$GITHUB_WORKSPACE/org-metadata"
           ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default"
 
