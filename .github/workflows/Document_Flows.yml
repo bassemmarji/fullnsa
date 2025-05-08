@@ -33,12 +33,39 @@ jobs:
       - name: 'Authorize to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
+      #- name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
+      #  run: |
+      #    sf project generate --name "org-metadata"  --manifest
+      #    cd "./org-metadata"
+      #    sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
       - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
         run: |
-          sf project generate --name "org-metadata"  --manifest
+          # Generate project and manifest
+          sf project generate --name "org-metadata" --manifest
           cd "./org-metadata"
+
+          # Modify package.xml to include Flows
+          cat > manifest/package.xml <<EOF
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+                  <types>
+                      <members>*</members>
+                      <name>Flow</name>
+                  </types>
+                  <version>59.0</version>
+                </Package>
+              EOF
+
+          # Retrieve metadata (now including flows)
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
+      - name: 'List Retrieved Flows'
+        run: |
+          cd $GITHUB_WORKSPACE/org-metadata
+          echo "📄 Listing retrieved flows:"
+          find force-app/main/default/flows -name "*.flow-meta.xml" | sed 's/.*\///; s/\..*/ /'
+          
       - name: 'Run Flow Documenter'
         run: |
           # Create directories
