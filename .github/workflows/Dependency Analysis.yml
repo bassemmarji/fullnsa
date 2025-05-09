@@ -42,11 +42,14 @@ jobs:
       - name: Generate Dependency Report
         run: |
           mkdir -p reports
-          sf sfpowerkit:org:dependency:list \
-            -u $ORG_ALIAS \
-            --json \
-            > reports/dependencies.json || echo "No dependencies found"
-
+          # sf sfpowerkit:org:dependency:list \
+          #  -u $ORG_ALIAS \
+          #  --json \
+          #  > reports/dependencies.json || echo "No dependencies found"
+          sf sfpowerkit:org:orgcoverage \
+             -u $ORG_ALIAS \
+             --json \
+             > reports/dependencies.json || echo "No dependencies found"
       - name: 'List Generated Files'
         run: |
           echo "📄 Listing files in reports:"
