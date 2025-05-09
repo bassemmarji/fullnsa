@@ -2,8 +2,6 @@ name: Salesforce Dependency Analysis with sfpowerkit
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * 1'  # Weekly on Monday at midnight
 env:
   ORG_ALIAS: org_alias
   REPORT_RECIPIENT: "bassemmarji@gmail.com"
