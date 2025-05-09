@@ -54,7 +54,7 @@ jobs:
       - name: List Local LWC Components (from File System)
         run: |
           echo "Local LWCs:"
-          ls -d force-app/main/default/lwc/*/ | sed 's#/$##' | xargs -n1 basename
+          ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc"
           
       - name: Run LWC Tests
         run: sf force:lightning:lwc:test:run --coverage --json
