@@ -33,6 +33,9 @@ jobs:
       - name: 'Authorize to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
+      - name: 'Validate Authorized Org'
+        run: sf org list
+
       #- name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
       #  run: |
       #    sf project generate --name "org-metadata"  --manifest
@@ -64,9 +67,6 @@ jobs:
         run: |
           # Create directories
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
-          
-          # Ensure we're authenticated
-          sf org list
 
           # Navigate to SFDX project
           cd $GITHUB_WORKSPACE/org-metadata
@@ -91,16 +91,15 @@ jobs:
           cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
           echo "Current directory: $(pwd)"
           
-          #sf flowdoc pdf generate "Assign_tasks_to_Queue" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments
-          sf flowdoc pdf generate Assign_tasks_to_Queue -o $GITHUB_WORKSPACE/flowDocuments
+          sf flowdoc pdf generate NSA_Deactivate_Plan -o $GITHUB_WORKSPACE/flowDocuments
 
           # Generate PDFs
-          while read flow; do
-                echo "Generating PDF for: $flow"
-                cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
-                sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments && \
-                   echo "✅ Successfully generated PDF for $flow"
-          done < top_flows.txt
+          #while read flow; do
+          #      echo "Generating PDF for: $flow"
+          #      cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
+          #      sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments && \
+          #         echo "✅ Successfully generated PDF for $flow"
+          #done < top_flows.txt
           
       - name: 'List Generated Files'
         run: |
@@ -111,7 +110,7 @@ jobs:
       # Extract the git author email and store it in the global variable owner_email
       - name: 'Save repository owner email'
         run: |
-         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+          echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
 
       # Create a new git repository
       # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
@@ -121,11 +120,11 @@ jobs:
       - name: 'Stage files and check for modified files'
         id: git-check
         run: |
-         git init
-         git config user.email "${{ env.owner_email }}"
-         git config user.name "${{ github.repository_owner }}"
-         git add .
-         echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+          git init
+          git config user.email "${{ env.owner_email }}"
+          git config user.name "${{ github.repository_owner }}"
+          git add .
+          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
          
       # If there are uncommitted changes.
       #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
@@ -133,5 +132,5 @@ jobs:
       - name: 'Commit and push if there are modified files'
         if: steps.git-check.outputs.modified == 'true'
         run: |
-         git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
-         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT          
+          git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
+          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT          
