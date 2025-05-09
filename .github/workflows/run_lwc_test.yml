@@ -30,6 +30,21 @@ jobs:
       - name: 'Validate Org Authentication'
         run: sf org list
 
+      - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
+        run: |
+          # Generate project and manifest
+          sf project generate --name "org-metadata" --manifest
+          
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./org-metadata/manifest
+          fi
+          
+          cd "./org-metadata"
+          
+          # Retrieve metadata (now including flows)
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
       - name: Run LWC Tests
         run: sf force:lightning:lwc:test:run --coverage --json
         
