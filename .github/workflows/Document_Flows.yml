@@ -46,7 +46,7 @@ jobs:
           
           if test -f "./config/package.xml"; then
              echo "./config/package.xml file exists"
-             cp ./config/package.xml ./$METADATA_FOLDERNAME/manifest
+             cp ./config/package.xml ./org-metadata/manifest
           fi
           
           cd "./org-metadata"
