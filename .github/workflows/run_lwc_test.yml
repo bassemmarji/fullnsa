@@ -60,7 +60,7 @@ jobs:
           echo "Local LWCs:"
           ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc"
           echo "Local Project:"
-          ls sfdx-project.json  # Should exist
+          ls -la "$GITHUB_WORKSPACE/org-metadata"  # Should exist
 
       - name: Run LWC Tests
         run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc
