@@ -8,7 +8,7 @@ on:
 env:
   ORG_ALIAS: org_alias
   REPORT_RECIPIENT: "bassemmarji@gmail.com"
-
+  
 jobs:
   document_org_flows:
     runs-on: ubuntu-latest
@@ -21,85 +21,131 @@ jobs:
         with:
           node-version: 20
 
-      - name: 'Install sfdx CLI'
-        run: npm install sfdx-cli --global
+      - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
 
       - name: 'Install flowdoc Plugin'
-        run: echo "Y" | sfdx plugins:install sfdx-flowdoc-plugin
+        run: echo "Y" | sf plugins:install sfdx-flowdoc-plugin
 
       - name: 'Install jq'
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
 
       - name: 'Authorize to the Org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sfdx auth:sfdxurl:store --alias $ORG_ALIAS --setdefault --noprompt
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
       - name: 'Validate Authorized Org'
-        run: sfdx force:org:list
+        run: sf org list
 
-      - name: 'Create project with manifest'
+      #- name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
+      #  run: |
+      #    sf project generate --name "org-metadata"  --manifest
+      #    cd "./org-metadata"
+      #    sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
         run: |
-          mkdir -p org-metadata
-          cd org-metadata
-          cat > sfdx-project.json <<EOF
-{
-  "packageDirectories": [
-    {
-      "path": "force-app",
-      "default": true
-    }
-  ],
-  "namespace": "",
-  "sourceApiVersion": "60.0"
-}
-EOF
-
-          mkdir -p config
-          cat > config/package.xml <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<Package xmlns="http://soap.sforce.com/2006/04/metadata">
-  <types>
-    <members>*</members>
-    <name>Flow</name>
-  </types>
-  <version>60.0</version>
-</Package>
-EOF
-
-      - name: 'Retrieve Metadata (including flows)'
-        run: |
-          cd org-metadata
-          sfdx force:source:retrieve -x config/package.xml -u $ORG_ALIAS
-
+          # Generate project and manifest
+          sf project generate --name "org-metadata" --manifest
+          
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./org-metadata/manifest
+          fi
+          
+          cd "./org-metadata"
+          
+          # Retrieve metadata (now including flows)
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+          
       - name: 'List Retrieved Flows'
         run: |
+          cd $GITHUB_WORKSPACE/org-metadata
           echo "📄 Listing retrieved flows:"
-          find org-metadata/force-app/main/default/flows -name "*.flow-meta.xml"
+          find force-app/main/default/flows -name "*.flow-meta.xml" | sed 's/.*\///; s/\..*/ /'
 
-      - name: 'Generate Flow Documents'
+      - name: 'Run Flow Documenter'
         run: |
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
-          cd org-metadata
+          FLOW_PATH="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows/NSA_Deactivate_Plan.flow-meta.xml"
+          cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
+          sf flowdoc pdf generate --path "$FLOW_PATH" -o "$GITHUB_WORKSPACE/flowDocuments"
+          
+          #if [ -f "$FLOW_PATH" ]; then
+          #   echo "✅ Flow file found at: $FLOW_PATH"
+          #   sf flowdoc pdf generate --path "$FLOW_PATH" -o "$GITHUB_WORKSPACE/flowDocuments"
+          #else
+          #   echo "❌ Flow file NOT found at: $FLOW_PATH"
+          #   exit 1
+          #fi    
+          
+      #- name: 'Run Flow Documenter'
+      #  run: |
+      #    # Create directories
+      #    mkdir -p $GITHUB_WORKSPACE/flowDocuments
 
-          # Generate diagram for one specific flow
-          FLOW_PATH="force-app/main/default/flows/NSA_Deactivate_Plan.flow-meta.xml"
+          # Navigate to SFDX project
+      #    cd $GITHUB_WORKSPACE/org-metadata
 
-          if [ -f "$FLOW_PATH" ]; then
-            echo "✅ Generating diagram for flow at: $FLOW_PATH"
-            sfdx flow:diagram --sourcefile "$FLOW_PATH" --outputdir "$GITHUB_WORKSPACE/flowDocuments"
-          else
-            echo "❌ Flow file NOT found at: $FLOW_PATH"
-            exit 1
-          fi
+          # Run query and handle errors
+      #    QUERY_RESULT=$(sf data query --query "SELECT ApiName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
+    
+          # Debug: Print raw query result
+      #    #echo "Query Result: $QUERY_RESULT"
 
+          # Extract flow names or fail
+      #    if echo "$QUERY_RESULT" | jq -e '.result' > /dev/null; then
+      #       echo "$QUERY_RESULT" | jq -r '.result.records[].ApiName' > top_flows.txt
+      #       echo "Flows to document:"
+      #       cat top_flows.txt
+      #    else
+      #       echo "Error in query:"
+      #       echo "$QUERY_RESULT" | jq '.message'
+      #       exit 1
+      #    fi
+
+      #    cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
+      #    echo "Current directory: $(pwd)"
+          
+      #    sf flowdoc pdf generate NSA_Deactivate_Plan -o $GITHUB_WORKSPACE/flowDocuments
+
+          # Generate PDFs
+          #while read flow; do
+          #      echo "Generating PDF for: $flow"
+          #      cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
+          #      sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments && \
+          #         echo "✅ Successfully generated PDF for $flow"
+          #done < top_flows.txt
+          
       - name: 'List Generated Files'
         run: |
-          echo "📄 Listing generated flow documents:"
+          echo "📄 Listing files in flowDocuments:"
           ls -la $GITHUB_WORKSPACE/flowDocuments
 
-      # Optional: Upload results as artifact
-      - name: 'Upload Flow Documents'
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: flow-documents
-          path: $GITHUB_WORKSPACE/flowDocuments/
+
+      # Extract the git author email and store it in the global variable owner_email
+      - name: 'Save repository owner email'
+        run: |
+          echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+
+      # Create a new git repository
+      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
+      # Change the name you associate with your Git commits.
+      # Add the entire directory to your commit recursively.
+      # Determine if there are uncommitted changes in the GIT Tree
+      - name: 'Stage files and check for modified files'
+        id: git-check
+        run: |
+          git init
+          git config user.email "${{ env.owner_email }}"
+          git config user.name "${{ github.repository_owner }}"
+          git add .
+          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+         
+      # If there are uncommitted changes.
+      #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
+      # git push sync the local repository with its associated remote repository and updates it.
+      - name: 'Commit and push if there are modified files'
+        if: steps.git-check.outputs.modified == 'true'
+        run: |
+          git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
+          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT          
