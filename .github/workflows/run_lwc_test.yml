@@ -24,6 +24,10 @@ jobs:
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
         
+
+      - name: 'Install jest'
+        run: echo "Y" | npm install --save-dev @salesforce/sfdx-lwc-jest jest
+
       - name: 'Install jq'
         run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
 
@@ -55,7 +59,10 @@ jobs:
         run: |
           echo "Local LWCs:"
           ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc"
-          
+          echo "Local Project:"
+          ls sfdx-project.json  # Should exist
+
       - name: Run LWC Tests
-        run: sf force:lightning:lwc:test:run --coverage --json
+        run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc
+        #sf force:lightning:lwc:test:run --coverage --json
         
