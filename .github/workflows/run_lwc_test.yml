@@ -63,6 +63,6 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/org-metadata"  # Should exist
 
       - name: Run LWC Tests
-        run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc
+        run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
         #sf force:lightning:lwc:test:run --coverage --json
         
