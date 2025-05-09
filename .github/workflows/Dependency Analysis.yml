@@ -18,15 +18,21 @@ jobs:
       - name: 'Install Node.js'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          
+          node-version: 18  # Key fix: Use Node 18
+          cache: 'npm'
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 make g++
+
       - name: Install Salesforce CLI
         run: |
           npm install @salesforce/cli --global
           sf --version
 
       - name: Install sfpowerkit
-        run: npm install -g sfpowerkit
+        run: npm install -g sfpowerkit --force  # Force installation
 
       - name: Authenticate to Org
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
