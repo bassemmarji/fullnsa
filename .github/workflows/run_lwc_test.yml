@@ -10,7 +10,7 @@ env:
   REPORT_RECIPIENT: "bassemmarji@gmail.com"
   
 jobs:
-  document_org_flows:
+  run_lwc_tests:
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout Repository'
@@ -23,6 +23,9 @@ jobs:
 
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
+        
+      - name: 'Install jq'
+        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
 
       - name: 'Authenticate to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
@@ -45,6 +48,14 @@ jobs:
           # Retrieve metadata (now including flows)
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
+      - name: Navigate to Salesforce Project Directory
+        run: cd "$GITHUB_WORKSPACE/org-metadata"
+        
+      - name: List Local LWC Components (from File System)
+        run: |
+          echo "Local LWCs:"
+          ls -d force-app/main/default/lwc/*/ | sed 's#/$##' | xargs -n1 basename
+          
       - name: Run LWC Tests
         run: sf force:lightning:lwc:test:run --coverage --json
         
