@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
           cd $GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows
-          FLOW_PATH="NSA_Deactivate_Plan.flow-meta.xml"
+          FLOW_PATH="NSA_Deactivate_Plan"
     
           if [ -f "$FLOW_PATH" ]; then
              echo "✅ Flow file found at: $FLOW_PATH"
