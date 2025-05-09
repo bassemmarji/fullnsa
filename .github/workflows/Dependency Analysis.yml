@@ -27,11 +27,21 @@ jobs:
 
       - name: Install Salesforce CLI
         run: |
-          npm install @salesforce/cli --global
+          npm install @salesforce/cli@2.15.6 --global
           sf --version
 
-      - name: Install sfpowerkit
-        run: echo "Y" | sf plugins install sfpowerkit@4.1.4
+      - name: Install Missing Dependencies
+        run: |
+          npm install -g rimraf@5.0.5 fs-extra@11.2.0
+
+      - name: Install sfpowerkit (Specific Version)
+        run: |
+          echo "Y" | sf plugins install sfpowerkit@4.1.4 --force
+
+      - name: Verify Installation
+        run: |
+          sf plugins
+          npm list -g --depth=0
 
       - name: Authenticate to Org
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
