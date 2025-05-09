@@ -1,1 +1,35 @@
+name: Run LWC Tests
 
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday at midnight
+
+env:
+  ORG_ALIAS: org_alias
+  REPORT_RECIPIENT: "bassemmarji@gmail.com"
+  
+jobs:
+  document_org_flows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
+
+      - name: 'Authenticate to the Org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Validate Org Authentication'
+        run: sf org list
+
+      - name: Run LWC Tests
+        run: sf force:lightning:lwc:test:run --coverage --json
+        
