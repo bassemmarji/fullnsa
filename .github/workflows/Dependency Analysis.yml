@@ -31,7 +31,7 @@ jobs:
           sf --version
 
       - name: Install sfpowerkit
-        run: npm install -g sfpowerkit --force  # Force installation
+        run: echo "Y" | sf plugins install sfpowerkit@4.1.4
 
       - name: Authenticate to Org
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
