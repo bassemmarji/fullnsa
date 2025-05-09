@@ -1,0 +1,46 @@
+name: Salesforce Dependency Analysis with sfpowerkit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday at midnight
+env:
+  ORG_ALIAS: org_alias
+  REPORT_RECIPIENT: "bassemmarji@gmail.com"
+
+jobs:
+  dependency-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Install Salesforce CLI
+        run: |
+          npm install @salesforce/cli --global
+          sf --version
+
+      - name: Install sfpowerkit
+        run: npm install -g sfpowerkit
+
+      - name: Authenticate to Org
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: Generate Dependency Report
+        run: |
+          mkdir -p reports
+          sf sfpowerkit:org:dependency:list \
+            -u $ORG_ALIAS \
+            --json \
+            > reports/dependencies.json || echo "No dependencies found"
+
+      - name: Upload Dependency Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-report
+          path: reports/dependencies.json
