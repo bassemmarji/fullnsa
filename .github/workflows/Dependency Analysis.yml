@@ -30,6 +30,9 @@ jobs:
 
       - name: Authenticate to Org
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+      
+      - name: 'Validate Authenticated Org'
+        run: sf org list
 
       - name: Generate Dependency Report
         run: |
@@ -39,8 +42,7 @@ jobs:
             --json \
             > reports/dependencies.json || echo "No dependencies found"
 
-      - name: Upload Dependency Report
-        uses: actions/upload-artifact@v3
-        with:
-          name: dependency-report
-          path: reports/dependencies.json
+      - name: 'List Generated Files'
+        run: |
+          echo "📄 Listing files in reports:"
+          ls -la $GITHUB_WORKSPACE/reports
