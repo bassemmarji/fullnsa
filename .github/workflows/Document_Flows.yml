@@ -67,14 +67,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
           cd $GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows
           FLOW_PATH="NSA_Deactivate_Plan"
-    
-          if [ -f "$FLOW_PATH" ]; then
-             echo "✅ Flow file found at: $FLOW_PATH"
-             sf flowdoc pdf generate --path "$FLOW_PATH" -o "$GITHUB_WORKSPACE/flowDocuments"
-          else
-             echo "❌ Flow file NOT found at: $FLOW_PATH"
-             exit 1
-          fi    
+          sf flowdoc pdf generate --path "$FLOW_PATH" -o "$GITHUB_WORKSPACE/flowDocuments"
           
       - name: 'List Generated Files'
         run: |
