@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Salesforce CLI
         run: |
-          npm install @salesforce/cli@2.15.6 --global
+          npm install @salesforce/cli@latest --global
           sf --version
 
       - name: Install Missing Dependencies
@@ -36,7 +36,7 @@ jobs:
 
       - name: Install sfpowerkit (Specific Version)
         run: |
-          echo "Y" | sf plugins install sfpowerkit@4.1.4 --force
+          echo "Y" | sf plugins install @dxatscale/sfpowerscripts
 
       - name: Verify Installation
         run: |
