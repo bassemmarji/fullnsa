@@ -57,49 +57,23 @@ jobs:
           # Retrieve metadata (now including flows)
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
           
-      - name: 'List Retrieved Flows'
+      - name: 'List Retrieved Files'
         run: |
           cd $GITHUB_WORKSPACE/org-metadata
-          echo "📄 Listing retrieved flows:"
-          find force-app/main/default/flows -name "*.flow-meta.xml" | sed 's/.*\///; s/\..*/ /'
-          
+          find . -type f -name "*.flow-meta.xml"
+    
       - name: 'Run Flow Documenter'
         run: |
-          # Create directories
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
-
-          # Navigate to SFDX project
-          cd $GITHUB_WORKSPACE/org-metadata
-
-          # Run query and handle errors
-          QUERY_RESULT=$(sf data query --query "SELECT ApiName FROM FlowDefinitionView ORDER BY LastModifiedDate DESC LIMIT 10" --target-org $ORG_ALIAS --json)
+          FLOW_PATH="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows/NSA_Deactivate_Plan.flow-meta.xml"
     
-          # Debug: Print raw query result
-          #echo "Query Result: $QUERY_RESULT"
-
-          # Extract flow names or fail
-          if echo "$QUERY_RESULT" | jq -e '.result' > /dev/null; then
-             echo "$QUERY_RESULT" | jq -r '.result.records[].ApiName' > top_flows.txt
-             echo "Flows to document:"
-             cat top_flows.txt
+          if [ -f "$FLOW_PATH" ]; then
+             echo "✅ Flow file found at: $FLOW_PATH"
+             sf flowdoc pdf generate --path "$FLOW_PATH" -o "$GITHUB_WORKSPACE/flowDocuments"
           else
-             echo "Error in query:"
-             echo "$QUERY_RESULT" | jq '.message'
+             echo "❌ Flow file NOT found at: $FLOW_PATH"
              exit 1
-          fi
-
-          cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
-          echo "Current directory: $(pwd)"
-          
-          sf flowdoc pdf generate NSA_Deactivate_Plan -o $GITHUB_WORKSPACE/flowDocuments
-
-          # Generate PDFs
-          #while read flow; do
-          #      echo "Generating PDF for: $flow"
-          #      cd "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows"
-          #      sf flowdoc pdf generate "$flow" -u $ORG_ALIAS -o $GITHUB_WORKSPACE/flowDocuments && \
-          #         echo "✅ Successfully generated PDF for $flow"
-          #done < top_flows.txt
+          fi    
           
       - name: 'List Generated Files'
         run: |
