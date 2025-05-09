@@ -111,3 +111,32 @@ jobs:
         run: |
           echo "📄 Listing files in flowDocuments:"
           ls -la $GITHUB_WORKSPACE/flowDocuments
+
+
+      # Extract the git author email and store it in the global variable owner_email
+      - name: 'Save repository owner email'
+        run: |
+         echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
+
+      # Create a new git repository
+      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
+      # Change the name you associate with your Git commits.
+      # Add the entire directory to your commit recursively.
+      # Determine if there are uncommitted changes in the GIT Tree
+      - name: 'Stage files and check for modified files'
+        id: git-check
+        run: |
+         git init
+         git config user.email "${{ env.owner_email }}"
+         git config user.name "${{ github.repository_owner }}"
+         git add .
+         echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+         
+      # If there are uncommitted changes.
+      #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
+      # git push sync the local repository with its associated remote repository and updates it.
+      - name: 'Commit and push if there are modified files'
+        if: steps.git-check.outputs.modified == 'true'
+        run: |
+         git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
+         echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT          
