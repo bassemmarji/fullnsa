@@ -8,7 +8,7 @@ on:
 env:
   ORG_ALIAS: org_alias
   REPORT_RECIPIENT: "bassemmarji@gmail.com"
-  
+
 jobs:
   document_org_flows:
     runs-on: ubuntu-latest
@@ -21,84 +21,85 @@ jobs:
         with:
           node-version: 20
 
-      - name: 'Install Salesforce CLI'
-        run: npm install @salesforce/cli --global
+      - name: 'Install sfdx CLI'
+        run: npm install sfdx-cli --global
 
       - name: 'Install flowdoc Plugin'
-        run: echo "Y" | sf plugins:install sfdx-flowdoc-plugin
+        run: echo "Y" | sfdx plugins:install sfdx-flowdoc-plugin
 
       - name: 'Install jq'
-        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: 'Authorize to the Org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sfdx auth:sfdxurl:store --alias $ORG_ALIAS --setdefault --noprompt
 
       - name: 'Validate Authorized Org'
-        run: sf org list
+        run: sfdx force:org:list
 
-      #- name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
-      #  run: |
-      #    sf project generate --name "org-metadata"  --manifest
-      #    cd "./org-metadata"
-      #    sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+      - name: 'Create project with manifest'
+        run: |
+          mkdir -p org-metadata
+          cd org-metadata
+          cat > sfdx-project.json <<EOF
+{
+  "packageDirectories": [
+    {
+      "path": "force-app",
+      "default": true
+    }
+  ],
+  "namespace": "",
+  "sourceApiVersion": "60.0"
+}
+EOF
 
-      - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
+          mkdir -p config
+          cat > config/package.xml <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+    <members>*</members>
+    <name>Flow</name>
+  </types>
+  <version>60.0</version>
+</Package>
+EOF
+
+      - name: 'Retrieve Metadata (including flows)'
         run: |
-          # Generate project and manifest
-          sf project generate --name "org-metadata" --manifest
-          
-          if test -f "./config/package.xml"; then
-             echo "./config/package.xml file exists"
-             cp ./config/package.xml ./org-metadata/manifest
-          fi
-          
-          cd "./org-metadata"
-          
-          # Retrieve metadata (now including flows)
-          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
-          
-      - name: 'List Retrieved Files'
+          cd org-metadata
+          sfdx force:source:retrieve -x config/package.xml -u $ORG_ALIAS
+
+      - name: 'List Retrieved Flows'
         run: |
-          cd $GITHUB_WORKSPACE/org-metadata
-          find . -type f -name "*.flow-meta.xml"
-    
-      - name: 'Run Flow Documenter'
+          echo "📄 Listing retrieved flows:"
+          find org-metadata/force-app/main/default/flows -name "*.flow-meta.xml"
+
+      - name: 'Generate Flow Documents'
         run: |
           mkdir -p $GITHUB_WORKSPACE/flowDocuments
-          cd $GITHUB_WORKSPACE/org-metadata/force-app/main/default/flows
-          FLOW_PATH="NSA_Deactivate_Plan"
-          sf flowdoc pdf generate --path "$FLOW_PATH" -o "$GITHUB_WORKSPACE/flowDocuments"
-          
+          cd org-metadata
+
+          # Generate diagram for one specific flow
+          FLOW_PATH="force-app/main/default/flows/NSA_Deactivate_Plan.flow-meta.xml"
+
+          if [ -f "$FLOW_PATH" ]; then
+            echo "✅ Generating diagram for flow at: $FLOW_PATH"
+            sfdx flow:diagram --sourcefile "$FLOW_PATH" --outputdir "$GITHUB_WORKSPACE/flowDocuments"
+          else
+            echo "❌ Flow file NOT found at: $FLOW_PATH"
+            exit 1
+          fi
+
       - name: 'List Generated Files'
         run: |
-          echo "📄 Listing files in flowDocuments:"
+          echo "📄 Listing generated flow documents:"
           ls -la $GITHUB_WORKSPACE/flowDocuments
 
-
-      # Extract the git author email and store it in the global variable owner_email
-      - name: 'Save repository owner email'
-        run: |
-          echo "owner_email=$(git log -n 1 --pretty=format:%ae )" >> $GITHUB_ENV
-
-      # Create a new git repository
-      # Change the email address you associate with your Git commits. The new email address you set will be visible in any future commits you push to GitHub from the command line.
-      # Change the name you associate with your Git commits.
-      # Add the entire directory to your commit recursively.
-      # Determine if there are uncommitted changes in the GIT Tree
-      - name: 'Stage files and check for modified files'
-        id: git-check
-        run: |
-          git init
-          git config user.email "${{ env.owner_email }}"
-          git config user.name "${{ github.repository_owner }}"
-          git add .
-          echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
-         
-      # If there are uncommitted changes.
-      #  Commit a snapshot of all changes in the working directory. This only includes modifications to be tracked files (those that have been added with git add at some point in their history).
-      # git push sync the local repository with its associated remote repository and updates it.
-      - name: 'Commit and push if there are modified files'
-        if: steps.git-check.outputs.modified == 'true'
-        run: |
-          git commit -m "${{ github.event.inputs.commit_message }} on ${{ github.event.repository.updated_at }}"
-          echo "git-push=$(git push -u origin main)\n" >> $GITHUB_OUTPUT          
+      # Optional: Upload results as artifact
+      - name: 'Upload Flow Documents'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-documents
+          path: $GITHUB_WORKSPACE/flowDocuments/
