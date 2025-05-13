@@ -2,12 +2,19 @@ name: Run LWC Tests
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * 1'  # Weekly on Monday at midnight
+    inputs:
+      ORG_ALIAS:
+        type: string
+        description: "Alias for the Salesforce org"
+        required: true
+      REPORT_RECIPIENT:
+        type: string
+        description: "Email recipient for the report"
+        default: "default@example.com"
 
 env:
-  ORG_ALIAS: org_alias
-  REPORT_RECIPIENT: "bassemmarji@gmail.com"
+  ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
+  REPORT_RECIPIENT: ${{ github.event.inputs.REPORT_RECIPIENT }}
   
 jobs:
   run_lwc_tests:
