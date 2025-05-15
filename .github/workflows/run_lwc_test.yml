@@ -7,11 +7,11 @@ on:
         type: string
         description: "Alias for the Salesforce org"
         required: true
+        default: "orgAlias"
       REPORT_RECIPIENT:
         type: string
         description: "Email recipient for the report"
-        default: "default@example.com"
-
+        default: "bassemmarji@gmail.com"
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
   REPORT_RECIPIENT: ${{ github.event.inputs.REPORT_RECIPIENT }}
