@@ -73,3 +73,16 @@ jobs:
         run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
         #sf force:lightning:lwc:test:run --coverage --json
         
+      - name: Notify Salesforce Webhook
+        uses: distributhor/action-http-client@master
+        with:
+          url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook'
+          method: 'POST'
+          content-type: 'application/json'
+          body: |
+            {
+              "repository": "${{ github.repository }}",
+              "workflow": "${{ github.workflow }}",
+              "status": "${{ env.STATUS }}",
+              "run_id": "${{ github.run_id }}"
+            }
