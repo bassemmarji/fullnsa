@@ -74,7 +74,7 @@ jobs:
         #sf force:lightning:lwc:test:run --coverage --json
         
       - name: Notify Salesforce Webhook
-        uses: distributhor/action-http-client@v1.0.0
+        uses: fjogeleit/http-request-action@v1.15.1
         with:
           url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook'
           method: 'POST'
