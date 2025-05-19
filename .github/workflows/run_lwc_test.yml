@@ -31,6 +31,11 @@ jobs:
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
         
+      - name: Verify Salesforce CLI
+        run: |
+          sf update
+          sf plugins:update
+          sf --version
 
       - name: 'Install jest'
         run: echo "Y" | npm install --save-dev @salesforce/sfdx-lwc-jest jest
