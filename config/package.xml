@@ -317,7 +317,7 @@
         <name>LightningBolt</name>
     </types>
     <types>
-        <members>*</members>
+        <members>lwc</members>
         <name>LightningComponentBundle</name>
     </types>
     <types>
