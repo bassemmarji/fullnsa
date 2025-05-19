@@ -62,27 +62,32 @@ jobs:
       - name: Navigate to Salesforce Project Directory
         run: cd "$GITHUB_WORKSPACE/org-metadata"
         
-      - name: List Local LWC Components
+      - name: List LWC Components
         run: |
-          echo "Local Project:"
-          ls -la "$GITHUB_WORKSPACE/org-metadata"  # Should exist
-          echo "Local LWCs:"
-          ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/"
+          echo "Listing LWC Component Folders:"
+          find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -mindepth 1 -maxdepth 1 -type d | while read dir; do
+            echo "- $(basename "$dir")"
+          done
 
-      - name: Run LWC Tests
-        run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
+      - name: Run LWC Unit Tests
+        run: |
+          cd "$GITHUB_WORKSPACE/org-metadata"
+          npx jest --testPathPattern "$GITHUB_WORKSPACE/force-app/main/default/lwc/**/*.test.js" --passWithNoTests
+          
+ #     - name: Run LWC Tests
+ #       run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
         #sf force:lightning:lwc:test:run --coverage --json
         
-      - name: Notify Salesforce Webhook
-        uses: fjogeleit/http-request-action@v1.15.1
-        with:
-          url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook'
-          method: 'POST'
-          content-type: 'application/json'
-          body: |
-            {
-              "repository": "${{ github.repository }}",
-              "workflow": "${{ github.workflow }}",
-              "status": "${{ env.STATUS }}",
-              "run_id": "${{ github.run_id }}"
-            }
+ #     - name: Notify Salesforce Webhook
+ #       uses: fjogeleit/http-request-action@v1.15.1
+ #       with:
+ #         url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook'
+ #         method: 'POST'
+ #         content-type: 'application/json'
+ #         body: |
+ #           {
+ #             "repository": "${{ github.repository }}",
+ #             "workflow": "${{ github.workflow }}",
+ #             "status": "${{ env.STATUS }}",
+ #             "run_id": "${{ github.run_id }}"
+ #           }
