@@ -74,20 +74,26 @@ jobs:
             echo "- $(basename "$dir")"
           done
 
+      - name: Debug Test Files
+        run: |
+          find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -type f -name "*.test.js"
+    
       - name: Run LWC Unit Tests
         id: run_tests
         run: |
           cd "$GITHUB_WORKSPACE/org-metadata"
-    
-          npx jest \
-            --testPathPattern "force-app/main/default/lwc/**/__tests__/*.test.js" \
-            --passWithNoTests \
-            --verbose \
-            --json \
-            --outputFile="jest-results.json" > /dev/null 2>&1
 
-          # Save exit code
-          echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV    
+          # Define full path
+          TEST_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc"
+
+          # Run Jest with correct pattern
+          npx jest \
+              --testPathPattern "<rootDir>/force-app/main/default/lwc/.*/__tests__/.*\\.test\\.js" \
+              --passWithNoTests \
+              --json \
+              --outputFile="jest-results.json" > /dev/null 2>&1
+
+          echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
       - name: Display Test Results
         if: always()
