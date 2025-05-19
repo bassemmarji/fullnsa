@@ -75,9 +75,39 @@ jobs:
           done
 
       - name: Run LWC Unit Tests
+        id: run_tests
         run: |
           cd "$GITHUB_WORKSPACE/org-metadata"
-          npx jest --testPathPattern "force-app/main/default/lwc/**/__tests__/*.test.js" --passWithNoTests          
+    
+          npx jest \
+            --testPathPattern "force-app/main/default/lwc/**/__tests__/*.test.js" \
+            --passWithNoTests \
+            --verbose \
+            --json \
+            --outputFile="jest-results.json" > /dev/null 2>&1
+
+          # Save exit code
+          echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV    
+
+      - name: Display Test Results
+        if: always()
+        run: |
+            echo '### 🧪 LWC Unit Test Results' >> $GITHUB_STEP_SUMMARY
+
+            if [ -f "jest-results.json" ]; then
+                TOTAL_TESTS=$(jq '.numTotalTestSuites' jest-results.json)
+                PASSED=$(jq '.numPassedTestSuites' jest-results.json)
+                FAILED=$(jq '.numFailedTestSuites' jest-results.json)
+                PENDING=$(jq '.numPendingTestSuites' jest-results.json)
+
+                echo "Total: $TOTAL_TESTS | Passed: $PASSED | Failed: $FAILED | Pending: $PENDING" >> $GITHUB_STEP_SUMMARY
+                echo '' >> $GITHUB_STEP_SUMMARY
+
+                jq -r '.testResults[] | "🧪 \(.name) \n✅ Passed: \(.numPassingAsserts) | ❌ Failed: \(.numFailingTests) | ⏤ Skipped: \(.numPendingTests)"' jest-results.json >> $GITHUB_STEP_SUMMARY
+            else
+                echo '🚫 No test results found.' >> $GITHUB_STEP_SUMMARY
+            fi
+          
  #     - name: Run LWC Tests
  #       run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
         #sf force:lightning:lwc:test:run --coverage --json
