@@ -62,12 +62,12 @@ jobs:
       - name: Navigate to Salesforce Project Directory
         run: cd "$GITHUB_WORKSPACE/org-metadata"
         
-      - name: List Local LWC Components (from File System)
+      - name: List Local LWC Components
         run: |
-          echo "Local LWCs:"
-          ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc"
           echo "Local Project:"
           ls -la "$GITHUB_WORKSPACE/org-metadata"  # Should exist
+          echo "Local LWCs:"
+          ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/"
 
       - name: Run LWC Tests
         run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
