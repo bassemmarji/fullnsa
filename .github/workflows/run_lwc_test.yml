@@ -33,7 +33,7 @@ jobs:
         
       - name: Verify Salesforce CLI
         run: |
-          sf update
+          npm update --global @salesforce/cli
           sf plugins:update
           sf --version
 
@@ -77,7 +77,8 @@ jobs:
       - name: Run LWC Unit Tests
         run: |
           cd "$GITHUB_WORKSPACE/org-metadata"
-          npx jest --testPathPattern "force-app/main/default/lwc/**/*.test.js" --passWithNoTests
+ #         npx jest --testPathPattern "force-app/main/default/lwc/**/*.test.js" --passWithNoTests
+          npx jest --testPathPattern "(/|\\\\)lwc(/|\\\\)[^/]+(/|\\\\)__tests__(/|\\\\)[^/]+\.test\.js$" --passWithNoTests
           
  #     - name: Run LWC Tests
  #       run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
