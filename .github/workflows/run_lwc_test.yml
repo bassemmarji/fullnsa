@@ -71,6 +71,15 @@ jobs:
           find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -mindepth 1 -maxdepth 1 -type d | \
             while read dir; do echo "- $(basename "$dir")"; done
 
+
+      - name: 'Check Test File Exists'
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" ]; then
+              echo "Test file found ✅"
+          else
+              echo "Test file NOT found ❌"
+          fi
+
       - name: 'Run LWC Unit Tests'
         id: run_tests
         run: |
@@ -79,7 +88,7 @@ jobs:
             --testPathPattern "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" \
             --passWithNoTests \
             --json \
-            --outputFile="$GITHUB_WORKSPACE/org-metadata/jest-results.json" > /dev/null 2>&1
+            --outputFile="$GITHUB_WORKSPACE/org-metadata/jest-results.json"
           echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
       - name: 'Set Status Based on Test Results'
@@ -88,6 +97,14 @@ jobs:
             echo "STATUS=SUCCESS" >> $GITHUB_ENV
           else
             echo "STATUS=FAILURE" >> $GITHUB_ENV
+          fi
+
+      - name: 'Check Results File Exists'
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/org-metadata/jest-results.json" ]; then
+              echo "Results file found ✅"
+          else
+              echo "Results file NOT found ❌"
           fi
 
       - name: 'Display Test Results'
