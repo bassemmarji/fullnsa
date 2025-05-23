@@ -76,7 +76,7 @@ jobs:
 
       - name: Debug Test Files
         run: |
-          find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -type f -name "*.test.js"
+#         find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -type f -name "*.test.js"
           find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__" -type f -name "*.test.js"
           
       - name: Run LWC Unit Tests
