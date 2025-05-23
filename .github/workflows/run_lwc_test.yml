@@ -71,6 +71,29 @@ jobs:
           find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -mindepth 1 -maxdepth 1 -type d | \
             while read dir; do echo "- $(basename "$dir")"; done
 
+      - name: 'Copy LWC Test Files Dynamically'
+        run: |
+          # Go inside the retrieved project
+          cd "$GITHUB_WORKSPACE/org-metadata"
+
+          # Loop through all LWC components
+          find "force-app/main/default/lwc" -mindepth 1 -maxdepth 1 -type d | while read dir; do
+            componentName=$(basename "$dir")
+            echo "🔍 Checking for test file for: $componentName"
+
+            # Define source and destination paths
+            sourceTestPath="$GITHUB_WORKSPACE/tests/$componentName/__tests__"
+            destTestPath="force-app/main/default/lwc/$componentName/__tests__"
+
+            # If test folder exists locally, copy it
+            if [ -d "$sourceTestPath" ]; then
+              echo "✅ Found test folder for $componentName"
+              mkdir -p "$destTestPath"
+              cp -r "$sourceTestPath"/* "$destTestPath/"
+            else
+              echo "🚫 No test file found for $componentName"
+            fi
+          done
 
       - name: 'Check Test File Exists'
         run: |
