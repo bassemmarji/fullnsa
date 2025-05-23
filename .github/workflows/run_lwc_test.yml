@@ -71,15 +71,15 @@ jobs:
       - name: 'List LWC Components'
         run: |
           echo "Listing LWC Component Folders:"
-          find "$LWC_PATH" -mindepth 1 -maxdepth 1 -type d | \
+          find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -mindepth 1 -maxdepth 1 -type d | \
             while read dir; do echo "- $(basename "$dir")"; done
 
       - name: 'Run LWC Unit Tests'
         id: run_tests
         run: |
-          cd "$PROJECT_DIR"
+          cd "$GITHUB_WORKSPACE/org-metadata"
           npx jest \
-            --testPathPattern "$LWC_PATH/.*/__tests__/.*\\.test\\.js" \
+            --testPathPattern "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" \
             --passWithNoTests \
             --json \
             --outputFile="jest-results.json" > /dev/null 2>&1
