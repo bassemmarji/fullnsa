@@ -30,7 +30,7 @@ jobs:
 
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
-        
+
       - name: Verify Salesforce CLI
         run: |
           npm update --global @salesforce/cli
@@ -38,55 +38,7 @@ jobs:
           sf --version
 
       - name: 'Install jq'
-        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: 'Authenticate to the Org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
-
-      - name: 'Validate Org Authentication'
-        run: sf org list
-
-      - name: 'Get Access Token'
-        id: get_token
-        run: |
-          # Get access token from already-authenticated org
-          ORG_ALIAS="${{ env.ORG_ALIAS }}"
-          OUTPUT=$(sf org display --target-org $ORG_ALIAS --verbose --json)
-          
-          ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.access_token')
-          INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instance_url')
-      
-          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
-          echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
-          
-      - name: Debug Token Validity
-        run: |
-          curl -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
-               -H "Content-Type: application/json" \
-               ${{ env.INSTANCE_URL }}/services/data/v59.0/query/?q=SELECT+Id+FROM+Organization
-      
-      - name: Notify Salesforce Webhook with Logging
-        id: webhook
-        if: always()
-        uses: fjogeleit/http-request-action@v1.15.1
-        with:
-          url: "${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
-          method: 'POST'
-          content-type: 'application/json'
-          headers: |
-            {
-              "Authorization": "Bearer ${{ env.ACCESS_TOKEN }}"
-            }
-          body: |
-            {
-              "repository": "${{ github.repository }}",
-              "workflow": "${{ github.workflow }}",
-              "status": "${{ env.STATUS }}",
-              "run_id": "${{ github.run_id }}"
-            }
-          timeout: 10000
-      
-        - name: Show Full Response
-          run: |
-            echo "HTTP Status Code: ${{ steps.webhook.outputs.statusCode }}"
-            echo "Response Body: ${{ steps.webhook.outputs.body }}"
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-
