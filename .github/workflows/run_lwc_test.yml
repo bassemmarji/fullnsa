@@ -12,10 +12,14 @@ on:
         type: string
         description: "Email recipient for the report"
         default: "bassemmarji@gmail.com"
+
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
   REPORT_RECIPIENT: ${{ github.event.inputs.REPORT_RECIPIENT }}
-  
+  PROJECT_DIR: "$GITHUB_WORKSPACE/org-metadata"
+  LWC_PATH: "$PROJECT_DIR/force-app/main/default/lwc"
+  TEST_RESULTS_FILE: "$PROJECT_DIR/jest-results.json"
+
 jobs:
   run_lwc_tests:
     runs-on: ubuntu-latest
@@ -30,99 +34,86 @@ jobs:
 
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
-        
-      - name: Verify Salesforce CLI
+
+      - name: 'Update Salesforce CLI'
         run: |
           npm update --global @salesforce/cli
           sf plugins:update
           sf --version
 
-      - name: 'Install jest'
+      - name: 'Install Jest & LWC Test Dependencies'
         run: echo "Y" | npm install --save-dev @salesforce/sfdx-lwc-jest jest
 
       - name: 'Install jq'
-        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 'Authenticate to the Org'
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+      - name: 'Authenticate to Salesforce Org'
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | \
+            sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
       - name: 'Validate Org Authentication'
         run: sf org list
 
-      - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
+      - name: 'Generate Project & Retrieve Metadata'
         run: |
-          # Generate project and manifest
           sf project generate --name "org-metadata" --manifest
           
-          if test -f "./config/package.xml"; then
-             echo "./config/package.xml file exists"
-             cp ./config/package.xml ./org-metadata/manifest
+          if [ -f "./config/package.xml" ]; then
+            cp ./config/package.xml ./org-metadata/manifest/
           fi
-          
-          cd "./org-metadata"
-          
-          # Retrieve metadata (now including flows)
-          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
-        
-      - name: List LWC Components
-        run: |
-          cd "$GITHUB_WORKSPACE/org-metadata"
-          echo "Listing LWC Component Folders:"
-          find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -mindepth 1 -maxdepth 1 -type d | while read dir; do
-            echo "- $(basename "$dir")"
-          done
 
-      - name: Run LWC Unit Tests
+          cd "$PROJECT_DIR"
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 'List LWC Components'
+        run: |
+          echo "Listing LWC Component Folders:"
+          find "$LWC_PATH" -mindepth 1 -maxdepth 1 -type d | \
+            while read dir; do echo "- $(basename "$dir")"; done
+
+      - name: 'Run LWC Unit Tests'
         id: run_tests
         run: |
-          cd "$GITHUB_WORKSPACE/org-metadata"
-
-          # Define full path
-          TEST_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc"
-
-          # Run Jest with correct pattern
+          cd "$PROJECT_DIR"
           npx jest \
- #            --testPathPattern "<rootDir>/force-app/main/default/lwc/.*/__tests__/.*\\.test\\.js" \
-              --testPathPattern "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" \
-              --passWithNoTests \
-              --json \
-              --outputFile="jest-results.json" > /dev/null 2>&1
-
+            --testPathPattern "$LWC_PATH/.*/__tests__/.*\\.test\\.js" \
+            --passWithNoTests \
+            --json \
+            --outputFile="jest-results.json" > /dev/null 2>&1
           echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
-      - name: Display Test Results
+      - name: 'Display Test Results'
         if: always()
         run: |
-            echo '### 🧪 LWC Unit Test Results' >> $GITHUB_STEP_SUMMARY
+          echo '### 🧪 LWC Unit Test Results' >> $GITHUB_STEP_SUMMARY
 
-            if [ -f "jest-results.json" ]; then
-                TOTAL_TESTS=$(jq '.numTotalTestSuites' jest-results.json)
-                PASSED=$(jq '.numPassedTestSuites' jest-results.json)
-                FAILED=$(jq '.numFailedTestSuites' jest-results.json)
-                PENDING=$(jq '.numPendingTestSuites' jest-results.json)
+          if [ -f "$TEST_RESULTS_FILE" ]; then
+              TOTAL=$(jq '.numTotalTestSuites' jest-results.json)
+              PASSED=$(jq '.numPassedTestSuites' jest-results.json)
+              FAILED=$(jq '.numFailedTestSuites' jest-results.json)
+              PENDING=$(jq '.numPendingTestSuites' jest-results.json)
 
-                echo "Total: $TOTAL_TESTS | Passed: $PASSED | Failed: $FAILED | Pending: $PENDING" >> $GITHUB_STEP_SUMMARY
-                echo '' >> $GITHUB_STEP_SUMMARY
+              echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED | Pending: $PENDING" >> $GITHUB_STEP_SUMMARY
+              echo '' >> $GITHUB_STEP_SUMMARY
 
-                jq -r '.testResults[] | "🧪 \(.name) \n✅ Passed: \(.numPassingAsserts) | ❌ Failed: \(.numFailingTests) | ⏤ Skipped: \(.numPendingTests)"' jest-results.json >> $GITHUB_STEP_SUMMARY
-            else
-                echo '🚫 No test results found.' >> $GITHUB_STEP_SUMMARY
-            fi
-          
- #     - name: Run LWC Tests
- #       run: npx jest $GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc --passWithNoTests
-        #sf force:lightning:lwc:test:run --coverage --json
-        
- #     - name: Notify Salesforce Webhook
- #       uses: fjogeleit/http-request-action@v1.15.1
- #       with:
- #         url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook'
- #         method: 'POST'
- #         content-type: 'application/json'
- #         body: |
- #           {
- #             "repository": "${{ github.repository }}",
- #             "workflow": "${{ github.workflow }}",
- #             "status": "${{ env.STATUS }}",
- #             "run_id": "${{ github.run_id }}"
- #           }
+              jq -r '.testResults[] | "🧪 \(.name)\n✅ Passed: \(.numPassingAsserts) | ❌ Failed: \(.numFailingTests) | ⏤ Skipped: \(.numPendingTests)"' jest-results.json >> $GITHUB_STEP_SUMMARY
+          else
+              echo '🚫 No test results found.' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # Optional: Send result to Salesforce Webhook
+      - name: Notify Salesforce Webhook
+        if: always()
+        uses: fjogeleit/http-request-action@v1.15.1
+        with:
+          url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook '
+          method: 'POST'
+          content-type: 'application/json'
+          body: |
+            {
+              "repository": "${{ github.repository }}",
+              "workflow": "${{ github.workflow }}",
+              "status": "${{ env.TEST_EXIT_CODE == 0 ? 'SUCCESS' : 'FAILURE' }}",
+              "run_id": "${{ github.run_id }}"
+            }
