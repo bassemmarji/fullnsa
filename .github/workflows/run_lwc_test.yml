@@ -74,7 +74,7 @@ jobs:
 
       - name: 'Check Test File Exists'
         run: |
-          ls -la ""$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager"
+          ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager"
           if [ -f "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" ]; then
               echo "Test file found ✅"
           else
