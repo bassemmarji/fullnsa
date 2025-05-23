@@ -34,36 +34,38 @@ jobs:
 
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
-
-      - name: 'Update Salesforce CLI'
+        
+      - name: Verify Salesforce CLI
         run: |
           npm update --global @salesforce/cli
           sf plugins:update
           sf --version
 
-      - name: 'Install Jest & LWC Test Dependencies'
+      - name: 'Install jest'
         run: echo "Y" | npm install --save-dev @salesforce/sfdx-lwc-jest jest
 
       - name: 'Install jq'
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: echo "Y" | sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 'Authenticate to Salesforce Org'
-        run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" | \
-            sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+      - name: 'Authenticate to the Org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
       - name: 'Validate Org Authentication'
         run: sf org list
 
-      - name: 'Generate Project & Retrieve Metadata'
+      - name: 'Create project with manifest, Navigate to the project folder, Download metadata using SFDX'
         run: |
+          # Generate project and manifest
           sf project generate --name "org-metadata" --manifest
           
-          if [ -f "./config/package.xml" ]; then
-            cp ./config/package.xml ./org-metadata/manifest/
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./org-metadata/manifest
           fi
-
-          cd "$PROJECT_DIR"
+          
+          cd "./org-metadata"
+          
+          # Retrieve metadata (now including flows)
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
       - name: 'List LWC Components'
