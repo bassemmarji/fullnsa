@@ -102,7 +102,7 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/org-metadata"
           npx jest \
-            --testPathPattern "<rootDir>/force-app/main/default/lwc/.*/__tests__/.*\\.test\\.js" \
+            --testPathPattern "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/.*/__tests__/.*\\.test\\.js" \
             --passWithNoTests \
             --json \
             --outputFile="$GITHUB_WORKSPACE/org-metadata/jest-results.json"
