@@ -148,8 +148,14 @@ jobs:
           INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instance_url')
       
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
-          echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV    
-
+          echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
+          
+      - name: Debug Token Validity
+        run: |
+          curl -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
+               -H "Content-Type: application/json" \
+               ${{ env.INSTANCE_URL }}/services/data/v59.0/query/?q=SELECT+Id+FROM+Organization
+      
       - name: Notify Salesforce Webhook with Logging
         id: webhook
         if: always()
