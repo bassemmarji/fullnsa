@@ -127,7 +127,7 @@ jobs:
               jq -r '
                 .testResults[] |
                 "📁 Component: \(.name | gsub(".*lwc/"; "") | split("/")[0])\n" +
-                "📄 Test File: \(.name | split("/")[3])\n" +
+                "📄 Test File: \(.name | sub(".*/"; ""))\n" +
                 "✅ Passed: \( [.assertionResults[] | select(.status == "passed")] | length ) | " +
                 "❌ Failed: \( [.assertionResults[] | select(.status == "failed")] | length ) | " +
                 "➖ Skipped: \( [.assertionResults[] | select(.status == "pending")] | length )\n"
@@ -136,7 +136,7 @@ jobs:
           else
               echo '🚫 No test results found.' >> $GITHUB_STEP_SUMMARY
           fi
-
+          
       - name: 'Get Access Token'
         id: get_token
         run: |
