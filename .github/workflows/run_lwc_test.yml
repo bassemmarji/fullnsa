@@ -88,15 +88,6 @@ jobs:
             fi
           done
 
-      - name: 'Check Test File Exists'
-        run: |
-          ls -la "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager"
-          if [ -f "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" ]; then
-              echo "Test file found ✅"
-          else
-              echo "Test file NOT found ❌"
-          fi
-
       - name: 'Run LWC Unit Tests'
         id: run_tests
         run: |
@@ -111,20 +102,9 @@ jobs:
       - name: 'Set Status Based on Test Results'
         run: |
           if [ "$TEST_EXIT_CODE" -eq 0 ]; then
-            echo "STATUS=SUCCESS"
             echo "STATUS=SUCCESS" >> $GITHUB_ENV
           else
-            echo "STATUS=FAILURE"
             echo "STATUS=FAILURE" >> $GITHUB_ENV
-          fi
-
-      - name: 'Check Results File Exists'
-        run: |
-          if [ -f "$GITHUB_WORKSPACE/org-metadata/jest-results.json" ]; then
-              echo "Results file found ✅"
-              cat "$GITHUB_WORKSPACE/org-metadata/jest-results.json"
-          else
-              echo "Results file NOT found ❌"
           fi
 
       - name: 'Display Test Results'
@@ -143,12 +123,17 @@ jobs:
               echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED | Pending: $PENDING" >> $GITHUB_STEP_SUMMARY
               echo '' >> $GITHUB_STEP_SUMMARY
 
-              jq -r '.testResults[] | "🧪 \(.name)\n✅ Passed: \(.numPassingAsserts) | ❌ Failed: \(.numFailingTests) | ⏤ Skipped: \(.numPendingTests)"' jest-results.json >> $GITHUB_STEP_SUMMARY
-          else
-              echo "Results file NOT found ❌"
-              echo '🚫 No test results found.' >> $GITHUB_STEP_SUMMARY
-          fi
+              jq -r '
+                 .testResults[] |
+                 "🧪 \(.name | gsub(".*lwc/"; "") | split("/")[0])\n" +
+                 "✅ Passed: \( [.assertionResults[] | select(.status == \"passed\")] | length ) | " +
+                 "❌ Failed: \( [.assertionResults[] | select(.status == \"failed\")] | length ) | " +
+                 "➖ Skipped: \( [.assertionResults[] | select(.status == \"pending\")] | length )"
+                ' jest-results.json >> $GITHUB_STEP_SUMMARY
 
+          else
+                echo '🚫 No test results found.' >> $GITHUB_STEP_SUMMARY
+          fi
       # Optional: Send result to Salesforce Webhook
       - name: Notify Salesforce Webhook
         if: always()
