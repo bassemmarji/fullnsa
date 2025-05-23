@@ -74,6 +74,7 @@ jobs:
 
       - name: 'Check Test File Exists'
         run: |
+          ls -la ""$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager"
           if [ -f "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" ]; then
               echo "Test file found ✅"
           else
@@ -94,8 +95,10 @@ jobs:
       - name: 'Set Status Based on Test Results'
         run: |
           if [ "$TEST_EXIT_CODE" -eq 0 ]; then
+            echo "STATUS=SUCCESS"
             echo "STATUS=SUCCESS" >> $GITHUB_ENV
           else
+            echo "STATUS=FAILURE"
             echo "STATUS=FAILURE" >> $GITHUB_ENV
           fi
 
@@ -103,6 +106,7 @@ jobs:
         run: |
           if [ -f "$GITHUB_WORKSPACE/org-metadata/jest-results.json" ]; then
               echo "Results file found ✅"
+              cat "$GITHUB_WORKSPACE/org-metadata/jest-results.json"
           else
               echo "Results file NOT found ❌"
           fi
