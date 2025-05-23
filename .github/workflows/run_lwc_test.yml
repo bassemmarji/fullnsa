@@ -85,12 +85,20 @@ jobs:
             --outputFile="jest-results.json" > /dev/null 2>&1
           echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
+      - name: 'Set Status Based on Test Results'
+        run: |
+          if [ "$TEST_EXIT_CODE" -eq 0 ]; then
+            echo "STATUS=SUCCESS" >> $GITHUB_ENV
+          else
+            echo "STATUS=FAILURE" >> $GITHUB_ENV
+          fi
+
       - name: 'Display Test Results'
         if: always()
         run: |
           echo '### 🧪 LWC Unit Test Results' >> $GITHUB_STEP_SUMMARY
 
-          if [ -f "$TEST_RESULTS_FILE" ]; then
+          if [ -f "$GITHUB_WORKSPACE/org-metadata/jest-results.json" ]; then
               TOTAL=$(jq '.numTotalTestSuites' jest-results.json)
               PASSED=$(jq '.numPassedTestSuites' jest-results.json)
               FAILED=$(jq '.numFailedTestSuites' jest-results.json)
