@@ -149,9 +149,15 @@ jobs:
       
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
           echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV    
+
+      - name: Debug Token Validity
+        run: |
+          curl -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
+               -H "Content-Type: application/json" \
+               ${{ env.INSTANCE_URL }}/services/data/v59.0/query/?q=SELECT+Id+FROM+Organization
       
-      # Optional: Send result to Salesforce Webhook
-      - name: Notify Salesforce Webhook
+      - name: Notify Salesforce Webhook with Logging
+        id: webhook
         if: always()
         uses: fjogeleit/http-request-action@v1.15.1
         with:
@@ -169,3 +175,10 @@ jobs:
               "status": "${{ env.STATUS }}",
               "run_id": "${{ github.run_id }}"
             }
+          timeout: 10000
+      
+        - name: Show Full Response
+          run: |
+            echo "HTTP Status Code: ${{ steps.webhook.outputs.statusCode }}"
+            echo "Response Body: ${{ steps.webhook.outputs.body }}"
+      
