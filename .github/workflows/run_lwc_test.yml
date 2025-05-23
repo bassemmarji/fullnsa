@@ -16,9 +16,6 @@ on:
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
   REPORT_RECIPIENT: ${{ github.event.inputs.REPORT_RECIPIENT }}
-  PROJECT_DIR: "$GITHUB_WORKSPACE/org-metadata"
-  LWC_PATH: "$PROJECT_DIR/force-app/main/default/lwc"
-  TEST_RESULTS_FILE: "$PROJECT_DIR/jest-results.json"
 
 jobs:
   run_lwc_tests:
@@ -82,7 +79,7 @@ jobs:
             --testPathPattern "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc/healthPlanManager/__tests__/healthPlanManager.test.js" \
             --passWithNoTests \
             --json \
-            --outputFile="jest-results.json" > /dev/null 2>&1
+            --outputFile="$GITHUB_WORKSPACE/org-metadata/jest-results.json" > /dev/null 2>&1
           echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
 
       - name: 'Set Status Based on Test Results'
