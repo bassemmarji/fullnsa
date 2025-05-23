@@ -72,10 +72,6 @@ jobs:
             echo "- $(basename "$dir")"
           done
 
-      - name: Debug Test Files
-        run: |
-          find "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/lwc" -type f -name "*.test.js"
-
       - name: Run LWC Unit Tests
         id: run_tests
         run: |
