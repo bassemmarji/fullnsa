@@ -138,7 +138,7 @@ jobs:
         if: always()
         run: |
           echo '### 🧪 LWC Unit Test Results' >> $GITHUB_STEP_SUMMARY
-
+          cd "$GITHUB_WORKSPACE/org-metadata"
           if [ -f "$GITHUB_WORKSPACE/org-metadata/jest-results.json" ]; then
               TOTAL=$(jq '.numTotalTestSuites' jest-results.json)
               PASSED=$(jq '.numPassedTestSuites' jest-results.json)
