@@ -142,6 +142,10 @@ jobs:
           url: 'https://fullnsa-dev-ed.develop.my.salesforce.com/services/apexrest/github/webhook '
           method: 'POST'
           content-type: 'application/json'
+          headers: |
+            {
+              "Authorization": "Bearer ${{ secrets.ORG_ACCESS_TOKEN }}"
+            }
           body: |
             {
               "repository": "${{ github.repository }}",
