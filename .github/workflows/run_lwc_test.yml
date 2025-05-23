@@ -114,6 +114,6 @@ jobs:
             {
               "repository": "${{ github.repository }}",
               "workflow": "${{ github.workflow }}",
-              "status": "${{ env.TEST_EXIT_CODE == 0 ? 'SUCCESS' : 'FAILURE' }}",
+              "status": "${{ env.STATUS }}",
               "run_id": "${{ github.run_id }}"
             }
