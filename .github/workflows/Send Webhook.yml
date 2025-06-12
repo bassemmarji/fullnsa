@@ -43,17 +43,24 @@ jobs:
         id: get_token
         run: |
           # Get access token from already-authenticated org
-          ORG_ALIAS="${{ env.ORG_ALIAS }}"
           OUTPUT=$(sf org display --target-org $ORG_ALIAS --verbose --json)
+          echo "OUTPUT= $OUTPUT"
+
+          TOKEN_OUTPUT=$(sf org open --target-org $ORG_ALIAS --url-only --json)
+          echo "TOKEN_OUTPUT= $TOKEN_OUTPUT"
           
-          ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.access_token')
-          INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instance_url')
+          ACCESS_TOKEN=$(echo "$TOKEN_OUTPUT" | jq -r '.result.access_token // empty')
+          echo "ACCESS_TOKEN = $ACCESS_TOKEN"
+
           
-          echo "Access Token = $ACCESS_TOKEN"
-          echo "INSTANCE_URL = $INSTANCE_URL"
+          # ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.access_token')
+          # INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instance_url')
           
-          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
-          echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
+          # echo "Access Token = $ACCESS_TOKEN"
+          # echo "INSTANCE_URL = $INSTANCE_URL"
+          
+          # echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+          # echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
 
 
 
