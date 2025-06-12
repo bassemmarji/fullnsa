@@ -75,7 +75,7 @@ jobs:
 
       - name: Debug Token Validity
         run: |
-          echo "ACCESS_TOKEN: ${{ env.ACCESS_TOKEN :0:10 }}..."
+          echo "ACCESS_TOKEN: ${{ env.ACCESS_TOKEN }}..."
           echo "INSTANCE_URL: ${{ env.INSTANCE_URL }}"
           
           curl -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
