@@ -42,33 +42,61 @@ jobs:
       - name: 'Get Access Token'
         id: get_token
         run: |
-          # Get access token from already-authenticated org
-          OUTPUT=$(sf org display --target-org $ORG_ALIAS --verbose --json)
+          # Method 1: Remove --verbose flag to avoid warning
+          OUTPUT=$(sf org display --target-org $ORG_ALIAS --json)
           
-          echo "=== Raw OUTPUT ==="
-          echo "$OUTPUT"
-          echo "=================="
-
-          # Parse JSON and extract values
-          ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.accessToken')
-          INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instanceUrl')
-    
-          # Debug: Show extracted values
-          echo "Extracted ACCESS_TOKEN: $ACCESS_TOKEN"
+          # Parse JSON and extract values (without verbose, accessToken might not be available)
+          ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.accessToken // empty')
+          INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instanceUrl // empty')
+          
+          # Method 2: If accessToken not available without --verbose, generate fresh token
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+            echo "AccessToken not available without --verbose, generating fresh token..."
+            
+            # Generate a fresh access token using org open
+            TOKEN_OUTPUT=$(sf org open --target-org $ORG_ALIAS --url-only --json 2>/dev/null || echo '{}')
+            ACCESS_TOKEN=$(echo "$TOKEN_OUTPUT" | jq -r '.result.access_token // empty')
+            
+            # If that doesn't work, use the REST API approach
+            if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+              echo "Generating token via REST API..."
+              
+              # Get basic org info (without sensitive data)
+              ORG_INFO=$(sf org display --target-org $ORG_ALIAS --json)
+              INSTANCE_URL=$(echo "$ORG_INFO" | jq -r '.result.instanceUrl')
+              
+              # Use sf force:auth:accesstoken:create (if available) or similar command
+              # This is a cleaner way to get just the access token
+              ACCESS_TOKEN_CMD=$(sf org display user --target-org $ORG_ALIAS --json 2>/dev/null || echo '{}')
+              
+              # Alternative: Use the auth flow to get a clean token
+              if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+                # Final fallback: suppress warnings and filter output
+                VERBOSE_OUTPUT=$(sf org display --target-org $ORG_ALIAS --verbose --json 2>/dev/null)
+                ACCESS_TOKEN=$(echo "$VERBOSE_OUTPUT" | jq -r '.result.accessToken // empty')
+              fi
+            fi
+          fi
+          
+          # Debug: Show extracted values (mask sensitive token)
+          echo "Extracted ACCESS_TOKEN: ${ACCESS_TOKEN:0:10}..."
           echo "Extracted INSTANCE_URL: $INSTANCE_URL"
-
           
-          # ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.access_token')
-          # INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instance_url')
+          # Validate that we got valid values
+          if [ "$ACCESS_TOKEN" = "null" ] || [ -z "$ACCESS_TOKEN" ]; then
+            echo "ERROR: Failed to extract access token"
+            exit 1
+          fi
           
-          # echo "Access Token = $ACCESS_TOKEN"
-          # echo "INSTANCE_URL = $INSTANCE_URL"
+          if [ "$INSTANCE_URL" = "null" ] || [ -z "$INSTANCE_URL" ]; then
+            echo "ERROR: Failed to extract instance URL"
+            exit 1
+          fi
           
-          # echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
-          # echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
-
-
-
-
-
-
+          # Set environment variables for subsequent steps
+          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+          echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
+          
+          # Also set as step outputs if you need them in other jobs
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "instance_url=$INSTANCE_URL" >> $GITHUB_OUTPUT
