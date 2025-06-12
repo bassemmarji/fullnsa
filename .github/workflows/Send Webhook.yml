@@ -44,13 +44,18 @@ jobs:
         run: |
           # Get access token from already-authenticated org
           OUTPUT=$(sf org display --target-org $ORG_ALIAS --verbose --json)
-          echo "OUTPUT= $OUTPUT"
-
-          TOKEN_OUTPUT=$(sf org open --target-org $ORG_ALIAS --url-only --json)
-          echo "TOKEN_OUTPUT= $TOKEN_OUTPUT"
           
-          ACCESS_TOKEN=$(echo "$TOKEN_OUTPUT" | jq -r '.result.access_token // empty')
-          echo "ACCESS_TOKEN = $ACCESS_TOKEN"
+          echo "=== Raw OUTPUT ==="
+          echo "$OUTPUT"
+          echo "=================="
+
+          # Parse JSON and extract values
+          ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.accessToken')
+          INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instanceUrl')
+    
+          # Debug: Show extracted values
+          echo "Extracted ACCESS_TOKEN: $ACCESS_TOKEN"
+          echo "Extracted INSTANCE_URL: $INSTANCE_URL"
 
           
           # ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.access_token')
