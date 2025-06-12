@@ -75,34 +75,99 @@ jobs:
 
       - name: Debug Token Validity
         run: |
-          curl -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
-               -H "Content-Type: application/json" \
-               ${{ env.INSTANCE_URL }}/services/data/v59.0/query/?q=SELECT+Id+FROM+Organization
+          echo "Testing token validity..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+                         -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
+                         -H "Content-Type: application/json" \
+                         "${{ env.INSTANCE_URL }}/services/data/v59.0/query/?q=SELECT+Id+FROM+Organization")
+          
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS/d')
+          
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body: $BODY"
+          
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Token validation failed!"
+          else
+            echo "Token is valid!"
+          fi
 
-      - name: Notify Salesforce Webhook with Logging
+      - name: Set Workflow Status
+        run: |
+          # Set STATUS based on previous steps
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "STATUS=success" >> $GITHUB_ENV
+          else
+            echo "STATUS=failure" >> $GITHUB_ENV
+          fi
+
+      - name: Test Webhook Endpoint First
+        run: |
+          echo "Testing webhook endpoint accessibility..."
+          WEBHOOK_URL="${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
+          echo "Webhook URL: $WEBHOOK_URL"
+          
+          # Test with curl first
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+                         -X POST \
+                         -H "Authorization: Bearer ${{ env.ACCESS_TOKEN }}" \
+                         -H "Content-Type: application/json" \
+                         -d '{"test": "connection"}' \
+                         --max-time 30 \
+                         "$WEBHOOK_URL")
+          
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS/d')
+          
+          echo "Test HTTP Status: $HTTP_STATUS"
+          echo "Test Response Body: $BODY"
+
+      - name: Notify Salesforce Webhook with Enhanced Logging
         id: webhook
         if: always()
+        continue-on-error: true
         uses: fjogeleit/http-request-action@v1.15.1
         with:
           url: "${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
           method: 'POST'
-          content-type: 'application/json'
-          headers: |
-            {
-              "Authorization": "Bearer ${{ env.ACCESS_TOKEN }}"
-            }
-          body: |
+          contentType: 'application/json'
+          bearerToken: "${{ env.ACCESS_TOKEN }}"
+          data: |
             {
               "repository": "${{ github.repository }}",
               "workflow": "${{ github.workflow }}",
               "status": "${{ env.STATUS }}",
-              "run_id": "${{ github.run_id }}"
+              "run_id": "${{ github.run_id }}",
+              "timestamp": "${{ github.event.head_commit.timestamp }}",
+              "actor": "${{ github.actor }}"
             }
-          timeout: 10000
+          timeout: 30000
+          retry: 3
+          retryWait: 2000
 
-      - name: Show Full Response
+      - name: Show Full Response and Debug
+        if: always()
         run: |
-            echo "HTTP Status Code: ${{ steps.webhook.outputs.statusCode }}"
-            echo "Response Body: ${{ steps.webhook.outputs.body }}"
-
+          echo "=== Webhook Response Details ==="
+          echo "HTTP Status Code: ${{ steps.webhook.outputs.statusCode }}"
+          echo "Response Body: ${{ steps.webhook.outputs.response }}"
+          echo "Headers: ${{ steps.webhook.outputs.headers }}"
+          
+          # Additional debugging
+          echo "=== Environment Variables ==="
+          echo "INSTANCE_URL: ${{ env.INSTANCE_URL }}"
+          echo "ACCESS_TOKEN (first 10 chars): ${ACCESS_TOKEN:0:10}..."
+          
+          echo "=== Final Webhook URL ==="
+          echo "${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
+          
+          # Check if webhook failed
+          if [ "${{ steps.webhook.outputs.statusCode }}" != "200" ] && [ "${{ steps.webhook.outputs.statusCode }}" != "201" ]; then
+            echo "❌ Webhook call failed!"
+            echo "Status: ${{ steps.webhook.outputs.statusCode }}"
+            echo "Response: ${{ steps.webhook.outputs.response }}"
+          else
+            echo "✅ Webhook call successful!"
+          fi
           
