@@ -48,7 +48,11 @@ jobs:
           # Parse JSON and extract values (without verbose, accessToken might not be available)
           ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.accessToken // empty')
           INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instanceUrl // empty')
-          
+
+          # Debug: Show extracted values (mask sensitive token)
+          echo "0 - Extracted ACCESS_TOKEN: ${ACCESS_TOKEN:0:10}..."
+          echo "0 - Extracted INSTANCE_URL: $INSTANCE_URL"
+
           # Method 2: If accessToken not available without --verbose, generate fresh token
           if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
             echo "AccessToken not available without --verbose, generating fresh token..."
@@ -79,8 +83,8 @@ jobs:
           fi
           
           # Debug: Show extracted values (mask sensitive token)
-          echo "Extracted ACCESS_TOKEN: ${ACCESS_TOKEN:0:10}..."
-          echo "Extracted INSTANCE_URL: $INSTANCE_URL"
+          echo "1 - Extracted ACCESS_TOKEN: ${ACCESS_TOKEN:0:10}..."
+          echo "1 - Extracted INSTANCE_URL: $INSTANCE_URL"
           
           # Validate that we got valid values
           if [ "$ACCESS_TOKEN" = "null" ] || [ -z "$ACCESS_TOKEN" ]; then
