@@ -38,6 +38,19 @@ jobs:
 
       - name: 'Authenticate to the Org'
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+      
+      - name: 'Get Access Token'
+        id: get_token
+        run: |
+          # Get access token from already-authenticated org
+          ORG_ALIAS="${{ env.ORG_ALIAS }}"
+          OUTPUT=$(sf org display --target-org $ORG_ALIAS --verbose --json)
+          
+          ACCESS_TOKEN=$(echo "$OUTPUT" | jq -r '.result.access_token')
+          INSTANCE_URL=$(echo "$OUTPUT" | jq -r '.result.instance_url')
+      
+          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+          echo "INSTANCE_URL=$INSTANCE_URL" >> $GITHUB_ENV
 
 
 
