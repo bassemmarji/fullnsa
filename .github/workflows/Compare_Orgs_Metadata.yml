@@ -16,7 +16,6 @@ on:
 env:
   SRC_ORG_ALIAS: ${{ github.event.inputs.SRC_ORG_ALIAS }}
   DST_ORG_ALIAS: ${{ github.event.inputs.DST_ORG_ALIAS }}
-  METADATA_DIR: ./metadata-projects
 
 jobs:
   compare_metadata:
@@ -31,64 +30,64 @@ jobs:
           node-version: 20
 
       - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
+
+      - name: Verify Salesforce CLI
         run: |
-          npm install --global @salesforce/cli
           npm update --global @salesforce/cli
           sf plugins:update
           sf --version
+          
+      #- name: 'Install jq'
+      #  run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 'Install jq'
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: 'Authenticate Org'
+      - name: 'Authenticate Source & Destination Orgs'
         run: |
           echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
           echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
-
-      - name: 'Prepare Manifest'
+        
+      - name: 'Create Source Project with manifest, Navigate to the Source project folder, Download metadata using SFDX'
         run: |
-          mkdir -p "$METADATA_DIR"
-          cp ./config/package.xml "$METADATA_DIR/manifest.xml" || echo "No package.xml found; using default project manifest."
-
-      - name: 'Retrieve Metadata from Org'
+          # Generate project and manifest
+          sf project generate --name "src-org-metadata" --manifest
+          
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./src-org-metadata/manifest
+          fi
+          
+          cd "./src-org-metadata"
+          
+          # Retrieve metadata
+          sf project retrieve start --target-org $SRC_ORG_ALIAS --manifest manifest/package.xml
+      
+      - name: 'Create Destination Project with manifest, Navigate to the Destination project folder, Download metadata using SFDX'
         run: |
-          retrieve_metadata() {
-            local org_alias="$1"
-            local project_name="$2"
-            local output_dir="$METADATA_DIR/$project_name"
-            
-            echo "Creating project for $org_alias at $output_dir"
-            sf project generate --name "$output_dir" --manifest
-            
-            if [ -f "$METADATA_DIR/manifest.xml" ]; then
-              cp "$METADATA_DIR/manifest.xml" "$output_dir/manifest/package.xml"
-            else
-              echo "Using default package.xml"
-            fi
+          # Generate project and manifest
+          sf project generate --name "dst-org-metadata" --manifest
+          
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./dst-org-metadata/manifest
+          fi
+          
+          cd "./dst-org-metadata"
+          
+          # Retrieve metadata
+          sf project retrieve start --target-org $DST_ORG_ALIAS --manifest manifest/package.xml
 
-            cd "$output_dir"
-            sf project retrieve start --target-org "$org_alias" --manifest manifest/package.xml
-          }
-
-          # Retrieve both orgs' metadata
-          retrieve_metadata "$SRC_ORG_ALIAS" "src-org-metadata"
-          retrieve_metadata "$DST_ORG_ALIAS" "dst-org-metadata"
-
-      - name: 'Compare Metadata'
+      - name: 'Compare Source and Destination Metadata'
         run: |
-          src_path="$METADATA_DIR/src-org-metadata/force-app"
-          dst_path="$METADATA_DIR/dst-org-metadata/force-app"
-
-          echo "Comparing metadata..."
-          (diff -rq "$src_path" "$dst_path" | grep -E "differ|Only" || echo "✅ No differences found") > metadata-diff.txt
+          (diff -rq ./src-org-metadata/force-app ./dst-org-metadata/force-app | grep -E "differ|Only" || echo "No differences found") > metadata-diff.txt
+          echo "Diff completed."
+      
+      - name: 'Write diff to GitHub Summary'
+        run: |
           cat metadata-diff.txt
-
-      - name: 'Write Diff to Summary'
-        run: |
           echo '## Metadata Diff' >> $GITHUB_STEP_SUMMARY
           cat metadata-diff.txt >> $GITHUB_STEP_SUMMARY
-
+      
       - name: 'Upload Diff Artifact'
         uses: actions/upload-artifact@v4
         with:
