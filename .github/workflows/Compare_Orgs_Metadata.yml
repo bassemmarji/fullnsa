@@ -84,7 +84,7 @@ jobs:
 
       - name: 'Compare Source and Destination Metadata'
         run: |
-          diff -rq ./src-org-metadata/force-app ./dst-org-metadata/force-app | grep -E "differ|Only" || echo "No differences found"  > metadata-diff.txt
+          (diff -rq ./src-org-metadata/force-app ./dst-org-metadata/force-app | grep -E "differ|Only" || echo "No differences found") > metadata-diff.txt
           echo "Diff completed."
 
       - name: 'Write diff to GitHub Summary'
