@@ -89,5 +89,12 @@ jobs:
 
       - name: 'Write diff to GitHub Summary'
         run: |
+          cat metadata-diff.txt
           echo '## Metadata Diff' >> $GITHUB_STEP_SUMMARY
           cat metadata-diff.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Upload Diff Artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: metadata-diff
+          path: metadata-diff.txt
