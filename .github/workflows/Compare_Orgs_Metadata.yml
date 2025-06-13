@@ -37,20 +37,15 @@ jobs:
           npm update --global @salesforce/cli
           sf plugins:update
           sf --version
-      - name: 'Install jq'
-        run: sudo apt-get update && sudo apt-get install -y jq
+          
+      #- name: 'Install jq'
+      #  run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 'Authenticate to the Source Org'
-        run: echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
-
-      - name: 'Validate Source Org Authentication'
-        run: sf org list
-
-      - name: 'Authenticate to the Destination Org'
-        run: echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
-
-      - name: 'Validate Destination Org Authentication'
-        run: sf org list
+      - name: 'Authenticate Source & Destination Orgs'
+        run: |
+          echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
+          echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
+          sf org list
         
       - name: 'Create Source Project with manifest, Navigate to the Source project folder, Download metadata using SFDX'
         run: |
