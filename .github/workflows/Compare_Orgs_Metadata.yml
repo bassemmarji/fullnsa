@@ -43,6 +43,44 @@ jobs:
       - name: 'Authenticate to the Source Org'
         run: echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
 
+      - name: 'Validate Source Org Authentication'
+        run: sf org list
+
       - name: 'Authenticate to the Destination Org'
         run: echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Validate Destination Org Authentication'
+        run: sf org list
+        
+      - name: 'Create Source Project with manifest, Navigate to the Source project folder, Download metadata using SFDX'
+        run: |
+          # Generate project and manifest
+          sf project generate --name "src-org-metadata" --manifest
+          
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./src-org-metadata/manifest
+          fi
+          
+          cd "./src-org-metadata"
+          
+          # Retrieve metadata
+          sf project retrieve start --target-org $SRC_ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 'Create Destination Project with manifest, Navigate to the Destination project folder, Download metadata using SFDX'
+        run: |
+          # Generate project and manifest
+          sf project generate --name "dst-org-metadata" --manifest
+          
+          if test -f "./config/package.xml"; then
+             echo "./config/package.xml file exists"
+             cp ./config/package.xml ./dst-org-metadata/manifest
+          fi
+          
+          cd "./dst-org-metadata"
+          
+          # Retrieve metadata
+          sf project retrieve start --target-org $DST_ORG_ALIAS --manifest manifest/package.xml
+
+
 
