@@ -1,1 +1,48 @@
+name: Compare Orgs Metadata
+on:
+  workflow_dispatch:
+    inputs:
+      SRC_ORG_ALIAS:
+        type: string
+        description: "Alias for the Source Salesforce org"
+        required: true
+        default: "SrcOrgAlias"
+      DST_ORG_ALIAS:
+        type: string
+        description: "Alias for the Destination Salesforce org"
+        required: true
+        default: "DstOrgAlias"
+
+env:
+  SRC_ORG_ALIAS: ${{ github.event.inputs.SRC_ORG_ALIAS }}
+  DST_ORG_ALIAS: ${{ github.event.inputs.DST_ORG_ALIAS }}
+
+jobs:
+  compare_metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
+
+      - name: Verify Salesforce CLI
+        run: |
+          npm update --global @salesforce/cli
+          sf plugins:update
+          sf --version
+      - name: 'Install jq'
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 'Authenticate to the Source Org'
+        run: echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Authenticate to the Destination Org'
+        run: echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
 
