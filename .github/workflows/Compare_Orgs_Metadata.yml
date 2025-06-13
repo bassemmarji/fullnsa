@@ -90,6 +90,4 @@ jobs:
       - name: 'Write diff to GitHub Summary'
         run: |
           echo '## Metadata Diff' >> $GITHUB_STEP_SUMMARY
-          echo '```diff' >> $GITHUB_STEP_SUMMARY
           cat metadata-diff.txt >> $GITHUB_STEP_SUMMARY
-          echo '```
