@@ -16,7 +16,7 @@ on:
 env:
   SRC_ORG_ALIAS: ${{ github.event.inputs.SRC_ORG_ALIAS }}
   DST_ORG_ALIAS: ${{ github.event.inputs.DST_ORG_ALIAS }}
-
+  METADATA_DIR: ./metadata-projects
 jobs:
   compare_metadata:
     runs-on: ubuntu-latest
@@ -77,6 +77,41 @@ jobs:
           # Retrieve metadata
           sf project retrieve start --target-org $DST_ORG_ALIAS --manifest manifest/package.xml
 
+      - name: 'Retrieve Metadata from Org'
+        run: |
+          retrieve_metadata() {
+            local org_alias="$1"
+            local project_name="$2"
+            local output_dir="$METADATA_DIR/$project_name"
+
+            echo "Creating project for $org_alias at $output_dir"
+            sf project generate --name "$output_dir" --manifest
+            
+            if test -f "./config/package.xml"; then
+               echo "./config/package.xml file exists"
+               cp ./config/package.xml "$output_dir/manifest/package.xml"
+            fi
+
+            cd "$output_dir"
+            # Retrieve metadata
+            sf project retrieve start --target-org "$org_alias" --manifest manifest/package.xml
+        }
+        retrieve_metadata "$SRC_ORG_ALIAS" "src-org-metadata"
+        retrieve_metadata "$DST_ORG_ALIAS" "dst-org-metadata"
+
+      - name: 'Compare Metadata'
+        run: |
+          src_path="$METADATA_DIR/src-org-metadata/force-app"
+          dst_path="$METADATA_DIR/dst-org-metadata/force-app"
+
+          echo "Comparing metadata between:"
+          echo "  Source: $src_path"
+          echo "  Target: $dst_path"
+
+          # Use more verbose diff options to catch subtle changes
+          (diff -rqB "$src_path" "$dst_path" | grep -E "differ|Only" || echo "✅ No differences found") > metadata-diff.txt
+          cat metadata-diff.txt
+        
       - name: 'Compare Source and Destination Metadata'
         run: |
           (diff -rq ./src-org-metadata/force-app ./dst-org-metadata/force-app | grep -E "differ|Only" || echo "No differences found") > metadata-diff.txt
