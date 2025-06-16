@@ -95,7 +95,8 @@ jobs:
             cd "$output_dir"
             # Retrieve metadata
             sf project retrieve start --target-org "$org_alias" --manifest manifest/package.xml
-        }
+          }
+
         retrieve_metadata "$SRC_ORG_ALIAS" "src-org-metadata"  
         retrieve_metadata "$DST_ORG_ALIAS" "dst-org-metadata"
 
