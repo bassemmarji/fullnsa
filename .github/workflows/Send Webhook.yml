@@ -150,9 +150,14 @@ jobs:
         if: always()
         run: |
           echo "=== Webhook Response Details ==="
-          echo "HTTP Status Code: ${{ steps.webhook.outputs.statusCode }}"
-          echo "Response Body: ${{ steps.webhook.outputs.response }}"
-          echo "Headers: ${{ steps.webhook.outputs.headers }}"
+          # Use variables with proper quoting to avoid shell parsing issues
+          STATUS_CODE="${{ steps.webhook.outputs.statusCode }}"
+          RESPONSE_BODY="${{ steps.webhook.outputs.response }}"
+          
+          echo "HTTP Status Code: $STATUS_CODE"
+          echo "Response Body: $RESPONSE_BODY"
+          # Skip headers to avoid shell parsing issues with dates
+          echo "Headers: (skipped to avoid parsing issues)"
           
           # Additional debugging
           echo "=== Environment Variables ==="
@@ -162,13 +167,19 @@ jobs:
           echo "=== Final Webhook URL ==="
           echo "${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
           
-          # Check if webhook failed
-          if [ "${{ steps.webhook.outputs.statusCode }}" != "200" ] && [ "${{ steps.webhook.outputs.statusCode }}" != "201" ]; then
+          # Check if webhook failed - handle empty status code
+          if [ -z "$STATUS_CODE" ]; then
+            echo "⚠️  No status code returned from webhook action"
+            # Check if we got a response indicating success
+            if [[ "$RESPONSE_BODY" == *"Received:"* ]]; then
+              echo "✅ Webhook call appears successful based on response content"
+            else
+              echo "❌ Webhook status unclear"
+            fi
+          elif [ "$STATUS_CODE" != "200" ] && [ "$STATUS_CODE" != "201" ]; then
             echo "❌ Webhook call failed!"
-            echo "Status: ${{ steps.webhook.outputs.statusCode }}"
-            echo "Response: ${{ steps.webhook.outputs.response }}"
+            echo "Status: $STATUS_CODE"
+            echo "Response: $RESPONSE_BODY"
           else
             echo "✅ Webhook call successful!"
           fi
-
-
