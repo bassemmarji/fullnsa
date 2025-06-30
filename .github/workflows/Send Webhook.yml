@@ -123,3 +123,52 @@ jobs:
           echo "Test HTTP Status: $HTTP_STATUS"
           echo "Test Response Body: $BODY"
 
+      - name: Notify Salesforce Webhook with Enhanced Logging
+        id: webhook
+        if: always()
+        continue-on-error: true
+        uses: fjogeleit/http-request-action@v1.15.1
+        with:
+          url: "${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
+          method: 'POST'
+          contentType: 'application/json'
+          bearerToken: "${{ env.ACCESS_TOKEN }}"
+          data: |
+            {
+              "repository": "${{ github.repository }}",
+              "workflow": "${{ github.workflow }}",
+              "status": "${{ env.STATUS }}",
+              "run_id": "${{ github.run_id }}",
+              "timestamp": "${{ github.event.head_commit.timestamp }}",
+              "actor": "${{ github.actor }}"
+            }
+          timeout: 30000
+          retry: 3
+          retryWait: 2000
+
+      - name: Show Full Response and Debug
+        if: always()
+        run: |
+          echo "=== Webhook Response Details ==="
+          echo "HTTP Status Code: ${{ steps.webhook.outputs.statusCode }}"
+          echo "Response Body: ${{ steps.webhook.outputs.response }}"
+          echo "Headers: ${{ steps.webhook.outputs.headers }}"
+          
+          # Additional debugging
+          echo "=== Environment Variables ==="
+          echo "INSTANCE_URL: ${{ env.INSTANCE_URL }}"
+          echo "ACCESS_TOKEN (first 10 chars): ${ACCESS_TOKEN:0:10}..."
+          
+          echo "=== Final Webhook URL ==="
+          echo "${{ env.INSTANCE_URL }}/services/apexrest/github/webhook"
+          
+          # Check if webhook failed
+          if [ "${{ steps.webhook.outputs.statusCode }}" != "200" ] && [ "${{ steps.webhook.outputs.statusCode }}" != "201" ]; then
+            echo "❌ Webhook call failed!"
+            echo "Status: ${{ steps.webhook.outputs.statusCode }}"
+            echo "Response: ${{ steps.webhook.outputs.response }}"
+          else
+            echo "✅ Webhook call successful!"
+          fi
+
+
