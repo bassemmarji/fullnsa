@@ -150,9 +150,9 @@ jobs:
         if: always()
         run: |
           echo "=== Webhook Response Details ==="
-          # Use variables with proper quoting to avoid shell parsing issues
-          STATUS_CODE="${{ steps.webhook.outputs.statusCode }}"
-          RESPONSE_BODY="${{ steps.webhook.outputs.response }}"
+          # Use proper escaping for GitHub Actions output variables
+          STATUS_CODE='${{ steps.webhook.outputs.statusCode }}'
+          RESPONSE_BODY='${{ steps.webhook.outputs.response }}'
           
           echo "HTTP Status Code: $STATUS_CODE"
           echo "Response Body: $RESPONSE_BODY"
