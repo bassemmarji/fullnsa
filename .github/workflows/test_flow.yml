@@ -39,14 +39,6 @@ jobs:
       - name: 'Validate Org Authentication'
         id: org-list
         run: |
-          ORG_LIST=$(sf org list)
-          echo "ORG_LIST<<EOF" >> $GITHUB_ENV
-          echo "$ORG_LIST" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: 'Validate Org Authentication'
-        id: org-list
-        run: |
           echo "### 🧪 Org Authentication Details" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           
