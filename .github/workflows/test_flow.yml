@@ -39,8 +39,15 @@ jobs:
       - name: 'Validate Org Authentication'
         id: org-list
         run: |
-          # Capture output to GITHUB_STEP_SUMMARY and store in variable
-          echo "### 🧪 Org Authentication Details" >> $GITHUB_STEP_SUMMARY
+          ORG_LIST=$(sf org list)
+          echo "ORG_LIST<<EOF" >> $GITHUB_ENV
+          echo "$ORG_LIST" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: 'Display Org List in Summary'
+        if: always()
+        run: |
+          echo "### 🔍 Full Org Details" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          sf org list >> $GITHUB_STEP_SUMMARY 2>&1
+          echo "${{ env.ORG_LIST }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
