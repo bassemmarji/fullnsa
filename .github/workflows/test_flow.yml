@@ -44,10 +44,15 @@ jobs:
           echo "$ORG_LIST" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: 'Display Org List in Summary'
-        if: always()
+      - name: 'Validate Org Authentication'
+        id: org-list
         run: |
-          echo "### 🔍 Full Org Details" >> $GITHUB_STEP_SUMMARY
+          echo "### 🧪 Org Authentication Details" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ env.ORG_LIST }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Disable color output and capture clean text
+          FORCE_COLOR=0 sf org list | while IFS= read -r line; do
+            echo "$line"
+          done >> $GITHUB_STEP_SUMMARY
+          
           echo '```' >> $GITHUB_STEP_SUMMARY
