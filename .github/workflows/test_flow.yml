@@ -1,0 +1,45 @@
+name: Test Flow
+
+on:
+  workflow_dispatch:
+    inputs:
+      ORG_ALIAS:
+        type: string
+        description: "Alias for the Salesforce org"
+        required: true
+        default: "orgAlias"
+
+env:
+  ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
+
+jobs:
+  run_lwc_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
+        
+      - name: Verify Salesforce CLI
+        run: |
+          npm update --global @salesforce/cli
+          sf plugins:update
+          sf --version
+
+      - name: 'Authenticate to the Org'
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: 'Validate Org Authentication'
+        run: sf org list
+
+      - name: 'Display Org List'
+        if: always()
+        run: |
+          echo '### 🧪 Org Details' >> $GITHUB_STEP_SUMMARY
