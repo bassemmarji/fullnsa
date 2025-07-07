@@ -37,9 +37,10 @@ jobs:
         run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
 
       - name: 'Validate Org Authentication'
-        run: sf org list
-
-      - name: 'Display Org List'
-        if: always()
+        id: org-list
         run: |
-          echo '### 🧪 Org Details' >> $GITHUB_STEP_SUMMARY
+          # Capture output to GITHUB_STEP_SUMMARY and store in variable
+          echo "### 🧪 Org Authentication Details" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          sf org list >> $GITHUB_STEP_SUMMARY 2>&1
+          echo '```' >> $GITHUB_STEP_SUMMARY
