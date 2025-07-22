@@ -95,8 +95,9 @@ jobs:
       
             PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest."
       
-            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | sed -E "s/\x1B(\[[0-9;]*[mK])//g")
-      
+            # Generate test class content (strip explanation and markdown)
+            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | sed -n '/```/,$p' | sed '/```/d')
+    
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
       
             echo '<?xml version="1.0" encoding="UTF-8"?>' > "$SRC_DIR/${CLASS}Test.cls-meta.xml"
