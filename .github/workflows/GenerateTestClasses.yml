@@ -79,6 +79,7 @@ jobs:
 
       - name: ✍️ Generate Test Classes Using Ollama
         if: ${{ steps.find_missing.outputs.classes != '' }}
+        shell: bash
         run: |
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
       
@@ -86,18 +87,16 @@ jobs:
             echo "Generating test class for: $CLASS"
       
             PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest. Include at least one meaningful unit test method."
-      
             RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b)
       
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
       
-            cat > "$SRC_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-          <apiVersion>59.0</apiVersion>
-          <status>Active</status>
-            </ApexClass>
-            EOF
+            # Write the metadata XML using echo instead of heredoc
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > "$SRC_DIR/${CLASS}Test.cls-meta.xml"
+            echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
+            echo '    <apiVersion>59.0</apiVersion>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
+            echo '    <status>Active</status>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
+            echo '</ApexClass>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
       
             echo "✅ Test class for $CLASS created."
           done
