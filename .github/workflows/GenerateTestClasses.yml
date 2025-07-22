@@ -122,11 +122,22 @@ jobs:
           TEST_CLASSES="${TEST_CLASSES#,}"  # Remove leading comma
           echo "🔍 Running Apex tests for: $TEST_CLASSES"
       
+      - name: 📁 Collect Only Newly Generated Test Classes
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        run: |
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          TEMP_DIR="$GITHUB_WORKSPACE/generated-tests"
+      
+          mkdir -p "$TEMP_DIR"
+      
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            cp "$SRC_DIR/${CLASS}Test.cls" "$TEMP_DIR/" 2>/dev/null || echo "⚠️ Missing ${CLASS}Test.cls"
+            cp "$SRC_DIR/${CLASS}Test.cls-meta.xml" "$TEMP_DIR/" 2>/dev/null || echo "⚠️ Missing ${CLASS}Test.cls-meta.xml"
+          done
+      
       - name: 📦 Upload Generated Apex Test Classes as Artifacts
         if: ${{ steps.find_missing.outputs.classes != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: generated-apex-test-classes
-          path: |
-            org-metadata/force-app/main/default/classes/*Test.cls
-            org-metadata/force-app/main/default/classes/*Test.cls-meta.xml
+          path: generated-tests/
