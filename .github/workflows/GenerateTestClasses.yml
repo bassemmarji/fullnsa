@@ -60,21 +60,28 @@ jobs:
           cd ./org-metadata
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 🔍 Find Apex Classes Without Tests
+      - name: 🔍 Find Up to 3 Apex Classes Without Tests
         id: find_missing
         run: |
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
           MISSING=""
-          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls'); do
+          COUNT=0
+      
+          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls' | sort); do
             CLASS=$(basename "$FILE" .cls)
             TEST_FILE="$SRC_DIR/${CLASS}Test.cls"
             if [ ! -f "$TEST_FILE" ]; then
-              echo "Missing: $CLASS"
+              echo "Missing test for: $CLASS"
               MISSING="$MISSING $CLASS"
+              COUNT=$((COUNT+1))
+            fi
+      
+            if [ "$COUNT" -ge 3 ]; then
+              break
             fi
           done
-
-          echo "Missing classes: $MISSING"
+      
+          echo "Selected classes: $MISSING"
           echo "classes=$MISSING" >> $GITHUB_OUTPUT
 
       - name: ✍️ Generate Test Classes Using Ollama
@@ -101,10 +108,59 @@ jobs:
             echo "✅ Test class for $CLASS created."
           done
 
-      - name: 📤 Commit and Push Generated Test Classes
+      - name: 🧪 Run Apex Unit Tests for Generated Classes Only
+        if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add org-metadata/force-app/main/default/classes/*Test.cls*
-          git commit -m "🤖 Auto-generated Apex test classes using Ollama DeepSeek"
-          git push || echo "⚠️ Nothing to commit. Possibly already up-to-date."
+          ORG_ALIAS=${{ env.ORG_ALIAS }}
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          
+          # Extract test class names (append 'Test' to each)
+          TEST_CLASSES=""
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            TEST_CLASSES="$TEST_CLASSES ${CLASS}Test"
+          done
+      
+          echo "🔍 Running Apex tests for: $TEST_CLASSES"
+      
+          # Run Apex tests only for those classes
+          sf apex test run \
+            --target-org "$ORG_ALIAS" \
+            --tests "$TEST_CLASSES" \
+            --code-coverage \
+            --result-format human \
+            --wait 10 \
+            --output-dir ./test-results
+      
+          # Display and summarize results
+          echo '## Apex Test Results (Selected)' >> $GITHUB_STEP_SUMMARY
+          cat ./test-results/test-result.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: 📤 Commit and Push Only Generated Test Classes
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        run: |
+          git config user.name "bassemmarji"
+          git config user.email "bassemmarji@github.com"
+      
+          SRC_DIR="org-metadata/force-app/main/default/classes"
+          FILES_ADDED=0
+      
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            TEST_CLASS="$SRC_DIR/${CLASS}Test.cls"
+            META_FILE="$SRC_DIR/${CLASS}Test.cls-meta.xml"
+            
+            if [ -f "$TEST_CLASS" ]; then
+              git add "$TEST_CLASS"
+              FILES_ADDED=$((FILES_ADDED + 1))
+            fi
+      
+            if [ -f "$META_FILE" ]; then
+              git add "$META_FILE"
+            fi
+          done
+      
+          if [ "$FILES_ADDED" -gt 0 ]; then
+            git commit -m "🤖 Auto-generated Apex test classes using Ollama DeepSeek"
+            git push
+          else
+            echo "⚠️ No new test classes were added. Nothing to commit."
+          fi
