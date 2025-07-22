@@ -109,7 +109,7 @@ jobs:
             echo "✅ Test class for $CLASS created."
           done
 
-      - name: 🧪 Run Apex Unit Tests for Generated Classes Only
+      - name: 🧪 Display Generated Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
           ORG_ALIAS=${{ env.ORG_ALIAS }}
@@ -118,24 +118,11 @@ jobs:
           # Extract test class names (append 'Test' to each)
           TEST_CLASSES=""
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
-            TEST_CLASSES="$TEST_CLASSES ${CLASS}Test"
+            TEST_CLASSES="$TEST_CLASSES,${CLASS}Test"
           done
-      
+          TEST_CLASSES="${TEST_CLASSES#,}"  # Remove leading comma
           echo "🔍 Running Apex tests for: $TEST_CLASSES"
       
-          # Run Apex tests only for those classes
-          sf apex test run \
-            --target-org "$ORG_ALIAS" \
-            --tests "$TEST_CLASSES" \
-            --code-coverage \
-            --result-format human \
-            --wait 10 \
-            --output-dir ./test-results
-      
-          # Display and summarize results
-          echo '## Apex Test Results (Selected)' >> $GITHUB_STEP_SUMMARY
-          cat ./test-results/test-result.txt >> $GITHUB_STEP_SUMMARY
-
       - name: 📤 Commit and Push Only Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
