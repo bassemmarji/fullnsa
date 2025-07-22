@@ -13,7 +13,7 @@ env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
 
 jobs:
-  generate_tests:
+  generate_test_classes:
     runs-on: ubuntu-latest
 
     steps:
@@ -94,11 +94,10 @@ jobs:
             echo "Generating test class for: $CLASS"
       
             PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest. Include at least one meaningful unit test method."
-            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b)
+            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b --quiet)
       
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
       
-            # Write the metadata XML using echo instead of heredoc
             echo '<?xml version="1.0" encoding="UTF-8"?>' > "$SRC_DIR/${CLASS}Test.cls-meta.xml"
             echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
             echo '    <apiVersion>59.0</apiVersion>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
