@@ -93,8 +93,10 @@ jobs:
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
             echo "Generating test class for: $CLASS"
       
-            PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest. Include at least one meaningful unit test method."
-            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b --quiet)
+            PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest."
+      
+            # Use sed to remove spinner characters from the output
+            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | sed 's/[^[:print:]\t]//g')
       
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
       
