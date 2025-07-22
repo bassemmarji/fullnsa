@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-  <version>55.0</version> <!-- Requires API 45.0+ for LWC -->
-  <types>
-    <!-- Retrieve ALL LWCs -->
-    <members>*</members>
-    <name>LightningComponentBundle</name>
-  </types>
+    <version>57.0</version>
+    <types>
+        <members>*</members>
+        <name>ApexClass</name>
+    </types>
 </Package>
