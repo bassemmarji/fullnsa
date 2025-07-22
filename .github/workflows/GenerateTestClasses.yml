@@ -95,8 +95,7 @@ jobs:
       
             PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest."
       
-            # Use sed to remove spinner characters from the output
-            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | sed 's/[^[:print:]\t]//g')
+            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | sed -E "s/\x1B(\[[0-9;]*[mK])//g")
       
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
       
@@ -123,32 +122,11 @@ jobs:
           TEST_CLASSES="${TEST_CLASSES#,}"  # Remove leading comma
           echo "🔍 Running Apex tests for: $TEST_CLASSES"
       
-      - name: 📤 Commit and Push Only Generated Test Classes
+      - name: 📦 Upload Generated Apex Test Classes as Artifacts
         if: ${{ steps.find_missing.outputs.classes != '' }}
-        run: |
-          git config user.name "bassemmarji"
-          git config user.email "bassemmarji@github.com"
-      
-          SRC_DIR="org-metadata/force-app/main/default/classes"
-          FILES_ADDED=0
-      
-          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
-            TEST_CLASS="$SRC_DIR/${CLASS}Test.cls"
-            META_FILE="$SRC_DIR/${CLASS}Test.cls-meta.xml"
-            
-            if [ -f "$TEST_CLASS" ]; then
-              git add "$TEST_CLASS"
-              FILES_ADDED=$((FILES_ADDED + 1))
-            fi
-      
-            if [ -f "$META_FILE" ]; then
-              git add "$META_FILE"
-            fi
-          done
-      
-          if [ "$FILES_ADDED" -gt 0 ]; then
-            git commit -m "🤖 Auto-generated Apex test classes using Ollama DeepSeek"
-            git push
-          else
-            echo "⚠️ No new test classes were added. Nothing to commit."
-          fi
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-apex-test-classes
+          path: |
+            org-metadata/force-app/main/default/classes/*Test.cls
+            org-metadata/force-app/main/default/classes/*Test.cls-meta.xml
