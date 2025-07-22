@@ -1,0 +1,65 @@
+name: Generate Apex Tests with Ollama (DeepSeek)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate_tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl start ollama || ollama serve &
+
+      - name: Pull DeepSeek Model (6.7B)
+        run: |
+          ollama pull deepseek-coder:6.7b
+
+      - name: Find Apex classes without tests
+        id: find_missing
+        run: |
+          SRC_DIR=force-app/main/default/classes
+          mkdir -p generated
+          MISSING=""
+          for FILE in $(find $SRC_DIR -name '*.cls' ! -name '*Test.cls'); do
+            CLASS=$(basename "$FILE" .cls)
+            TEST_CLASS="$SRC_DIR/${CLASS}Test.cls"
+            if [ ! -f "$TEST_CLASS" ]; then
+              echo "Missing: $CLASS"
+              MISSING="$MISSING $CLASS"
+            fi
+          done
+          echo "classes=$MISSING" >> $GITHUB_OUTPUT
+
+      - name: Generate test classes using Ollama (DeepSeek)
+        if: steps.find_missing.outputs.classes != ''
+        run: |
+          SRC_DIR=force-app/main/default/classes
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            echo "Generating test for $CLASS"
+            PROMPT="Write an Apex test class for $CLASS.cls using @isTest. Include a meaningful unit test method."
+            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b)
+            
+            echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
+            
+            cat <<EOF > "$SRC_DIR/${CLASS}Test.cls-meta.xml"
+                <?xml version="1.0" encoding="UTF-8"?>
+                <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+                <apiVersion>59.0</apiVersion>
+                <status>Active</status>
+                </ApexClass>
+                EOF
+          done
+
+      - name: Commit and push test classes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add force-app/main/default/classes/*Test.cls*
+          git commit -m "🤖 Generated Apex test classes using Ollama DeepSeek"
+          git push
