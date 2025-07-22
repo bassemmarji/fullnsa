@@ -2,51 +2,95 @@ name: Generate Apex Tests with Ollama (DeepSeek)
 
 on:
   workflow_dispatch:
+    inputs:
+      ORG_ALIAS:
+        type: string
+        description: "Alias for the Salesforce org"
+        required: true
+        default: "orgAlias"
+
+env:
+  ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
 
 jobs:
   generate_tests:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: 🧾 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ollama
+      - name: ⚙️ Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: ⚡ Install Salesforce CLI
+        run: npm install --global @salesforce/cli
+
+      - name: 🔄 Verify Salesforce CLI
+        run: |
+          npm update --global @salesforce/cli
+          sf plugins:update
+          sf --version
+
+      - name: 🧠 Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          sudo systemctl start ollama || ollama serve &
+          nohup ollama serve > /dev/null 2>&1 &
 
-      - name: Pull DeepSeek Model (6.7B)
+      - name: ⏳ Pull DeepSeek Model (6.7B)
+        run: ollama pull deepseek-coder:6.7b
+
+      - name: 🔐 Authenticate to Salesforce Org
+        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+
+      - name: ✅ Validate Org Authentication
+        run: sf org list
+
+      - name: 📦 Retrieve Org Metadata
         run: |
-          ollama pull deepseek-coder:6.7b
+          sf project generate --name "org-metadata" --manifest
 
-      - name: Find Apex classes without tests
+          if [ -f "./config/package.xml" ]; then
+            echo "Found custom package.xml"
+            cp ./config/package.xml ./org-metadata/manifest
+          fi
+
+          cd ./org-metadata
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 🔍 Find Apex Classes Without Tests
         id: find_missing
         run: |
-          SRC_DIR=force-app/main/default/classes
-          mkdir -p generated
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
           MISSING=""
-          for FILE in $(find $SRC_DIR -name '*.cls' ! -name '*Test.cls'); do
+          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls'); do
             CLASS=$(basename "$FILE" .cls)
-            TEST_CLASS="$SRC_DIR/${CLASS}Test.cls"
-            if [ ! -f "$TEST_CLASS" ]; then
+            TEST_FILE="$SRC_DIR/${CLASS}Test.cls"
+            if [ ! -f "$TEST_FILE" ]; then
               echo "Missing: $CLASS"
               MISSING="$MISSING $CLASS"
             fi
           done
+
+          echo "Missing classes: $MISSING"
           echo "classes=$MISSING" >> $GITHUB_OUTPUT
 
-      - name: Generate test classes using Ollama (DeepSeek)
-        if: steps.find_missing.outputs.classes != ''
+      - name: ✍️ Generate Test Classes Using Ollama
+        if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
-          SRC_DIR=force-app/main/default/classes
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
-            echo "Generating test for $CLASS"
-            PROMPT="Write an Apex test class for $CLASS.cls using @isTest. Include a meaningful unit test method."
+            echo "Generating test class for: $CLASS"
+
+            PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest. Include at least one meaningful unit test method."
+
             RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b)
-            
+
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
-            
+
             cat <<EOF > "$SRC_DIR/${CLASS}Test.cls-meta.xml"
                 <?xml version="1.0" encoding="UTF-8"?>
                 <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -54,12 +98,14 @@ jobs:
                 <status>Active</status>
                 </ApexClass>
                 EOF
+
+            echo "✅ Test class for $CLASS created."
           done
 
-      - name: Commit and push test classes
+      - name: 📤 Commit and Push Generated Test Classes
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add force-app/main/default/classes/*Test.cls*
-          git commit -m "🤖 Generated Apex test classes using Ollama DeepSeek"
-          git push
+          git add org-metadata/force-app/main/default/classes/*Test.cls*
+          git commit -m "🤖 Auto-generated Apex test classes using Ollama DeepSeek"
+          git push || echo "⚠️ Nothing to commit. Possibly already up-to-date."
