@@ -1,4 +1,4 @@
-name: Generate Documentation with Ollama (DeepSeek)
+name: Generate Class Documentation with Ollama (DeepSeek)
 
 on:
   workflow_dispatch:
@@ -10,17 +10,18 @@ on:
         default: "orgAlias"
       MAX_CLASSES:
         type: number
-        description: "Maximum number of test classes to generate (1-10)"
+        description: "Maximum number of classes to document (1-10)"
         required: false
-        default: 3
+        default: 5
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
   MAX_CLASSES: ${{ github.event.inputs.MAX_CLASSES }}
   
 jobs:
-  generate_test_classes:
+  generate_documentation:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: 🧾 Checkout repository
@@ -46,8 +47,9 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           nohup ollama serve > /dev/null 2>&1 &
-          sleep 10  # Give it time to start
+          sleep 15  # Give it more time to start
           ollama pull deepseek-coder:6.7b
+          ollama list
 
       - name: 🔐 Authenticate to Salesforce Org
         run: |
@@ -66,39 +68,33 @@ jobs:
           cd ./org-metadata
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 🔍 Find Apex Classes Without Tests
-        id: find_missing
+      - name: 🔍 Find First 5 Apex Classes
+        id: find_classes
         run: |
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
-          MISSING=""
+          CLASSES=""
           COUNT=0
       
-          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls' | sort); do
+          # Find first 5 classes (excluding tests)
+          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls' | sort | head -n $MAX_CLASSES); do
             CLASS=$(basename "$FILE" .cls)
-            TEST_FILE="$SRC_DIR/${CLASS}Test.cls"
-            if [ ! -f "$TEST_FILE" ]; then
-              echo "Missing test for: $CLASS"
-              MISSING="$MISSING $CLASS"
-              COUNT=$((COUNT+1))
-            fi
-      
-            if [ "$COUNT" -ge $MAX_CLASSES ]; then
-              break
-            fi
+            echo "Selected class: $CLASS"
+            CLASSES="$CLASSES $CLASS"
+            COUNT=$((COUNT+1))
           done
       
-          echo "Selected classes: $MISSING"
-          echo "classes=$MISSING" >> $GITHUB_OUTPUT
+          echo "Selected $COUNT classes: $CLASSES"
+          echo "classes=$CLASSES" >> $GITHUB_OUTPUT
           
       - name: 📝 Generate Class Documentation Using Ollama
-        if: ${{ steps.find_missing.outputs.classes != '' }}
+        if: ${{ steps.find_classes.outputs.classes != '' }}
         shell: bash
         run: |
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
           DOCS_DIR="$GITHUB_WORKSPACE/generated-docs"
           mkdir -p "$DOCS_DIR"
           
-          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+          for CLASS in ${{ steps.find_classes.outputs.classes }}; do
             echo "Generating documentation for: $CLASS"
             
             # Get the class content with character limit
@@ -113,38 +109,84 @@ jobs:
             1. Start with a 1-2 sentence overview of the class purpose
             2. Document each method including:
                - Purpose/functionality
-               - Parameters
-               - Return values
+               - Parameters (name, type, description)
+               - Return values (type, description)
                - Any exceptions thrown
             3. Include usage examples if applicable
-            4. Format using Markdown
+            4. Format using Markdown with clear section headers
             5. Include any important implementation notes
+            6. Document class properties if present
       
             Output only the documentation without additional commentary."
       
-            # Generate documentation with timeout
-            RESPONSE=$(timeout 120 ollama run deepseek-coder:6.7b "$PROMPT" | \
-                     sed '/```markdown/d' | \
-                     sed '/```/d' || true)
+            # Generate documentation with timeout and retries
+            MAX_RETRIES=2
+            ATTEMPT=0
+            SUCCESS=false
             
-            # Save documentation to file
-            echo "$RESPONSE" > "$DOCS_DIR/${CLASS}.md"
-            echo "✅ Documentation generated for $CLASS"
+            while [ $ATTEMPT -lt $MAX_RETRIES ] && [ "$SUCCESS" = false ]; do
+              ATTEMPT=$((ATTEMPT+1))
+              echo "Attempt $ATTEMPT of $MAX_RETRIES"
+              
+              RESPONSE=$(timeout 180 ollama run deepseek-coder:6.7b "$PROMPT" | \
+                       sed '/```markdown/d' | \
+                       sed '/```/d' | \
+                       grep -v '^[[:space:]]*$' || true)
+              
+              # Validate response contains key elements
+              if [[ "$RESPONSE" == *"## Overview"* ]] && 
+                 [[ "$RESPONSE" == *"## Methods"* ]] && 
+                 [[ "$RESPONSE" == *"${CLASS}"* ]]; then
+                SUCCESS=true
+                echo "$RESPONSE" > "$DOCS_DIR/${CLASS}.md"
+                echo "✅ Successfully generated documentation for $CLASS"
+              else
+                echo "⚠️ Documentation generation attempt $ATTEMPT failed or incomplete"
+                sleep 10 # Wait before retry
+              fi
+            done
+            
+            if [ "$SUCCESS" = false ]; then
+              echo "❌ Failed to generate valid documentation after $MAX_RETRIES attempts"
+              echo "# Documentation generation failed for ${CLASS}" > "$DOCS_DIR/${CLASS}.md"
+            fi
             
             # Add delay between generations
-            sleep 10
+            echo "Waiting 15 seconds before next class..."
+            sleep 15
           done
 
       - name: 📦 Upload Generated Documentation
-        if: ${{ steps.find_missing.outputs.classes != '' }}
+        if: ${{ steps.find_classes.outputs.classes != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: generated-class-docs
           path: generated-docs/
+          retention-days: 7
 
-      - name: 📦 Upload All Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-artifacts
-          path: |
-            generated-docs/
+      - name: 📝 Create Summary Report
+        if: ${{ steps.find_classes.outputs.classes != '' }}
+        run: |
+          echo "## 📚 Class Documentation Generation Report" >> $GITHUB_STEP_SUMMARY
+          echo "### Processed Classes" >> $GITHUB_STEP_SUMMARY
+          echo "| Class Name | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          DOCS_DIR="$GITHUB_WORKSPACE/generated-docs"
+          for CLASS in ${{ steps.find_classes.outputs.classes }}; do
+            if [ -f "$DOCS_DIR/${CLASS}.md" ]; then
+              if grep -q "generation failed" "$DOCS_DIR/${CLASS}.md"; then
+                echo "| \`${CLASS}\` | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| \`${CLASS}\` | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "| \`${CLASS}\` | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Download generated documentation from Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- Review and refine documentation as needed" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit to your documentation repository" >> $GITHUB_STEP_SUMMARY
