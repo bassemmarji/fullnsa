@@ -92,11 +92,26 @@ jobs:
       
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
             echo "Generating test class for: $CLASS"
-      
-            PROMPT="Write a Salesforce Apex test class named ${CLASS}Test for class ${CLASS}.cls using @isTest."
-      
-            # Generate test class content (strip explanation and markdown)
-            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | sed -n '/```/,$p' | sed '/```/d')
+            # Get the class content to include in the prompt
+            CLASS_CONTENT=$(cat "$SRC_DIR/${CLASS}.cls")
+            PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class. Include proper test setup, positive/negative test cases, and assertions. 
+            Focus on testing the actual business logic in the class.
+            Class to test:
+            ${CLASS_CONTENT}
+            Test class requirements:
+            1. Must start with @isTest annotation
+            2. Must include at least 75% code coverage
+            3. Must follow Salesforce best practices
+            4. Must include proper test data setup
+            5. Must verify expected behavior through assertions
+            6. Must handle error cases where appropriate
+            Output only the Apex code without any explanations or markdown formatting."
+
+            # Generate and clean the response
+            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | \
+                     sed -n '/@isTest/,/^}/p' | \
+                     sed '/```/d' | \
+                     grep -v '^[[:space:]]*\/\/')
     
             echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
       
@@ -122,6 +137,22 @@ jobs:
           done
           TEST_CLASSES="${TEST_CLASSES#,}"  # Remove leading comma
           echo "🔍 Running Apex tests for: $TEST_CLASSES"
+
+      - name: ✅ Validate Generated Test Classes
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        run: |
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            echo "Validating ${CLASS}Test.cls"
+            if ! grep -q "@isTest" "$SRC_DIR/${CLASS}Test.cls"; then
+              echo "❌ Error: Missing @isTest annotation in ${CLASS}Test.cls"
+              exit 1
+            fi
+            if ! grep -q "class ${CLASS}Test" "$SRC_DIR/${CLASS}Test.cls"; then
+              echo "❌ Error: Incorrect class name in ${CLASS}Test.cls"
+              exit 1
+            fi
+          done
       
       - name: 📁 Collect Only Newly Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
