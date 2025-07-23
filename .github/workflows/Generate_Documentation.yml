@@ -1,192 +1,174 @@
-name: Generate Class Documentation with Ollama (DeepSeek)
+name: AI-Powered Apex Documentation Generator
 
 on:
   workflow_dispatch:
     inputs:
       ORG_ALIAS:
         type: string
-        description: "Alias for the Salesforce org"
+        description: "Salesforce org alias"
         required: true
-        default: "orgAlias"
-      MAX_CLASSES:
-        type: number
-        description: "Maximum number of classes to document (1-10)"
-        required: false
-        default: 5
+        default: "dev"
+      DOC_FORMAT:
+        type: choice
+        description: "Documentation format"
+        options: ["ApexDoc", "Markdown", "Both"]
+        required: true
+        default: "ApexDoc"
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
-  MAX_CLASSES: ${{ github.event.inputs.MAX_CLASSES }}
-  
+  DOC_FORMAT: ${{ github.event.inputs.DOC_FORMAT }}
+
 jobs:
-  generate_documentation:
+  generate_docs:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
-      - name: 🧾 Checkout repository
+      - name: 🏗️ Setup Environment
         uses: actions/checkout@v4
-
-      - name: ⚙️ Install Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          fetch-depth: 0
 
-      - name: ⚡ Install Dependencies
+      - name: ⚙️ Install Tools
         run: |
           # Install Salesforce CLI
-          npm install --global @salesforce/cli
-          npm update --global @salesforce/cli
-          sf plugins:update
-          sf --version
+          npm install --global @salesforce/cli@latest
+          sf plugins:install @salesforce/plugin-apex@latest
           
-          # Install jq for JSON processing
-          sudo apt-get install -y jq
-
-      - name: 🧠 Install Ollama And Pull DeepSeek Model (6.7B)
-        run: |
+          # Install Ollama
           curl -fsSL https://ollama.com/install.sh | sh
-          nohup ollama serve > /dev/null 2>&1 &
-          sleep 15  # Give it more time to start
           ollama pull deepseek-coder:6.7b
+          
+          # Start Ollama server with 2GB memory limit
+          nohup ollama serve > /dev/null 2>&1 &
+          sleep 20
           ollama list
 
-      - name: 🔐 Authenticate to Salesforce Org
+      - name: 🔐 Auth to Salesforce Org
         run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
-          sf org list
+          echo "${{ secrets.SFDX_URL }}" | sf org login sfdx-url \
+            --alias $ORG_ALIAS \
+            --set-default \
+            --sfdx-url-stdin
+          sf org display --verbose
+
+      - name: 📥 Retrieve Apex Classes
+        run: |
+          sf project retrieve start \
+            --metadata-type ApexClass \
+            --target-org $ORG_ALIAS
+
+      - name: 🔍 Select Classes for Documentation
+        id: class_selection
+        run: |
+          CLASSES=$(find force-app/main/default/classes -name '*.cls' ! -name '*Test.cls' | \
+                   head -n 5 | \
+                   xargs -n 1 basename | \
+                   sed 's/\.cls//' | \
+                   tr '\n' ' ')
           
-      - name: 📦 Retrieve Org Metadata
-        run: |
-          sf project generate --name "org-metadata" --manifest
-
-          if [ -f "./config/package.xml" ]; then
-            echo "Found custom package.xml"
-            cp ./config/package.xml ./org-metadata/manifest
-          fi
-
-          cd ./org-metadata
-          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
-
-      - name: 🔍 Find First 5 Apex Classes
-        id: find_classes
-        run: |
-          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
-          CLASSES=""
-          COUNT=0
-      
-          # Find first 5 classes (excluding tests)
-          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls' | sort | head -n $MAX_CLASSES); do
-            CLASS=$(basename "$FILE" .cls)
-            echo "Selected class: $CLASS"
-            CLASSES="$CLASSES $CLASS"
-            COUNT=$((COUNT+1))
-          done
-      
-          echo "Selected $COUNT classes: $CLASSES"
+          echo "Selected classes: $CLASSES"
           echo "classes=$CLASSES" >> $GITHUB_OUTPUT
-          
-      - name: 📝 Generate Class Documentation Using Ollama
-        if: ${{ steps.find_classes.outputs.classes != '' }}
-        shell: bash
+
+      - name: 📝 Generate AI Documentation
+        if: ${{ steps.class_selection.outputs.classes != '' }}
+        env:
+          OLLAMA_MODEL: "deepseek-coder:6.7b"
         run: |
-          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
-          DOCS_DIR="$GITHUB_WORKSPACE/generated-docs"
-          mkdir -p "$DOCS_DIR"
+          mkdir -p generated-docs/{apexdoc,markdown}
           
-          for CLASS in ${{ steps.find_classes.outputs.classes }}; do
-            echo "Generating documentation for: $CLASS"
+          for CLASS in ${{ steps.class_selection.outputs.classes }}; do
+            echo "📄 Processing $CLASS.cls"
             
-            # Get the class content with character limit
-            CLASS_CONTENT=$(head -c 3000 "$SRC_DIR/${CLASS}.cls")
+            # Get sanitized class content (limit to 4000 chars)
+            CONTENT=$(head -c 4000 "force-app/main/default/classes/${CLASS}.cls" | \
+                      sed 's/\/\*.*\*\///g' | \
+                      sed 's/\/\/.*$//g')
             
-            PROMPT="Generate comprehensive documentation for the following Salesforce Apex class: ${CLASS}.cls
-            
-            Class content:
-            ${CLASS_CONTENT}
-      
-            Documentation requirements:
-            1. Start with a 1-2 sentence overview of the class purpose
-            2. Document each method including:
-               - Purpose/functionality
-               - Parameters (name, type, description)
-               - Return values (type, description)
-               - Any exceptions thrown
-            3. Include usage examples if applicable
-            4. Format using Markdown with clear section headers
-            5. Include any important implementation notes
-            6. Document class properties if present
-      
-            Output only the documentation without additional commentary."
-      
-            # Generate documentation with timeout and retries
-            MAX_RETRIES=2
-            ATTEMPT=0
-            SUCCESS=false
-            
-            while [ $ATTEMPT -lt $MAX_RETRIES ] && [ "$SUCCESS" = false ]; do
-              ATTEMPT=$((ATTEMPT+1))
-              echo "Attempt $ATTEMPT of $MAX_RETRIES"
+            # ---- ApexDoc Generation ----
+            if [[ "$DOC_FORMAT" == "ApexDoc" || "$DOC_FORMAT" == "Both" ]]; then
+              PROMPT=$(cat <<EOF
+              Generate ApexDoc documentation for this Salesforce Apex class.
+              Follow these rules:
+              1. Use proper ApexDoc tags: @description, @author, @date, @param, @return, @throws
+              2. Include a 1-2 sentence class overview
+              3. Document all public/protected methods
+              4. Add usage examples where applicable
+              5. Include "@generated This documentation was auto-generated by AI"
               
-              RESPONSE=$(timeout 180 ollama run deepseek-coder:6.7b "$PROMPT" | \
-                       sed '/```markdown/d' | \
-                       sed '/```/d' | \
-                       grep -v '^[[:space:]]*$' || true)
+              Class: ${CLASS}.cls
+              Code:
+              ${CONTENT}
               
-              # Validate response contains key elements
-              if [[ "$RESPONSE" == *"## Overview"* ]] && 
-                 [[ "$RESPONSE" == *"## Methods"* ]] && 
-                 [[ "$RESPONSE" == *"${CLASS}"* ]]; then
-                SUCCESS=true
-                echo "$RESPONSE" > "$DOCS_DIR/${CLASS}.md"
-                echo "✅ Successfully generated documentation for $CLASS"
-              else
-                echo "⚠️ Documentation generation attempt $ATTEMPT failed or incomplete"
-                sleep 10 # Wait before retry
-              fi
-            done
-            
-            if [ "$SUCCESS" = false ]; then
-              echo "❌ Failed to generate valid documentation after $MAX_RETRIES attempts"
-              echo "# Documentation generation failed for ${CLASS}" > "$DOCS_DIR/${CLASS}.md"
+              Output ONLY the documentation block starting with /** and ending with */.
+              EOF
+              )
+              
+              echo "🔄 Generating ApexDoc for $CLASS..."
+              ollama run $OLLAMA_MODEL "$PROMPT" > "generated-docs/apexdoc/${CLASS}.cls"
+              sleep 10
             fi
             
-            # Add delay between generations
-            echo "Waiting 15 seconds before next class..."
-            sleep 15
+            # ---- Markdown Generation ----
+            if [[ "$DOC_FORMAT" == "Markdown" || "$DOC_FORMAT" == "Both" ]]; then
+              PROMPT=$(cat <<EOF
+              Generate comprehensive Markdown documentation for this Salesforce Apex class.
+              Include:
+              1. Class purpose overview
+              2. Method details with parameters/returns
+              3. Code examples
+              4. Error handling
+              5. "⚠️ AI-Generated Documentation" header
+              
+              Class: ${CLASS}.cls
+              Code:
+              ${CONTENT}
+              EOF
+              )
+              
+              echo "🔄 Generating Markdown for $CLASS..."
+              ollama run $OLLAMA_MODEL "$PROMPT" > "generated-docs/markdown/${CLASS}.md"
+              sleep 15
+            fi
           done
 
-      - name: 📦 Upload Generated Documentation
-        if: ${{ steps.find_classes.outputs.classes != '' }}
+      - name: ✨ Post-Processing
+        if: ${{ steps.class_selection.outputs.classes != '' }}
+        run: |
+          # Add headers to generated files
+          find generated-docs -type f -name "*.cls" -exec sed -i '1i /**' {} \;
+          find generated-docs -type f -name "*.cls" -exec sed -i '$a */' {} \;
+          
+          # Format markdown files
+          find generated-docs -type f -name "*.md" -exec sed -i '1i # ⚠️ AI-Generated Documentation\n' {} \;
+
+      - name: 📤 Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: generated-class-docs
+          name: apex-documentation
           path: generated-docs/
           retention-days: 7
 
-      - name: 📝 Create Summary Report
-        if: ${{ steps.find_classes.outputs.classes != '' }}
+      - name: 📊 Generate Report
+        if: always()
         run: |
-          echo "## 📚 Class Documentation Generation Report" >> $GITHUB_STEP_SUMMARY
-          echo "### Processed Classes" >> $GITHUB_STEP_SUMMARY
-          echo "| Class Name | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "## 📋 Documentation Generation Report" >> $GITHUB_STEP_SUMMARY
+          echo "| Class | ApexDoc | Markdown |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|---------|----------|" >> $GITHUB_STEP_SUMMARY
           
-          DOCS_DIR="$GITHUB_WORKSPACE/generated-docs"
-          for CLASS in ${{ steps.find_classes.outputs.classes }}; do
-            if [ -f "$DOCS_DIR/${CLASS}.md" ]; then
-              if grep -q "generation failed" "$DOCS_DIR/${CLASS}.md"; then
-                echo "| \`${CLASS}\` | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "| \`${CLASS}\` | ✅ Success |" >> $GITHUB_STEP_SUMMARY
-              fi
-            else
-              echo "| \`${CLASS}\` | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
-            fi
+          for CLASS in ${{ steps.class_selection.outputs.classes }}; do
+            APEXDOC_STATUS="❌"
+            MD_STATUS="❌"
+            
+            [ -f "generated-docs/apexdoc/${CLASS}.cls" ] && APEXDOC_STATUS="✅"
+            [ -f "generated-docs/markdown/${CLASS}.md" ] && MD_STATUS="✅"
+            
+            echo "| \`${CLASS}\` | ${APEXDOC_STATUS} | ${MD_STATUS} |" >> $GITHUB_STEP_SUMMARY
           done
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "- Download generated documentation from Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "- Review and refine documentation as needed" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit to your documentation repository" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download artifacts for review" >> $GITHUB_STEP_SUMMARY
+          echo "2. For ApexDoc: Copy comments into source files" >> $GITHUB_STEP_SUMMARY
+          echo "3. For Markdown: Add to your documentation repository" >> $GITHUB_STEP_SUMMARY
