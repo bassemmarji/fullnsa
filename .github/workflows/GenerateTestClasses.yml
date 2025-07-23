@@ -89,7 +89,7 @@ jobs:
       
           echo "Selected classes: $MISSING"
           echo "classes=$MISSING" >> $GITHUB_OUTPUT
-
+          
       - name: ✍️ Generate Test Classes Using Ollama
         if: ${{ steps.find_missing.outputs.classes != '' }}
         shell: bash
@@ -97,20 +97,26 @@ jobs:
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
           GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
           mkdir -p "$GENERATED_DIR"
-      
+          
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
             echo "Generating test class for: $CLASS"
             
-            # Get the class content to include in the prompt
-            CLASS_CONTENT=$(cat "$SRC_DIR/${CLASS}.cls")
+            # Get the class content with 3000 characters limit
+            CLASS_CONTENT=$(head -c 3000 "$SRC_DIR/${CLASS}.cls")
+            
+            # Verify class content is not empty
+            if [ -z "$CLASS_CONTENT" ]; then
+              echo "⚠️ Class content is empty or too small, skipping..."
+              continue
+            fi
             
             PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class. 
             Include proper test setup, positive/negative test cases, and assertions.
             Focus on testing the actual business logic in the class.
-
+      
             Class to test:
             ${CLASS_CONTENT}
-
+      
             Test class requirements:
             1. Must start with @isTest annotation
             2. Must include at least 75% code coverage
@@ -118,26 +124,42 @@ jobs:
             4. Must include proper test data setup
             5. Must verify expected behavior through assertions
             6. Must handle error cases where appropriate
-
+      
             Output only the Apex code without any explanations or markdown formatting."
-
-            # Generate and clean the response
-            RESPONSE=$(echo "$PROMPT" | ollama run deepseek-coder:6.7b | \
+      
+            # Generate with timeout
+            echo "Generating test class (max 3000 chars input)..."
+            RESPONSE=$(timeout 120 ollama run deepseek-coder:6.7b "$PROMPT" | \
                      sed -n '/@isTest/,/^}/p' | \
                      sed '/```/d' | \
-                     grep -v '^[[:space:]]*\/\/')
-
-            # Save to generated directory
-            echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
+                     grep -v '^[[:space:]]*\/\/' || true)
             
-            echo '<?xml version="1.0" encoding="UTF-8"?>' > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-            echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-            echo '    <apiVersion>59.0</apiVersion>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-            echo '    <status>Active</status>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-            echo '</ApexClass>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            # Validate response
+            if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
+              echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
+              
+              echo '<?xml version="1.0" encoding="UTF-8"?>' > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '    <apiVersion>59.0</apiVersion>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '    <status>Active</status>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '</ApexClass>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              
+              echo "✅ Successfully generated test class for $CLASS"
+            else
+              echo "⚠️ Generated test class appears invalid, creating empty file"
+              echo "// Auto-generated test class (generation failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
+              echo '<?xml version="1.0" encoding="UTF-8"?>' > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '    <apiVersion>59.0</apiVersion>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '    <status>Active</status>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo '</ApexClass>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            fi
             
-            echo "✅ Test class for $CLASS created in generated-tests directory."
+            # Add delay between generations
+            echo "Waiting 10 seconds before next generation..."
+            sleep 10
           done
+
 
       - name: ✅ Validate Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
