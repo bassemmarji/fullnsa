@@ -98,14 +98,22 @@ jobs:
             exit 1
           fi
 
-      - name: 🔐 Auth to Salesforce Org
+      - name: 🔐 Authenticate to Salesforce Org
+        env:
+          SFDX_URL: ${{ secrets.ORG_SFDX_URL }}
         run: |
-          echo "${{ secrets.SFDX_URL }}" | sf org login sfdx-url \
+          if [ -z "$SFDX_URL" ]; then
+            echo "❌ Error: SFDX_URL environment variable is empty"
+            exit 1
+          fi
+          
+          echo "$SFDX_URL" | sf org login sfdx-url \
             --alias $ORG_ALIAS \
             --set-default \
             --sfdx-url-stdin
-          sf org display --verbose
-
+          
+          sf org display
+      
       - name: 📥 Retrieve Apex Classes
         run: |
           sf project retrieve start \
