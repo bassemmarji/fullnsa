@@ -1,0 +1,150 @@
+name: Generate Documentation with Ollama (DeepSeek)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ORG_ALIAS:
+        type: string
+        description: "Alias for the Salesforce org"
+        required: true
+        default: "orgAlias"
+      MAX_CLASSES:
+        type: number
+        description: "Maximum number of test classes to generate (1-10)"
+        required: false
+        default: 3
+
+env:
+  ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
+  MAX_CLASSES: ${{ github.event.inputs.MAX_CLASSES }}
+  
+jobs:
+  generate_test_classes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: ⚡ Install Dependencies
+        run: |
+          # Install Salesforce CLI
+          npm install --global @salesforce/cli
+          npm update --global @salesforce/cli
+          sf plugins:update
+          sf --version
+          
+          # Install jq for JSON processing
+          sudo apt-get install -y jq
+
+      - name: 🧠 Install Ollama And Pull DeepSeek Model (6.7B)
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve > /dev/null 2>&1 &
+          sleep 10  # Give it time to start
+          ollama pull deepseek-coder:6.7b
+
+      - name: 🔐 Authenticate to Salesforce Org
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+          sf org list
+          
+      - name: 📦 Retrieve Org Metadata
+        run: |
+          sf project generate --name "org-metadata" --manifest
+
+          if [ -f "./config/package.xml" ]; then
+            echo "Found custom package.xml"
+            cp ./config/package.xml ./org-metadata/manifest
+          fi
+
+          cd ./org-metadata
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
+      - name: 🔍 Find Apex Classes Without Tests
+        id: find_missing
+        run: |
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          MISSING=""
+          COUNT=0
+      
+          for FILE in $(find "$SRC_DIR" -name '*.cls' ! -name '*Test.cls' | sort); do
+            CLASS=$(basename "$FILE" .cls)
+            TEST_FILE="$SRC_DIR/${CLASS}Test.cls"
+            if [ ! -f "$TEST_FILE" ]; then
+              echo "Missing test for: $CLASS"
+              MISSING="$MISSING $CLASS"
+              COUNT=$((COUNT+1))
+            fi
+      
+            if [ "$COUNT" -ge $MAX_CLASSES ]; then
+              break
+            fi
+          done
+      
+          echo "Selected classes: $MISSING"
+          echo "classes=$MISSING" >> $GITHUB_OUTPUT
+          
+      - name: 📝 Generate Class Documentation Using Ollama
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        shell: bash
+        run: |
+          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          DOCS_DIR="$GITHUB_WORKSPACE/generated-docs"
+          mkdir -p "$DOCS_DIR"
+          
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            echo "Generating documentation for: $CLASS"
+            
+            # Get the class content with character limit
+            CLASS_CONTENT=$(head -c 3000 "$SRC_DIR/${CLASS}.cls")
+            
+            PROMPT="Generate comprehensive documentation for the following Salesforce Apex class: ${CLASS}.cls
+            
+            Class content:
+            ${CLASS_CONTENT}
+      
+            Documentation requirements:
+            1. Start with a 1-2 sentence overview of the class purpose
+            2. Document each method including:
+               - Purpose/functionality
+               - Parameters
+               - Return values
+               - Any exceptions thrown
+            3. Include usage examples if applicable
+            4. Format using Markdown
+            5. Include any important implementation notes
+      
+            Output only the documentation without additional commentary."
+      
+            # Generate documentation with timeout
+            RESPONSE=$(timeout 120 ollama run deepseek-coder:6.7b "$PROMPT" | \
+                     sed '/```markdown/d' | \
+                     sed '/```/d' || true)
+            
+            # Save documentation to file
+            echo "$RESPONSE" > "$DOCS_DIR/${CLASS}.md"
+            echo "✅ Documentation generated for $CLASS"
+            
+            # Add delay between generations
+            sleep 10
+          done
+
+      - name: 📦 Upload Generated Documentation
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-class-docs
+          path: generated-docs/
+
+      - name: 📦 Upload All Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-artifacts
+          path: |
+            generated-docs/
