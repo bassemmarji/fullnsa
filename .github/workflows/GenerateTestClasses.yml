@@ -8,10 +8,16 @@ on:
         description: "Alias for the Salesforce org"
         required: true
         default: "orgAlias"
+      MAX_CLASSES:
+        type: number
+        description: "Maximum number of test classes to generate (1-10)"
+        required: false
+        default: 3
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
-
+  MAX_CLASSES: ${{ github.event.inputs.MAX_CLASSES }}
+  
 jobs:
   generate_test_classes:
     runs-on: ubuntu-latest
@@ -25,29 +31,28 @@ jobs:
         with:
           node-version: 20
 
-      - name: ⚡ Install Salesforce CLI
-        run: npm install --global @salesforce/cli
-
-      - name: 🔄 Verify Salesforce CLI
+      - name: ⚡ Install Dependencies
         run: |
+          # Install Salesforce CLI
+          npm install --global @salesforce/cli
           npm update --global @salesforce/cli
           sf plugins:update
           sf --version
+          
+          # Install jq for JSON processing
+          sudo apt-get install -y jq
 
-      - name: 🧠 Install Ollama
+      - name: 🧠 Install Ollama And Pull DeepSeek Model (6.7B)
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           nohup ollama serve > /dev/null 2>&1 &
-
-      - name: ⏳ Pull DeepSeek Model (6.7B)
-        run: ollama pull deepseek-coder:6.7b
+          ollama pull deepseek-coder:6.7b
 
       - name: 🔐 Authenticate to Salesforce Org
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
-
-      - name: ✅ Validate Org Authentication
-        run: sf org list
-
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+          sf org list
+          
       - name: 📦 Retrieve Org Metadata
         run: |
           sf project generate --name "org-metadata" --manifest
@@ -60,7 +65,7 @@ jobs:
           cd ./org-metadata
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: 🔍 Find Up to 3 Apex Classes Without Tests
+      - name: 🔍 Find Apex Classes Without Tests
         id: find_missing
         run: |
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
@@ -76,7 +81,7 @@ jobs:
               COUNT=$((COUNT+1))
             fi
       
-            if [ "$COUNT" -ge 3 ]; then
+            if [ "$COUNT" -ge $MAX_CLASSES ]; then
               break
             fi
           done
@@ -89,15 +94,22 @@ jobs:
         shell: bash
         run: |
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
+          mkdir -p "$GENERATED_DIR"
       
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
             echo "Generating test class for: $CLASS"
+            
             # Get the class content to include in the prompt
             CLASS_CONTENT=$(cat "$SRC_DIR/${CLASS}.cls")
-            PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class. Include proper test setup, positive/negative test cases, and assertions. 
+            
+            PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class. 
+            Include proper test setup, positive/negative test cases, and assertions.
             Focus on testing the actual business logic in the class.
+
             Class to test:
             ${CLASS_CONTENT}
+
             Test class requirements:
             1. Must start with @isTest annotation
             2. Must include at least 75% code coverage
@@ -105,6 +117,7 @@ jobs:
             4. Must include proper test data setup
             5. Must verify expected behavior through assertions
             6. Must handle error cases where appropriate
+
             Output only the Apex code without any explanations or markdown formatting."
 
             # Generate and clean the response
@@ -112,64 +125,125 @@ jobs:
                      sed -n '/@isTest/,/^}/p' | \
                      sed '/```/d' | \
                      grep -v '^[[:space:]]*\/\/')
-    
-            echo "$RESPONSE" > "$SRC_DIR/${CLASS}Test.cls"
-      
-            echo '<?xml version="1.0" encoding="UTF-8"?>' > "$SRC_DIR/${CLASS}Test.cls-meta.xml"
-            echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
-            echo '    <apiVersion>59.0</apiVersion>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
-            echo '    <status>Active</status>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
-            echo '</ApexClass>' >> "$SRC_DIR/${CLASS}Test.cls-meta.xml"
-      
-            echo "✅ Test class for $CLASS created."
-          done
 
-      - name: 🧪 Display Generated Classes
-        if: ${{ steps.find_missing.outputs.classes != '' }}
-        run: |
-          ORG_ALIAS=${{ env.ORG_ALIAS }}
-          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
-          
-          # Extract test class names (append 'Test' to each)
-          TEST_CLASSES=""
-          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
-            TEST_CLASSES="$TEST_CLASSES,${CLASS}Test"
+            # Save to generated directory
+            echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
+            
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            echo '    <apiVersion>59.0</apiVersion>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            echo '    <status>Active</status>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            echo '</ApexClass>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+            
+            echo "✅ Test class for $CLASS created in generated-tests directory."
           done
-          TEST_CLASSES="${TEST_CLASSES#,}"  # Remove leading comma
-          echo "🔍 Running Apex tests for: $TEST_CLASSES"
 
       - name: ✅ Validate Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
-          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
+          GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
             echo "Validating ${CLASS}Test.cls"
-            if ! grep -q "@isTest" "$SRC_DIR/${CLASS}Test.cls"; then
+            if ! grep -q "@isTest" "$GENERATED_DIR/${CLASS}Test.cls"; then
               echo "❌ Error: Missing @isTest annotation in ${CLASS}Test.cls"
               exit 1
             fi
-            if ! grep -q "class ${CLASS}Test" "$SRC_DIR/${CLASS}Test.cls"; then
+            if ! grep -q "class ${CLASS}Test" "$GENERATED_DIR/${CLASS}Test.cls"; then
               echo "❌ Error: Incorrect class name in ${CLASS}Test.cls"
               exit 1
             fi
+            if ! grep -q "testMethod" "$GENERATED_DIR/${CLASS}Test.cls" && ! grep -q "@isTest" "$GENERATED_DIR/${CLASS}Test.cls"; then
+              echo "❌ Error: No test methods found in ${CLASS}Test.cls"
+              exit 1
+            fi
           done
-      
-      - name: 📁 Collect Only Newly Generated Test Classes
+
+      - name: 🚀 Deploy Only Generated Test Classes
+        id: deploy
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
-          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
-          TEMP_DIR="$GITHUB_WORKSPACE/generated-tests"
-      
-          mkdir -p "$TEMP_DIR"
-      
+          GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests"
+          
+          echo "Deploying test classes from: $GENERATED_DIR"
+          DEPLOY_RESULT=$(sf project deploy start \
+            --source-dir "$GENERATED_DIR/force-app/main/default/classes" \
+            --target-org $ORG_ALIAS \
+            --wait 30 \
+            --json || true)
+          
+          if echo "$DEPLOY_RESULT" | jq -e '.status == "Failed"' > /dev/null; then
+            echo "❌ Deployment failed:"
+            echo "$DEPLOY_RESULT" | jq '.result.details.componentFailures'
+            exit 1
+          fi
+          echo "✅ Deployment successful"
+
+      - name: 🧪 Run Tests for Only Generated Classes
+        id: run_tests
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        run: |
+          TEST_CLASSES=""
           for CLASS in ${{ steps.find_missing.outputs.classes }}; do
-            cp "$SRC_DIR/${CLASS}Test.cls" "$TEMP_DIR/" 2>/dev/null || echo "⚠️ Missing ${CLASS}Test.cls"
-            cp "$SRC_DIR/${CLASS}Test.cls-meta.xml" "$TEMP_DIR/" 2>/dev/null || echo "⚠️ Missing ${CLASS}Test.cls-meta.xml"
+            TEST_CLASSES="$TEST_CLASSES,${CLASS}Test"
           done
-      
+          TEST_CLASSES="${TEST_CLASSES#,}"
+          
+          echo "Running tests for: $TEST_CLASSES"
+          TEST_RESULT=$(sf apex run test \
+            --tests "$TEST_CLASSES" \
+            --target-org $ORG_ALIAS \
+            --wait 30 \
+            --result-format json \
+            --code-coverage \
+            --json || true)
+          
+          echo "Test Results Summary:"
+          echo "$TEST_RESULT" | jq '.result.summary'
+          
+          # Output coverage information
+          echo "Code Coverage:"
+          echo "$TEST_RESULT" | jq '.result.coverage'
+          
+          # Fail the job if any tests failed
+          if echo "$TEST_RESULT" | jq -e '.result.summary.failures > 0' > /dev/null; then
+            echo "❌ Some tests failed:"
+            echo "$TEST_RESULT" | jq '.result.tests[] | select(.Outcome == "Fail")'
+            exit 1
+          fi
+
       - name: 📦 Upload Generated Apex Test Classes as Artifacts
         if: ${{ steps.find_missing.outputs.classes != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: generated-apex-test-classes
           path: generated-tests/
+      
+      - name: 📝 Create Test Report
+        if: ${{ steps.find_missing.outputs.classes != '' }}
+        run: |
+          echo "## 🧪 Apex Test Generation Report" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Test Classes" >> $GITHUB_STEP_SUMMARY
+          echo "| Class Name | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          for CLASS in ${{ steps.find_missing.outputs.classes }}; do
+            echo "| \`${CLASS}Test.cls\` | ✅ Successfully generated |" >> $GITHUB_STEP_SUMMARY
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "```json" >> $GITHUB_STEP_SUMMARY
+          echo '${{ toJSON(steps.deploy.outputs) }}' | jq '.' >> $GITHUB_STEP_SUMMARY 2>&1 || echo "No deployment details available" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "```json" >> $GITHUB_STEP_SUMMARY
+          echo '${{ toJSON(steps.run_tests.outputs) }}' | jq '.' >> $GITHUB_STEP_SUMMARY 2>&1 || echo "No test results available" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Review generated test classes in the Artifacts section" >> $GITHUB_STEP_SUMMARY
+          echo "- Check test coverage results above" >> $GITHUB_STEP_SUMMARY
+          echo "- Manually validate any edge cases not covered by generated tests" >> $GITHUB_STEP_SUMMARY
