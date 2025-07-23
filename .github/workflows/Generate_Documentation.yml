@@ -116,10 +116,31 @@ jobs:
       
       - name: 📥 Retrieve Apex Classes
         run: |
+          # Create temporary project with package.xml
+          mkdir -p temp-project/manifest
+          cat <<EOF > temp-project/manifest/package.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+            <types>
+              <members>*</members>
+              <name>ApexClass</name>
+            </types>
+            <version>59.0</version>
+          </Package>
+          EOF
+      
+          # Retrieve using package.xml
           sf project retrieve start \
-            --metadata-type ApexClass \
-            --target-org $ORG_ALIAS
-
+            --manifest temp-project/manifest/package.xml \
+            --target-org $ORG_ALIAS \
+            --output-dir force-app/main/default
+      
+          # Verify retrieved classes
+          if [ ! -d "force-app/main/default/classes" ]; then
+            echo "❌ Error: No Apex classes were retrieved"
+            exit 1
+          fi
+          
       - name: 🔍 Select Classes for Documentation
         id: class_selection
         run: |
