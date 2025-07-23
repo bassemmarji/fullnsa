@@ -46,6 +46,7 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           nohup ollama serve > /dev/null 2>&1 &
+          sleep 10  # Give it time to start
           ollama pull deepseek-coder:6.7b
 
       - name: 🔐 Authenticate to Salesforce Org
