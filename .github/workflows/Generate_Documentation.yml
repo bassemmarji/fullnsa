@@ -196,7 +196,6 @@ jobs:
           name: apex-documentation
           path: |
             generated-docs/
-            org-metadata/
           retention-days: 7
 
       - name: 📊 Generate Summary
