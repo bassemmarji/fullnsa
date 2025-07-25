@@ -128,7 +128,7 @@ Test class requirements:
 
 Output only the Apex code without any explanations or markdown formatting.
 EOF
-            )
+)
 
             echo "Generating test class (max 3000 chars input)..."
             RESPONSE=$(timeout 120 ollama run qwen:coder "$PROMPT" | \
@@ -160,7 +160,7 @@ EOF
 
             sleep 10
           done
-
+          
       - name: ✅ Validate Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
