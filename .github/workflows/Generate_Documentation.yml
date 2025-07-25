@@ -109,12 +109,12 @@ jobs:
       
       - name: 📦 Retrieve Metadata
         run: |
-          # Create project structure
+          # Create and initialize project directory
           mkdir -p org-metadata
           cd org-metadata
           
-          # Initialize as valid SFDX project
-          sf project generate --default-package-dir force-app
+          # Initialize as valid SFDX project with required --name flag
+          sf project generate --name "org-metadata" --default-package-dir force-app
           
           # Create package.xml
           mkdir -p manifest
@@ -139,7 +139,7 @@ jobs:
             echo "❌ Error: No Apex classes were retrieved"
             exit 1
           fi
-
+          
       - name: 📝 Generate Markdown Docs
         run: |
           mkdir -p generated-docs
