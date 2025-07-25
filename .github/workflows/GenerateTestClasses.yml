@@ -82,7 +82,7 @@ jobs:
           echo "Selected classes: $MISSING"
           echo "classes=$MISSING" >> $GITHUB_OUTPUT
 
-      - name: ✍️ Generate Test Classes Using Qwen-Coder
+      - name: ✍️ Generate Test Classes Using Ollama
         if: ${{ steps.find_missing.outputs.classes != '' }}
         shell: bash
         run: |
@@ -99,59 +99,57 @@ jobs:
               continue
             fi
 
-            PROMPT="You are a senior Salesforce developer. Generate a comprehensive Apex test class for the following Apex class. Follow Salesforce best practices strictly.
+            # Use a function to avoid YAML quote issues
+            PROMPT=$(cat << 'EOF'
+Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
+Include proper test setup, positive/negative test cases, and assertions.
+Focus on testing the actual business logic in the class.
 
-**Class to Test:**
-\`\`\`apex
-$CLASS_CONTENT
-\`\`\`
+Class to test:
+${CLASS_CONTENT}
 
-**Instructions:**
-1. Name the class \`${CLASS}Test\` and annotate with \`@isTest\`
-2. Include proper test setup using \`@testSetup\` if needed
-3. Create realistic test data (Accounts, Contacts, Opportunities, etc.) using `Test.loadData` or inline DML
-4. Test positive and negative scenarios, including error handling
-5. Use `System.assert`, `System.assertEquals`, and `System.assertNotEquals` to validate outcomes
-6. Ensure at least 75% code coverage
-7. Avoid hardcoding IDs; use dynamic queries if needed
-8. Do not include System.debug() unless necessary
-9. Handle governor limits and bulk behavior if applicable
-10. If the class uses SOQL, test with multiple records
-11. If the class uses DML, test rollback behavior using Test.startTest() and Test.stopTest()
-12. If the class is a trigger handler, test both insert and update operations
+Test class requirements:
+1. Must start with @isTest annotation
+2. Must include at least 75% code coverage
+3. Must follow Salesforce best practices
+4. Must include proper test data setup
+5. Must verify expected behavior through assertions
+6. Must handle error cases where appropriate
 
-**Output Format:**
-- Output only the Apex code
-- No markdown, no explanations
-- No comments unless essential
-- Include metadata XML in a separate file
+Output only the Apex code without any explanations or markdown formatting.
+EOF
+            )
 
-Begin:"
-            
-            echo "Generating test class using qwen:coder..."
-            RESPONSE=$(timeout 120 ollama run qwen:coder "$PROMPT" | sed '/^$/d' | sed '/```/d' | sed '/^---$/d' || true)
+            echo "Generating test class (max 3000 chars input)..."
+            RESPONSE=$(timeout 120 ollama run deepseek-coder:6.7b "$PROMPT" | \
+                     sed -n '/@isTest/,/^}/p' | \
+                     sed '/```/d' | \
+                     grep -v '^[[:space:]]*\/\/' || true)
 
             if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
               echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
-              echo '<?xml version="1.0" encoding="UTF-8"?>' > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '    <apiVersion>60.0</apiVersion>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '    <status>Active</status>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '</ApexClass>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>60.0</apiVersion>
+    <status>Active</status>
+</ApexClass>
+EOF
               echo "✅ Successfully generated test class for $CLASS"
             else
-              echo "⚠️ Failed to generate valid test class, creating placeholder"
-              echo "// Auto-generated test class (failed to generate)" > "$GENERATED_DIR/${CLASS}Test.cls"
-              echo '<?xml version="1.0" encoding="UTF-8"?>' > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '    <apiVersion>60.0</apiVersion>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '    <status>Active</status>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
-              echo '</ApexClass>' >> "$GENERATED_DIR/${CLASS}Test.cls-meta.xml"
+              echo "// Auto-generated test class (failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
+              cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>60.0</apiVersion>
+    <status>Active</status>
+</ApexClass>
+EOF
             fi
 
             sleep 10
           done
-
+          
       - name: ✅ Validate Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
