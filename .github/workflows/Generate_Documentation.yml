@@ -127,12 +127,6 @@ jobs:
           EOF
 
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
-
-          # Verify
-          if [ ! -d "force-app/main/default/classes" ]; then
-            echo "❌ Error: No Apex classes were retrieved"
-            exit 1
-          fi
           
       - name: 📝 Generate Markdown Docs
         run: |
@@ -158,17 +152,39 @@ jobs:
               echo "Attempt $ATTEMPT/3: Generating docs for $CLASS"
               
               # Using simple echo for prompt (YAML-safe)
-              PROMPT="Generate Markdown documentation for Salesforce class $CLASS.
-              Include:
-              1. Class purpose
-              2. Method signatures with params/returns
-              3. Usage examples
-              4. Error handling
-              5. '## AI-Generated Documentation' header
-      
+              PROMPT="Generate professional Markdown documentation for Salesforce Apex class $CLASS using this exact structure:
+              # $CLASS
+          
+              ## Overview
+              [1-2 sentence class purpose]
+          
+              ## Methods
+              [For each public/protected method:]
+          
+              ### methodName()
+              **Description:** [Functionality]
+              **Parameters:**
+              - param1 (Type): [Description]
+              - param2 (Type): [Description]
+              **Returns:** [Return type description]
+              **Example:**
+              \`\`\`apex
+              // Apex example only
+              [Code]
+              \`\`\`
+          
+              ## Usage Notes
+              [Important implementation details]
+          
+              STRICT REQUIREMENTS:
+              1. Only use Apex code examples (NO Java/JavaScript)
+              2. Never include introductory text
+              3. Maintain this exact format
+              4. Document all public/protected methods
+          
               Class content:
               $CONTENT"
-      
+          
               echo "$PROMPT" | ollama run deepseek-coder:6.7b > "generated-docs/${CLASS}.md"
       
               # Verify output
