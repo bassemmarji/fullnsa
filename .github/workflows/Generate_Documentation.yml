@@ -109,11 +109,16 @@ jobs:
       
       - name: 📦 Retrieve Metadata
         run: |
-          # Create org-metadata directory
-          mkdir -p org-metadata/manifest
+          # Create project structure
+          mkdir -p org-metadata
+          cd org-metadata
           
-          # Generate package.xml for Apex classes
-          cat <<EOF > org-metadata/manifest/package.xml
+          # Initialize as valid SFDX project
+          sf project generate --default-package-dir force-app
+          
+          # Create package.xml
+          mkdir -p manifest
+          cat <<EOF > manifest/package.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <Package xmlns="http://soap.sforce.com/2006/04/metadata">
             <types>
@@ -125,10 +130,15 @@ jobs:
           EOF
           
           # Retrieve metadata
-          cd org-metadata
           sf project retrieve start \
             --manifest manifest/package.xml \
             --target-org $ORG_ALIAS
+          
+          # Verify retrieval
+          if [ ! -d "force-app/main/default/classes" ]; then
+            echo "❌ Error: No Apex classes were retrieved"
+            exit 1
+          fi
 
       - name: 📝 Generate Markdown Docs
         run: |
