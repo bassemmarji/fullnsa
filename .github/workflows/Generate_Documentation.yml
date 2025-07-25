@@ -151,15 +151,18 @@ jobs:
             for ATTEMPT in {1..3}; do
               echo "Attempt $ATTEMPT/3: Generating docs for $CLASS"
               
-              # Using simple echo for prompt (YAML-safe)
-              PROMPT="Generate professional Markdown documentation for Salesforce Apex class $CLASS using this exact structure:
+              PROMPT="Generate professional Markdown documentation for Salesforce Apex class $CLASS. Follow these rules STRICTLY:
+              - Only show the final documentation content
+              - Use ONLY Apex code examples (no Java/JavaScript)
+              - Never include disclaimers or requirements in output
+              - Maintain this exact format:
+          
               # $CLASS
           
               ## Overview
               [1-2 sentence class purpose]
           
               ## Methods
-              [For each public/protected method:]
           
               ### methodName()
               **Description:** [Functionality]
@@ -169,22 +172,16 @@ jobs:
               **Returns:** [Return type description]
               **Example:**
               \`\`\`apex
-              // Apex example only
-              [Code]
+              // Proper Apex example
+              [Relevant code]
               \`\`\`
           
               ## Usage Notes
-              [Important implementation details]
+              [Implementation details]
           
-              STRICT REQUIREMENTS:
-              1. Only use Apex code examples (NO Java/JavaScript)
-              2. Never include introductory text
-              3. Maintain this exact format
-              4. Document all public/protected methods
-          
-              Class content:
+              Class content to document:
               $CONTENT"
-          
+                    
               echo "$PROMPT" | ollama run deepseek-coder:6.7b > "generated-docs/${CLASS}.md"
       
               # Verify output
