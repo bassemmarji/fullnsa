@@ -136,36 +136,60 @@ jobs:
           
       - name: 📝 Generate Markdown Docs
         run: |
+          # Create output directory
           mkdir -p generated-docs
-          
+      
+          # Verify classes exist
+          if [ ! -d "org-metadata/force-app/main/default/classes" ]; then
+            echo "❌ Error: No classes found in org-metadata/force-app"
+            exit 1
+          fi
+      
           # Process first 5 classes
           for CLASS_FILE in $(find org-metadata/force-app/main/default/classes -name '*.cls' ! -name '*Test.cls' | head -n 5); do
             CLASS=$(basename "$CLASS_FILE" .cls)
-            echo "📄 Generating docs for $CLASS"
-            
-            # Get class content (limited to 4000 chars)
-            CONTENT=$(head -c 4000 "$CLASS_FILE" | sed 's/\/\/.*$//g' | sed '/\/\*/,/\*\//d')
-            
-            # Generate Markdown documentation
-            PROMPT=$(cat <<PROMPT
-            Generate comprehensive Markdown documentation for Salesforce Apex class: ${CLASS}
-            
-            Include:
-            1. Class purpose overview
-            2. All public/protected methods with parameters and return values
-            3. Usage examples
-            4. Error handling details
-            5. "## AI-Generated Documentation" header at top
-            
-            Class content:
-            ${CONTENT}
-            PROMPT
-            )
-            
-            echo "$PROMPT" | ollama run deepseek-coder:6.7b > "generated-docs/${CLASS}.md"
-            sleep 10 # Rate limit
+            echo "📄 Processing $CLASS.cls"
+      
+            # Get sanitized content (4000 chars max)
+            CONTENT=$(head -c 4000 "$CLASS_FILE" | sed '/\/\*/,/\*\//d' | sed 's/\/\/.*$//')
+      
+            # Generate with retries
+            for ATTEMPT in {1..3}; do
+              echo "Attempt $ATTEMPT/3: Generating docs for $CLASS"
+              
+              # Using simple echo for prompt (YAML-safe)
+              PROMPT="Generate Markdown documentation for Salesforce class $CLASS.
+              Include:
+              1. Class purpose
+              2. Method signatures with params/returns
+              3. Usage examples
+              4. Error handling
+              5. '## AI-Generated Documentation' header
+      
+              Class content:
+              $CONTENT"
+      
+              echo "$PROMPT" | ollama run deepseek-coder:6.7b > "generated-docs/${CLASS}.md"
+      
+              # Verify output
+              if [ -s "generated-docs/${CLASS}.md" ] && grep -q "AI-Generated" "generated-docs/${CLASS}.md"; then
+                echo "✅ Successfully generated $CLASS.md"
+                break
+              else
+                echo "⚠️ Attempt $ATTEMPT failed"
+                sleep 5
+              fi
+            done
+      
+            # Final failure check
+            if [ ! -s "generated-docs/${CLASS}.md" ]; then
+              echo "❌ Failed after 3 attempts - creating empty file"
+              echo "# Failed to generate docs for $CLASS" > "generated-docs/${CLASS}.md"
+            fi
+      
+            sleep 5 # Rate limit
           done
-
+          
       - name: 📤 Upload Documentation
         uses: actions/upload-artifact@v4
         with:
