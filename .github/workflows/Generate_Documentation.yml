@@ -109,12 +109,9 @@ jobs:
       
       - name: 📦 Retrieve Metadata
         run: |
-          # Work entirely within org-metadata
-          mkdir -p org-metadata
-          cd org-metadata
-          
           # Create full project structure
-          sf project generate --name "metadata-project" --default-package-dir force-app
+          sf project generate --name "org-metadata" --manifest
+          cd ./org-metadata
           
           # Create package.xml
           mkdir -p manifest
@@ -128,12 +125,9 @@ jobs:
             <version>59.0</version>
           </Package>
           EOF
-          
-          # Retrieve metadata
-          sf project retrieve start \
-            --manifest manifest/package.xml \
-            --target-org $ORG_ALIAS
-          
+
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+
           # Verify
           if [ ! -d "force-app/main/default/classes" ]; then
             echo "❌ Error: No Apex classes were retrieved"
