@@ -138,7 +138,7 @@ EOF
 
             if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
               echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
-              cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << EOF
+              cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>60.0</apiVersion>
@@ -148,7 +148,7 @@ EOF
               echo "✅ Successfully generated test class for $CLASS"
             else
               echo "// Auto-generated test class (failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
-              cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << EOF
+              cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>60.0</apiVersion>
