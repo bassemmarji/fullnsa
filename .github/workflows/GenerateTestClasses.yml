@@ -33,21 +33,32 @@ jobs:
         run: |
           # Install Salesforce CLI
           npm install --global @salesforce/cli
-          npm update --global @salesforce/cli
           sf plugins:update
           sf --version
           # Install jq for JSON processing
-          sudo apt-get install -y jq
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: 🧠 Install Ollama And Pull Qwen-Coder Model
         run: |
           curl -fsSL https://ollama.com/install.sh  | sh
           nohup ollama serve > /dev/null 2>&1 &
-          sleep 10  # Give Ollama time to start
+          # Wait for Ollama to be ready
+          for i in {1..30}; do
+            if ollama list | grep -q "qwen"; then
+              echo "Ollama is ready."
+              break
+            fi
+            echo "Waiting for Ollama... ($i/30)"
+            sleep 5
+          done
           ollama pull qwen:coder
 
       - name: 🔐 Authenticate to Salesforce Org
         run: |
+          if [ -z "${{ secrets.ORG_SFDX_URL }}" ]; then
+            echo "❌ Error: ORG_SFDX_URL secret is missing"
+            exit 1
+          fi
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
@@ -56,10 +67,10 @@ jobs:
           sf project generate --name "org-metadata" --manifest
           if [ -f "./config/package.xml" ]; then
             echo "Found custom package.xml"
-            cp ./config/package.xml ./org-metadata/manifest
+            cp ./config/package.xml ./org-metadata/manifest/
           fi
           cd ./org-metadata
-          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
+          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml --json | jq '.' || (echo "❌ Retrieve failed" && exit 1)
 
       - name: 🔍 Find Apex Classes Without Tests
         id: find_missing
@@ -99,8 +110,7 @@ jobs:
               continue
             fi
 
-            # Use a function to avoid YAML quote issues
-            PROMPT=$(cat << 'EOF'
+            PROMPT=$(cat << EOF
             Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
             Include proper test setup, positive/negative test cases, and assertions.
             Focus on testing the actual business logic in the class.
@@ -121,10 +131,10 @@ jobs:
                         )
 
             echo "Generating test class (max 3000 chars input)..."
-            RESPONSE=$(timeout 120 ollama run deepseek-coder:6.7b "$PROMPT" | \
+            RESPONSE=$(timeout 120 ollama run qwen:coder "$PROMPT" | \
                      sed -n '/@isTest/,/^}/p' | \
                      sed '/```/d' | \
-                     grep -v '^[[:space:]]*\/\/' || true)
+                     grep -v '^[[:space:]]*//' || true)
 
             if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
               echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
@@ -145,11 +155,12 @@ jobs:
                   <status>Active</status>
               </ApexClass>
               EOF
+              echo "⚠️ Failed to generate valid test class for $CLASS"
             fi
 
             sleep 10
           done
-          
+
       - name: ✅ Validate Generated Test Classes
         if: ${{ steps.find_missing.outputs.classes != '' }}
         run: |
