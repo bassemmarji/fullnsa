@@ -12,7 +12,7 @@ on:
         type: string
         description: "Name of the Apex class to generate documentation for"
         required: true
-        default: "GithubActionTrigger"
+        default: "GitHubActionTrigger"
   
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
