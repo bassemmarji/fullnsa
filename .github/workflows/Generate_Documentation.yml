@@ -37,15 +37,15 @@ jobs:
           
       - name: 🦙 Install & Configure Ollama
         run: |
-          # Install with auto-start
+          # Install Ollama
           curl -fsSL https://ollama.com/install.sh | sh
-          
-          # Configure systemd service (more reliable than nohup)
+
+          # Create systemd service file
           sudo tee /etc/systemd/system/ollama.service <<EOF
           [Unit]
           Description=Ollama Service
           After=network-online.target
-
+          
           [Service]
           ExecStart=/usr/local/bin/ollama serve
           User=root
@@ -54,18 +54,17 @@ jobs:
           RestartSec=3
           Environment="OLLAMA_HOST=0.0.0.0"
           Environment="OLLAMA_MODELS=$HOME/.ollama/models"
-
+          
           [Install]
           WantedBy=multi-user.target
           EOF
 
-          # Start and enable service
+          # Start and enable the Ollama service
           sudo systemctl daemon-reload
-          sudo systemctl enable ollama
-          sudo systemctl start ollama
-          sleep 10  # Wait for service initialization
+          sudo systemctl enable --now ollama  # Combined enable and start
 
-          # Verify service status
+          # Wait for service initialization and check status
+          sleep 10
           if ! systemctl is-active --quiet ollama; then
             echo "❌ Failed to start Ollama service"
             journalctl -u ollama -b --no-pager | tail -n 20
@@ -86,9 +85,9 @@ jobs:
         run: |
           # Verify server responsiveness
           if ! curl -s http://localhost:11434 >/dev/null; then
-            echo "❌ Ollama server not responding"
+            echo "❌ Ollama server not responding, restarting..."
             sudo systemctl restart ollama
-            sleep 15
+            sleep 15  # Wait for restart
           fi
 
           # Final verification
@@ -96,7 +95,7 @@ jobs:
             echo "❌ Ollama still not responding after restart"
             exit 1
           fi
-
+          
       - name: 🔐 Authenticate to Salesforce Org
         env:
           SFDX_URL: ${{ secrets.ORG_SFDX_URL }}
@@ -199,19 +198,15 @@ jobs:
             echo "❌ Failed after 3 attempts - creating empty file"
             echo "# Failed to generate docs for $CLASS" > "generated-docs/${CLASS}.md"
           fi
-          
+
       - name: 📤 Upload Documentation
         uses: actions/upload-artifact@v4
         with:
           name: apex-documentation
-          path: |
-            generated-docs/
-          retention-days: 7
+          path: "generated-docs/${{ env.CLASS_NAME }}.md" # Upload only the specific class markdown
 
       - name: 📊 Generate Summary
         run: |
           echo "## Documentation Generation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Generated Markdown for:" >> $GITHUB_STEP_SUMMARY
-          ls generated-docs/*.md | xargs -n 1 basename | sed 's/\.md//' | while read CLASS; do
-            echo "- \`$CLASS\`" >> $GITHUB_STEP_SUMMARY
-          done
+          echo "Generated Markdown for: \`$CLASS_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`$CLASS_NAME\`" >> $GITHUB_STEP_SUMMARY  # No need to loop since it's a single class
