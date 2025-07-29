@@ -203,10 +203,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apex-documentation
-          path: "generated-docs/${{ env.CLASS_NAME }}.md" # Upload only the specific class markdown
+          path: "generated-docs/${{ env.CLASS_NAME }}.md"
 
       - name: 📊 Generate Summary
         run: |
           echo "## Documentation Generation Summary" >> $GITHUB_STEP_SUMMARY
           echo "Generated Markdown for: \`$CLASS_NAME\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`$CLASS_NAME\`" >> $GITHUB_STEP_SUMMARY  # No need to loop since it's a single class
+          echo "- \`$CLASS_NAME\`" >> $GITHUB_STEP_SUMMARY
