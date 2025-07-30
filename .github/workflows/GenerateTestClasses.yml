@@ -43,6 +43,7 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh  | sh
           nohup ollama serve > /dev/null 2>&1 &
+          
           # Wait for Ollama to be ready
           for i in {1..30}; do
             if ollama list | grep -q "qwen"; then
@@ -52,8 +53,10 @@ jobs:
             echo "Waiting for Ollama... ($i/30)"
             sleep 5
           done
-          ollama pull qwen:coder
-
+      
+          # ✅ Use a valid model name
+          ollama pull qwen2:7b
+    
       - name: 🔐 Authenticate to Salesforce Org
         run: |
           if [ -z "${{ secrets.ORG_SFDX_URL }}" ]; then
@@ -126,7 +129,7 @@ jobs:
             EOF
             )
 
-          RESPONSE=$(timeout 120 ollama run qwen:coder "$PROMPT" | \
+          RESPONSE=$(timeout 120 ollama run qwen2:7b "$PROMPT" | \
                    sed -n '/@isTest/,/^}/p' | \
                    sed '/```/d' | \
                    grep -v '^\[\[:space:\]\]*//' || true)
