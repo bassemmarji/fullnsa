@@ -109,22 +109,22 @@ jobs:
             exit 1
           fi
 
-          PROMPT=$(cat << 'EOF'
-Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
-Include proper test setup, positive/negative test cases, and assertions.
-Focus on testing the actual business logic in the class.
-Class to test:
-${CLASS_CONTENT}
-Test class requirements:
-1. Must start with @isTest annotation
-2. Must include at least 75% code coverage
-3. Must follow Salesforce best practices
-4. Must include proper test data setup
-5. Must verify expected behavior through assertions
-6. Must handle error cases where appropriate
-Output only the Apex code without any explanations or markdown formatting.
-EOF
-)
+          PROMPT=$(cat <<EOF
+            Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
+            Include proper test setup, positive/negative test cases, and assertions.
+            Focus on testing the actual business logic in the class.
+            Class to test:
+            ${CLASS_CONTENT}
+            Test class requirements:
+            1. Must start with @isTest annotation
+            2. Must include at least 75% code coverage
+            3. Must follow Salesforce best practices
+            4. Must include proper test data setup
+            5. Must verify expected behavior through assertions
+            6. Must handle error cases where appropriate
+            Output only the Apex code without any explanations or markdown formatting.
+            EOF
+            )
 
           RESPONSE=$(timeout 120 ollama run qwen:coder "$PROMPT" | \
                    sed -n '/@isTest/,/^}/p' | \
@@ -199,12 +199,12 @@ EOF
             exit 1
           fi
 
-      - name: 📦 Upload Generated Apex Test Class as Artifact
+      - name: 📦 Upload ONLY Generated Apex Test Class as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: generated-apex-test-class-qwen
-          path: generated-tests/
-
+          path: generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls*
+          
       - name: 📝 Create Test Report
         run: |
           echo "## 🧪 Apex Test Generation Report (Qwen-Coder)" >> $GITHUB_STEP_SUMMARY
