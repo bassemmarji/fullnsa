@@ -112,12 +112,16 @@ jobs:
             exit 1
           fi
 
-          PROMPT=$(cat <<EOF
-          Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
+          # Use a clean string prompt (avoid heredoc issues)
+          PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
           Include proper test setup, positive/negative test cases, and assertions.
           Focus on testing the actual business logic in the class.
+
           Class to test:
-          ${CLASS_CONTENT}
+          \`\`\`apex
+          $CLASS_CONTENT
+          \`\`\`
+
           Test class requirements:
           1. Must start with @isTest annotation
           2. Must include at least 75% code coverage
@@ -125,14 +129,12 @@ jobs:
           4. Must include proper test data setup
           5. Must verify expected behavior through assertions
           6. Must handle error cases where appropriate
-          Output only the Apex code without any explanations or markdown formatting.
-          EOF
-          )
+          7. Output ONLY the Apex code with no explanations, markdown, or comments outside the code
+          8. Do not include any additional text before or after the class
+          "
 
-          RESPONSE=$(timeout 120 ollama run qwen2:7b "$PROMPT" | \
-                   sed -n '/@isTest/,/^}/p' | \
-                   sed '/```/d' | \
-                   grep -v '^\[\[:space:\]\]*//' || true)
+          # Use `ollama generate` instead of `ollama run` for scripting
+          RESPONSE=$(echo "$PROMPT" | timeout 120 ollama generate qwen2:7b --format json | jq -r '.response' 2>/dev/null) || true
 
           if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
