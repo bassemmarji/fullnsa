@@ -89,7 +89,7 @@ jobs:
               <members>${{ env.CLASS_NAME }}</members>
               <name>ApexClass</name>
             </types>
-            <version>59.0</version>
+            <version>60.0</version>
           </Package>
           EOF
           sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
@@ -134,22 +134,22 @@ jobs:
           if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
             cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-    <apiVersion>60.0</apiVersion>
-    <status>Active</status>
-</ApexClass>
-EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+                <apiVersion>60.0</apiVersion>
+                <status>Active</status>
+            </ApexClass>
+            EOF
             echo "✅ Successfully generated test class for $CLASS"
           else
             echo "// Auto-generated test class (failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
             cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-    <apiVersion>60.0</apiVersion>
-    <status>Active</status>
-</ApexClass>
-EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+                <apiVersion>60.0</apiVersion>
+                <status>Active</status>
+            </ApexClass>
+            EOF            
             echo "⚠️ Failed to generate valid test class for $CLASS"
           fi
 
