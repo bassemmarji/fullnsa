@@ -68,17 +68,6 @@ jobs:
 
       - name: 📦 Retrieve Org Metadata
         run: |
-          sf project generate --name "org-metadata" --manifest
-          if [ -f "./config/package.xml" ]; then
-            echo "Found custom package.xml"
-            cp ./config/package.xml ./org-metadata/manifest/
-          fi
-          cd ./org-metadata
-          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml --json | jq '.' || (echo "❌ Retrieve failed" && exit 1)
-
-
-      - name: 📦 Retrieve Org Metadata
-        run: |
           # Create full project structure
           sf project generate --name "org-metadata" --manifest
           cd ./org-metadata
@@ -181,57 +170,105 @@ jobs:
 
       - name: 🚀 Deploy Only Generated Test Class
         run: |
-          DEPLOY_RESULT=$(sf project deploy start \
-            --source-dir "$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes" \
-            --target-org $ORG_ALIAS \
-            --wait 30 \
-            --json || true)
-
-          if echo "$DEPLOY_RESULT" | jq -e '.status == "Failed"' > /dev/null; then
-            echo "❌ Deployment failed:"
-            echo "$DEPLOY_RESULT" | jq '.result.details.componentFailures'
+          GENERATED_TEST_CLASS="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${CLASS}Test.cls"
+          if [ ! -f "$GENERATED_TEST_CLASS" ]; then
+            echo "❌ Generated test class not found: $GENERATED_TEST_CLASS"
             exit 1
           fi
-          echo "✅ Deployment successful"
+          
+          echo "📦 Deploying test class: ${CLASS}Test.cls"
+          
+          DEPLOY_RESULT=$(sf project deploy start \
+            --source-dir "$GENERATED_TEST_CLASS" \
+            --target-org "$ORG_ALIAS" \
+            --wait 30 \
+            --json \
+            || true)
+          
+          if echo "$DEPLOY_RESULT" | jq -e '.status != 0' > /dev/null; then
+            echo "❌ Deployment failed:"
+            echo "$DEPLOY_RESULT" | jq -r '.result.details.componentFailures // .'
+            exit 1
+          fi
+          echo "✅ Successfully deployed ${CLASS}Test.cls"
 
       - name: 🧪 Run Tests for Generated Class
         run: |
           TEST_CLASS="${{ env.CLASS_NAME }}Test"
+          echo "🧪 Running Apex test: $TEST_CLASS"
+    
+          # Run test and capture result + exit code
           TEST_RESULT=$(sf apex run test \
             --tests "$TEST_CLASS" \
-            --target-org $ORG_ALIAS \
-            --wait 30 \
+            --target-org "$ORG_ALIAS" \
+            --wait 120 \
             --result-format json \
             --code-coverage \
-            --json || true)
-
-          echo "Test Results Summary:"
-          echo "$TEST_RESULT" | jq '.result.summary'
-          if echo "$TEST_RESULT" | jq -e '.result.summary.failures > 0' > /dev/null; then
-            echo "❌ Some tests failed"
+            --json)
+    
+          EXIT_CODE=$?
+    
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ Test execution failed (compile error, timeout, or class not found):"
+            echo "$TEST_RESULT" | jq -r '.message // "Unknown error"'
             exit 1
           fi
-
+    
+          # Save test result for downstream steps
+          echo "test_result<<EOF" >> $GITHUB_ENV
+          echo "$TEST_RESULT"
+          echo "EOF"
+    
+          echo "Test Results Summary:"
+          echo "$TEST_RESULT" | jq '.result.summary'
+    
+          # Check for test failures
+          if echo "$TEST_RESULT" | jq -e '.result.summary.failures > 0' > /dev/null; then
+            echo "❌ Some tests failed"
+            echo "$TEST_RESULT" | jq '.result.failures'
+            exit 1
+          fi
+    
+          echo "✅ All tests passed!"
+    
       - name: 📦 Upload ONLY Generated Apex Test Class as Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: generated-apex-test-class-qwen
-          path: generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls*
-          
+          path: |
+            ${{ github.workspace }}/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls
+            ${{ github.workspace }}/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls-meta.xml
+    
       - name: 📝 Create Test Report
+        if: always()
         run: |
+          CLASS_NAME="${{ env.CLASS_NAME }}"
+          TEST_CLASS="${CLASS_NAME}Test"
+    
           echo "## 🧪 Apex Test Generation Report (Qwen-Coder)" >> $GITHUB_STEP_SUMMARY
           echo "### Generated Test Class" >> $GITHUB_STEP_SUMMARY
           echo "| Class Name | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ env.CLASS_NAME }}Test.cls\` | ✅ Generated |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${TEST_CLASS}.cls\` | ✅ Generated & Deployed |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment & Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          echo '${{ toJSON(steps.deploy.outputs) }}' | jq '.' >> $GITHUB_STEP_SUMMARY 2>&1 || echo "No deployment details" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+    
+          # Add test summary if available
+          if [ -n "$TEST_RESULT" ]; then
+            echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            echo "$TEST_RESULT" | jq '.result.summary' >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Test did not run or failed to execute." >> $GITHUB_STEP_SUMMARY
+          fi
+    
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "- Review test class in Artifacts"
-          echo "- Check coverage and failures"
-          echo "- Refactor if needed"
+          echo "- ✅ Review the generated test class in **Artifacts**" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Check code coverage and assertion details" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔁 Refactor prompt or Apex logic if test fails" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Promote to higher environments after validation" >> $GITHUB_STEP_SUMMARY
+    
+    
