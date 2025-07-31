@@ -170,29 +170,39 @@ jobs:
 
       - name: 🚀 Deploy Only Generated Test Class
         run: |
-          CLASS="${{ env.CLASS_NAME }}"
-          GENERATED_TEST_CLASS="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${CLASS}Test.cls"
+          GENERATED_TEST_CLASS="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls"
+          
           if [ ! -f "$GENERATED_TEST_CLASS" ]; then
             echo "❌ Generated test class not found: $GENERATED_TEST_CLASS"
             exit 1
           fi
-          
-          echo "📦 Deploying test class: ${CLASS}Test.cls"
+      
+          # 🔴 Copy the generated test class into the org-metadata project
+          echo "📦 Copying generated test class into org-metadata project..."
+          cp "$GENERATED_TEST_CLASS" "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes/"
+          cp "$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls-meta.xml" \
+             "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes/"
+      
+          # 🔴 Change into the org-metadata directory (valid SFDX project)
+          cd "$GITHUB_WORKSPACE/org-metadata"
+      
+          echo "🚀 Deploying test class: ${{ env.CLASS_NAME }}Test.cls"
           
           DEPLOY_RESULT=$(sf project deploy start \
-            --source-dir "$GENERATED_TEST_CLASS" \
+            --source-dir "force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls" \
             --target-org "$ORG_ALIAS" \
-            --wait 30 \
+            --wait 120 \
             --json \
             || true)
-          
+      
           if echo "$DEPLOY_RESULT" | jq -e '.status != 0' > /dev/null; then
             echo "❌ Deployment failed:"
-            echo "$DEPLOY_RESULT" | jq -r '.result.details.componentFailures // .'
+            echo "$DEPLOY_RESULT" | jq -r '.result?.details?.componentFailures // .'
             exit 1
           fi
-          echo "✅ Successfully deployed ${CLASS}Test.cls"
-
+      
+          echo "✅ Successfully deployed ${{ env.CLASS_NAME }}Test.cls"
+    
       - name: 🧪 Run Tests for Generated Class
         run: |
           TEST_CLASS="${{ env.CLASS_NAME }}Test"
