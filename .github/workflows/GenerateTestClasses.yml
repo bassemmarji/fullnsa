@@ -102,26 +102,24 @@ jobs:
           SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
           GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
           mkdir -p "$GENERATED_DIR"
-
-          CLASS="${{ env.CLASS_NAME }}"
+          
+          CLASS="GitHubActionTrigger"
           echo "Generating test class for: $CLASS"
-
+          
           CLASS_CONTENT=$(head -c 3000 "$SRC_DIR/${CLASS}.cls")
           if [ -z "$CLASS_CONTENT" ]; then
             echo "⚠️ Class content is empty or too small, skipping..."
             exit 1
           fi
-
-          # Use a clean string prompt (avoid heredoc issues)
+          
+          # Build a prompt string variable without heredoc/indentation issues
           PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
           Include proper test setup, positive/negative test cases, and assertions.
           Focus on testing the actual business logic in the class.
-
+          
           Class to test:
-          \`\`\`apex
-          $CLASS_CONTENT
-          \`\`\`
-
+          ${CLASS_CONTENT}
+          
           Test class requirements:
           1. Must start with @isTest annotation
           2. Must include at least 75% code coverage
@@ -132,29 +130,33 @@ jobs:
           7. Output ONLY the Apex code with no explanations, markdown, or comments outside the code
           8. Do not include any additional text before or after the class
           "
-
-          # Use `ollama generate` instead of `ollama run` for scripting
-          RESPONSE=$(echo "$PROMPT" | timeout 120 ollama generate qwen2:7b --format json | jq -r '.response' 2>/dev/null) || true
-
+          
+          # Use ollama run for scripting; --format json is not a valid option, so use plain/text output and filter accordingly.
+          RESPONSE=$(echo "$PROMPT" | timeout 120 ollama run qwen:coder)
+          
+          # Strip leading/trailing empty lines and any markdown formatting if necessary
+          RESPONSE=$(echo "$RESPONSE" | sed '/^```
+          
           if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
-            cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-                <apiVersion>60.0</apiVersion>
-                <status>Active</status>
-            </ApexClass>
-            EOF
+            # heredoc must be flush left for no indentation in file!
+            cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+              <apiVersion>60.0</apiVersion>
+              <status>Active</status>
+          </ApexClass>
+          EOF
             echo "✅ Successfully generated test class for $CLASS"
           else
             echo "// Auto-generated test class (failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
-            cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" << 'EOF'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-                <apiVersion>60.0</apiVersion>
-                <status>Active</status>
-            </ApexClass>
-            EOF            
+            cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+              <apiVersion>60.0</apiVersion>
+              <status>Active</status>
+          </ApexClass>
+          EOF
             echo "⚠️ Failed to generate valid test class for $CLASS"
           fi
 
