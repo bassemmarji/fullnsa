@@ -102,34 +102,38 @@ jobs:
           fi
           
           # Build a prompt string variable without heredoc/indentation issues
-          PROMPT="Write a comprehensive Salesforce Apex test class named ${CLASS}Test for the following Apex class.
-          Include proper test setup, positive/negative test cases, and assertions.
-          Focus on testing the actual business logic in the class.
+          PROMPT="Write a valid Salesforce Apex test class named ${CLASS}Test for the following Apex class.
+          Important Apex rules:
+          - Use '@isTest' annotation before the class
+          - Use 'System.assert(...)', 'System.assertEquals(...)', 'System.assertNotEquals(...)'
+          - All methods must have a body enclosed in { }
+          - Do not attempt to insert Custom Metadata (Github_Settings__mdt) via DML; instead, query existing records or use Test.loadData()
+          - Do not include any explanation, markdown, or comments outside the code
+          - Output ONLY the Apex code, nothing else
           
           Class to test:
           ${CLASS_CONTENT}
           
-          Test class requirements:
-          1. Must start with @isTest annotation
-          2. Must include at least 75% code coverage
-          3. Must follow Salesforce best practices
-          4. Must include proper test data setup
-          5. Must verify expected behavior through assertions
-          6. Must handle error cases where appropriate
-          7. Output ONLY the Apex code with no explanations, markdown, or comments outside the code
-          8. Do not include any additional text before or after the class
+          Requirements:
+          1. Include @isTest annotation
+          2. Include at least one testMethod or @isTest method
+          3. Create proper test data setup (avoid DML on Custom Metadata types)
+          4. Use proper assertions (System.assert*, not assertTrue)
+          5. Ensure all methods have bodies
+          6. Follow Salesforce Apex coding standards
+          7. Output ONLY the Apex class definition — no extra text
           "
           
-          # Call ollama with non-interactive settings
           RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
-          
-          # Clean up response: remove ANSI codes, markdown fences, extra whitespace
+      
+          # Clean up response
           RESPONSE=$(echo "$RESPONSE" \
             | sed -E 's/\x1b\[[0-9;]*m?//g' \
             | sed -E 's/^```[a-zA-Z]*\s*//g' \
             | sed -E 's/^```$//g' \
             | sed '/^$/d' \
             | sed -z 's/\n*$/\n/' \
+            | sed -n '/@isTest/,$p' \
           )
           
           if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
