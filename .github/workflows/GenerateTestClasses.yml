@@ -170,6 +170,7 @@ jobs:
 
       - name: 🚀 Deploy Only Generated Test Class
         run: |
+          CLASS="${{ env.CLASS_NAME }}"
           GENERATED_TEST_CLASS="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${CLASS}Test.cls"
           if [ ! -f "$GENERATED_TEST_CLASS" ]; then
             echo "❌ Generated test class not found: $GENERATED_TEST_CLASS"
@@ -270,5 +271,3 @@ jobs:
           echo "- 📊 Check code coverage and assertion details" >> $GITHUB_STEP_SUMMARY
           echo "- 🔁 Refactor prompt or Apex logic if test fails" >> $GITHUB_STEP_SUMMARY
           echo "- 🚀 Promote to higher environments after validation" >> $GITHUB_STEP_SUMMARY
-    
-    
