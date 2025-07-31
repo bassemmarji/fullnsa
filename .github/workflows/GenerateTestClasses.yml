@@ -55,7 +55,7 @@ jobs:
           done
       
           # ✅ Use a valid model name
-          ollama pull qwen2:7b
+          ollama pull qwen2.5-coder:7b
     
       - name: 🔐 Authenticate to Salesforce Org
         run: |
@@ -132,7 +132,7 @@ jobs:
           "
           
           # Use ollama run for scripting; --format json is not a valid option, so use plain/text output and filter accordingly.
-          RESPONSE=$(echo "$PROMPT" | timeout 120 ollama run qwen:coder)
+          RESPONSE=$(echo "$PROMPT" | timeout 120 ollama run qwen2.5-coder:7b)
           
           # Strip leading/trailing empty lines and any markdown formatting if necessary
           RESPONSE=$(echo "$RESPONSE" | sed '/^```
