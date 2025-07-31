@@ -10,7 +10,7 @@ on:
         default: "dev"
       CLASS_NAME:
         type: string
-        description: "Name of the Apex class to generate documentation for"
+        description: "Name of the Apex class to generate test class for"
         required: true
         default: "GitHubActionTrigger"
 
@@ -131,11 +131,17 @@ jobs:
           8. Do not include any additional text before or after the class
           "
           
-          # Use ollama run for scripting; --format json is not a valid option, so use plain/text output and filter accordingly.
-          RESPONSE=$(echo "$PROMPT" | timeout 120 ollama run qwen2.5-coder:7b)
+          # Call ollama with non-interactive settings
+          RESPONSE=$(echo "$PROMPT" | timeout 120 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
           
-          # Strip leading/trailing empty lines and any markdown formatting if necessary
-          RESPONSE=$(echo "$RESPONSE" | sed '/^```
+          # Clean up response: remove ANSI codes, markdown fences, extra whitespace
+          RESPONSE=$(echo "$RESPONSE" \
+            | sed -E 's/\x1b\[[0-9;]*m?//g' \
+            | sed -E 's/^```[a-zA-Z]*\s*//g' \
+            | sed -E 's/^```$//g' \
+            | sed '/^$/d' \
+            | sed -z 's/\n*$/\n/' \
+          )
           
           if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
