@@ -132,7 +132,7 @@ jobs:
           "
           
           # Call ollama with non-interactive settings
-          RESPONSE=$(echo "$PROMPT" | timeout 120 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
+          RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
           
           # Clean up response: remove ANSI codes, markdown fences, extra whitespace
           RESPONSE=$(echo "$RESPONSE" \
