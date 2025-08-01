@@ -92,43 +92,45 @@ jobs:
           GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
           mkdir -p "$GENERATED_DIR"
           
-          CLASS="GitHubActionTrigger"
+          CLASS="${{ env.CLASS_NAME }}"
           echo "Generating test class for: $CLASS"
           
-          CLASS_CONTENT=$(head -c 3000 "$SRC_DIR/${CLASS}.cls")
+          CLASS_CONTENT=$(head -c 1500 "$SRC_DIR/${CLASS}.cls")
           if [ -z "$CLASS_CONTENT" ]; then
             echo "⚠️ Class content is empty or too small, skipping..."
             exit 1
           fi
           
-          # Build a prompt string variable without heredoc/indentation issues
           PROMPT="Write a valid Salesforce Apex test class named ${CLASS}Test for the following Apex class.
-
-          Important rules:
-          - Use '@isTest' annotation
-          - Output ONLY the Apex code for ONE class — no explanations, markdown, or extra text
-          - Do NOT invent new classes like 'MockHttp' — use only real Salesforce types
-          - For HTTP callout mocking, use 'Test.setMock(...)' with 'new MyMock()' where 'MyMock' implements 'HttpCalloutMock'
-          - Ensure all blocks are closed with } and no trailing keywords like 'global' or 'private'
-          - Do not include any class other than ${CLASS}Test
-          - The entire output must be a single, compilable Apex class
-          
-          Class to test:
-          ${CLASS_CONTENT}
-          
-          Requirements:
-          1. Include @isTest annotation
-          2. Include test setup and meaningful test methods
-          3. Use System.assert, System.assertEquals, etc.
-          4. Handle any HTTP mocks correctly using HttpCalloutMock
-          5. Do not perform DML on Custom Metadata Types (__mdt)
-          6. Output ONLY the Apex class — nothing before or after
-          "
-          
-          RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
+      
+            Important rules:
+            - Use '@isTest' annotation
+            - Output ONLY the Apex code for ONE class — no explanations, markdown, or extra text
+            - Do NOT invent new classes like 'MockHttp' — use only real Salesforce types
+            - For HTTP callout mocking:
+              - Define a private class that implements 'HttpCalloutMock'
+              - Implement 'HttpResponse respond(HttpRequest req)' method
+              - Use 'Test.setMock(HttpCalloutMock.class, new MyMock())' to register it
+            - Do NOT perform DML on Custom Metadata Types (e.g. Github_Settings__mdt)
+            - Use 'System.assert(condition)' or 'System.assertEquals(expected, actual)'
+            - Do NOT use 'assertNull' — use 'System.assert(var == null)' or 'System.assertEquals(null, var)'
+            - Ensure all methods have proper bodies and are not nested
+            - The entire output must be a single, compilable Apex class
+            
+            Class to test:
+            ${CLASS_CONTENT}
+            
+            Requirements:
+            1. Include @isTest annotation
+            2. Include at least one test method
+            3. Use proper test data setup (avoid DML on __mdt)
+            4. Handle HTTP callouts correctly using a mock class
+            5. Use valid Apex syntax — no nested methods, no invalid constructors
+            6. Output ONLY the Apex class — nothing before or after
+            "
       
           RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
-
+      
           # Clean up response
           RESPONSE=$(echo "$RESPONSE" \
             | sed -E 's/\x1b\[[0-9;]*m?//g' \
@@ -136,12 +138,12 @@ jobs:
             | sed -E 's/^```$//g' \
             | sed '/^$/d' \
           )
-
+      
           # Extract only from @isTest to final }
           if echo "$RESPONSE" | grep -q "}"; then
             RESPONSE=$(echo "$RESPONSE" | sed -n '/@isTest/,/\}/p')
           fi
-
+      
           # Count braces and auto-close if needed
           OPEN=$(echo "$RESPONSE" | grep -o "{" | wc -l)
           CLOSE=$(echo "$RESPONSE" | grep -o "}" | wc -l)
@@ -150,36 +152,54 @@ jobs:
               RESPONSE=$(echo "$RESPONSE" | sed '$a}')
             done
           fi
-
-          # Block invalid types
-          if echo "$RESPONSE" | grep -i "MockHttp\|FakeHttp\|DummyHttp" > /dev/null; then
-            echo "❌ Detected invalid mock class name (e.g. MockHttp). Rejecting."
+      
+          # Block known bad patterns
+          if echo "$RESPONSE" | grep -i "HttpCalloutMock *(" | grep -v "implements" > /dev/null; then
+            echo "❌ Detected invalid attempt to instantiate HttpCalloutMock"
             exit 1
           fi
-
-          
-          if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
+      
+          if echo "$RESPONSE" | grep -i "new *HttpResponse" > /dev/null; then
+            echo "❌ Detected invalid 'new HttpResponse'"
+            exit 1
+          fi
+      
+          if echo "$RESPONSE" | grep -i "DML.*Github_Settings__mdt" > /dev/null; then
+            echo "❌ Detected DML on Github_Settings__mdt"
+            exit 1
+          fi
+      
+          if echo "$RESPONSE" | grep -i "assertNull" > /dev/null; then
+            echo "❌ Detected invalid 'assertNull' usage"
+            exit 1
+          fi
+      
+          # Validate structure
+          if [[ "$RESPONSE" == *"@"isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]] && ! echo "$RESPONSE" | grep -q "assertTrue\|assertNull"; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
-            # heredoc must be flush left for no indentation in file!
             cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-              <apiVersion>60.0</apiVersion>
-              <status>Active</status>
-          </ApexClass>
-          EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+                <apiVersion>60.0</apiVersion>
+                <status>Active</status>
+            </ApexClass>
+            EOF
             echo "✅ Successfully generated test class for $CLASS"
           else
             echo "// Auto-generated test class (failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
             cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-              <apiVersion>60.0</apiVersion>
-              <status>Active</status>
-          </ApexClass>
-          EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+                  <apiVersion>60.0</apiVersion>
+                  <status>Active</status>
+            </ApexClass>
+            EOF
             echo "⚠️ Failed to generate valid test class for $CLASS"
+            echo "Generated content:"
+            echo "$RESPONSE" | head -50
+            exit 1
           fi
+
 
       - name: ✅ Validate Generated Test Class
         run: |
