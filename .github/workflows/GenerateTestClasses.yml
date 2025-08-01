@@ -103,38 +103,60 @@ jobs:
           
           # Build a prompt string variable without heredoc/indentation issues
           PROMPT="Write a valid Salesforce Apex test class named ${CLASS}Test for the following Apex class.
-          Important Apex rules:
-          - Use '@isTest' annotation before the class
-          - Use 'System.assert(...)', 'System.assertEquals(...)', 'System.assertNotEquals(...)'
-          - All methods must have a body enclosed in { }
-          - Do not attempt to insert Custom Metadata (Github_Settings__mdt) via DML; instead, query existing records or use Test.loadData()
-          - Do not include any explanation, markdown, or comments outside the code
-          - Output ONLY the Apex code, nothing else
+
+          Important rules:
+          - Use '@isTest' annotation
+          - Output ONLY the Apex code for ONE class — no explanations, markdown, or extra text
+          - Do NOT invent new classes like 'MockHttp' — use only real Salesforce types
+          - For HTTP callout mocking, use 'Test.setMock(...)' with 'new MyMock()' where 'MyMock' implements 'HttpCalloutMock'
+          - Ensure all blocks are closed with } and no trailing keywords like 'global' or 'private'
+          - Do not include any class other than ${CLASS}Test
+          - The entire output must be a single, compilable Apex class
           
           Class to test:
           ${CLASS_CONTENT}
           
           Requirements:
           1. Include @isTest annotation
-          2. Include at least one testMethod or @isTest method
-          3. Create proper test data setup (avoid DML on Custom Metadata types)
-          4. Use proper assertions (System.assert*, not assertTrue)
-          5. Ensure all methods have bodies
-          6. Follow Salesforce Apex coding standards
-          7. Output ONLY the Apex class definition — no extra text
+          2. Include test setup and meaningful test methods
+          3. Use System.assert, System.assertEquals, etc.
+          4. Handle any HTTP mocks correctly using HttpCalloutMock
+          5. Do not perform DML on Custom Metadata Types (__mdt)
+          6. Output ONLY the Apex class — nothing before or after
           "
           
           RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
       
+          RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
+
           # Clean up response
           RESPONSE=$(echo "$RESPONSE" \
             | sed -E 's/\x1b\[[0-9;]*m?//g' \
             | sed -E 's/^```[a-zA-Z]*\s*//g' \
             | sed -E 's/^```$//g' \
             | sed '/^$/d' \
-            | sed -z 's/\n*$/\n/' \
-            | sed -n '/@isTest/,$p' \
           )
+
+          # Extract only from @isTest to final }
+          if echo "$RESPONSE" | grep -q "}"; then
+            RESPONSE=$(echo "$RESPONSE" | sed -n '/@isTest/,/\}/p')
+          fi
+
+          # Count braces and auto-close if needed
+          OPEN=$(echo "$RESPONSE" | grep -o "{" | wc -l)
+          CLOSE=$(echo "$RESPONSE" | grep -o "}" | wc -l)
+          if [ "$OPEN" -gt "$CLOSE" ]; then
+            for i in $(seq 1 $((OPEN - CLOSE))); do
+              RESPONSE=$(echo "$RESPONSE" | sed '$a}')
+            done
+          fi
+
+          # Block invalid types
+          if echo "$RESPONSE" | grep -i "MockHttp\|FakeHttp\|DummyHttp" > /dev/null; then
+            echo "❌ Detected invalid mock class name (e.g. MockHttp). Rejecting."
+            exit 1
+          fi
+
           
           if [[ "$RESPONSE" == *"@isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]]; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
