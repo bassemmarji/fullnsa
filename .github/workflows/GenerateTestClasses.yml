@@ -102,32 +102,33 @@ jobs:
           fi
           
           PROMPT="Write a valid Salesforce Apex test class named ${CLASS}Test for the following Apex class.
-      
-            Important rules:
-            - Use '@isTest' annotation
-            - Output ONLY the Apex code for ONE class — no explanations, markdown, or extra text
-            - Do NOT invent new classes like 'MockHttp' — use only real Salesforce types
-            - For HTTP callout mocking:
-              - Define a private class that implements 'HttpCalloutMock'
-              - Implement 'HttpResponse respond(HttpRequest req)' method
-              - Use 'Test.setMock(HttpCalloutMock.class, new MyMock())' to register it
-            - Do NOT perform DML on Custom Metadata Types (e.g. Github_Settings__mdt)
-            - Use 'System.assert(condition)' or 'System.assertEquals(expected, actual)'
-            - Do NOT use 'assertNull' — use 'System.assert(var == null)' or 'System.assertEquals(null, var)'
-            - Ensure all methods have proper bodies and are not nested
-            - The entire output must be a single, compilable Apex class
-            
-            Class to test:
-            ${CLASS_CONTENT}
-            
-            Requirements:
-            1. Include @isTest annotation
-            2. Include at least one test method
-            3. Use proper test data setup (avoid DML on __mdt)
-            4. Handle HTTP callouts correctly using a mock class
-            5. Use valid Apex syntax — no nested methods, no invalid constructors
-            6. Output ONLY the Apex class — nothing before or after
-            "
+          Important rules:
+          - Use '@isTest' annotation before the class
+          - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
+          - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
+          - For HTTP callouts:
+            - Define a private inner class that implements 'HttpCalloutMock'
+            - Implement 'HttpResponse respond(HTTPRequest req)'
+            - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
+          - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
+          - Use 'System.assert(condition)', 'System.assertEquals(expected, actual)', or 'System.assertNotEquals(unexpected, actual)'
+          - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
+          - Ensure all methods have proper bodies enclosed in { }
+          - Do NOT nest methods or classes incorrectly
+          - The entire output must be a single, compilable Apex class
+          
+          Class to test:
+          {{CLASS_CONTENT}}
+          
+          Requirements:
+          1. Include @isTest annotation
+          2. Include at least one meaningful test method with setup and assertions
+          3. Test both positive and negative/exception paths if applicable
+          4. Use proper test data setup (avoid inserting __mdt)
+          5. Achieve at least 75% code coverage
+          6. Follow Salesforce Apex testing best practices
+          7. Output ONLY the Apex class definition — nothing before or after    
+          "
       
           RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
       
