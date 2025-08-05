@@ -1,0 +1,36 @@
+name: Windows Eclipse Maven Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      ORG_ALIAS:
+        type: string
+        description: "Salesforce org alias"
+        required: true
+        default: "dev"
+
+jobs:
+  setup:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Download Eclipse Oxygen 4.7
+        run: |
+          Invoke-WebRequest -Uri https://archive.eclipse.org/eclipse/downloads/drops/R-4.7-201706111000/eclipse-SDK-4.7-win32-x86_64.zip -OutFile eclipse.zip
+          Expand-Archive eclipse.zip -DestinationPath C:\eclipse
+
+      - name: Install BPMN2 plugin
+        run: |
+          C:\eclipse\eclipse.exe -application org.eclipse.equinox.p2.director -noSplash -repository https://download.eclipse.org/bpmn2-modeler/releases/ -installIU org.eclipse.bpmn2.modeler.feature.feature.group
+
+      - name: Setup Maven
+        uses: s4u/setup-maven-action@v1.2.1
+        with:
+          maven-version: '3.8.5'
+          java-version: '8'
+
+      # Additional steps to build or run Maven commands here
+      - name: Verify Maven version
+        run: mvn -version
