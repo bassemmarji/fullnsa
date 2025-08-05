@@ -92,47 +92,59 @@ jobs:
           GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
           mkdir -p "$GENERATED_DIR"
           
-          CLASS="${{ env.CLASS_NAME }}"
+          CLASS="GitHubActionTrigger"
           echo "Generating test class for: $CLASS"
           
+          # Read limited class content
           CLASS_CONTENT=$(head -c 1500 "$SRC_DIR/${CLASS}.cls")
           if [ -z "$CLASS_CONTENT" ]; then
             echo "⚠️ Class content is empty or too small, skipping..."
             exit 1
           fi
-          
-          PROMPT="Write a valid Salesforce Apex test class named ${CLASS}Test for the following Apex class.
-          Important rules:
-          - Use '@isTest' annotation before the class
-          - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
-          - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
-          - For HTTP callouts:
-            - Define a private inner class that implements 'HttpCalloutMock'
-            - Implement 'HttpResponse respond(HTTPRequest req)'
-            - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
-          - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
-          - Use 'System.assert(condition)', 'System.assertEquals(expected, actual)', or 'System.assertNotEquals(unexpected, actual)'
-          - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
-          - Ensure all methods have proper bodies enclosed in { }
-          - Do NOT nest methods or classes incorrectly
-          - The entire output must be a single, compilable Apex class
-          
-          Class to test:
-          {{CLASS_CONTENT}}
-          
-          Requirements:
-          1. Include @isTest annotation
-          2. Include at least one meaningful test method with setup and assertions
-          3. Test both positive and negative/exception paths if applicable
-          4. Use proper test data setup (avoid inserting __mdt)
-          5. Achieve at least 75% code coverage
-          6. Follow Salesforce Apex testing best practices
-          7. Output ONLY the Apex class definition — nothing before or after    
-          "
       
-          RESPONSE=$(echo "$PROMPT" | timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b 2>/dev/null)
+          # Create a temporary prompt file to avoid shell parsing issues
+          PROMPT_FILE=$(mktemp)
+          cat > "$PROMPT_FILE" << 'EOF'
+            Write a valid Salesforce Apex test class named GitHubActionTriggerTest for the following Apex class.
+            Important rules:
+            - Use '@isTest' annotation before the class
+            - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
+            - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
+            - For HTTP callouts:
+              - Define a private inner class that implements 'HttpCalloutMock'
+              - Implement 'HttpResponse respond(HTTPRequest req)'
+              - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
+            - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
+            - Use 'System.assert(condition)', 'System.assertEquals(expected, actual)', or 'System.assertNotEquals(unexpected, actual)'
+            - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
+            - Ensure all methods have proper bodies enclosed in { }
+            - Do NOT nest methods or classes incorrectly
+            - The entire output must be a single, compilable Apex class
+            
+            Class to test:
+          EOF
+            
+                # Append the actual class content (safe because not in shell string)
+                cat "$SRC_DIR/${CLASS}.cls" >> "$PROMPT_FILE"
+            
+                cat >> "$PROMPT_FILE" << 'EOF'
+            Requirements:
+            1. Include @isTest annotation
+            2. Include at least one meaningful test method with setup and assertions
+            3. Test both positive and negative/exception paths if applicable
+            4. Use proper test data setup (avoid inserting __mdt)
+            5. Achieve at least 75% code coverage
+            6. Follow Salesforce Apex testing best practices
+            7. Output ONLY the Apex class definition — nothing before or after
+            EOF
       
-          # Clean up response
+          # Call ollama using the file (no shell injection)
+          RESPONSE=$(timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b < "$PROMPT_FILE" 2>/dev/null)
+      
+          # Clean up
+          rm -f "$PROMPT_FILE"
+      
+          # Clean up response: remove ANSI codes, markdown fences
           RESPONSE=$(echo "$RESPONSE" \
             | sed -E 's/\x1b\[[0-9;]*m?//g' \
             | sed -E 's/^```[a-zA-Z]*\s*//g' \
@@ -175,8 +187,8 @@ jobs:
             exit 1
           fi
       
-          # Validate structure
-          if [[ "$RESPONSE" == *"@"isTest"* ]] && [[ "$RESPONSE" == *"class ${CLASS}Test"* ]] && ! echo "$RESPONSE" | grep -q "assertTrue\|assertNull"; then
+          # Final validation
+          if [[ "$RESPONSE" == *"@"isTest"* ]] && [[ "$RESPONSE" == *"class GitHubActionTriggerTest"* ]] && ! echo "$RESPONSE" | grep -q "assertTrue\|assertNull"; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
             cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
             <?xml version="1.0" encoding="UTF-8"?>
@@ -191,8 +203,8 @@ jobs:
             cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
             <?xml version="1.0" encoding="UTF-8"?>
             <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-                  <apiVersion>60.0</apiVersion>
-                  <status>Active</status>
+                <apiVersion>60.0</apiVersion>
+                <status>Active</status>
             </ApexClass>
             EOF
             echo "⚠️ Failed to generate valid test class for $CLASS"
@@ -200,7 +212,6 @@ jobs:
             echo "$RESPONSE" | head -50
             exit 1
           fi
-
 
       - name: ✅ Validate Generated Test Class
         run: |
