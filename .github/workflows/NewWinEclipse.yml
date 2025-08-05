@@ -34,3 +34,14 @@ jobs:
       # Additional steps to build or run Maven commands here
       - name: Verify Maven version
         run: mvn -version
+
+      - name: Configure git
+        run: |
+          git config --global user.name "bassemmarji"
+          git config --global user.email "bassemmarji@gmail.com"
+
+      - name: Add Eclipse folder to repo
+        run: |
+          git add eclipse/
+          git commit -m "Add installed Eclipse Oxygen folder"
+          git push
