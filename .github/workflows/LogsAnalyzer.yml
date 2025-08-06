@@ -1,1 +1,36 @@
+name: Salesforce Logs Analyzer
 
+on:
+  workflow_dispatch:
+    inputs:
+      org_alias:
+        type: string
+        description: "Salesforce org alias"
+        required: true
+        default: "dev"
+env:
+  ORG_ALIAS: ${{ github.event.inputs.org_alias }}
+  NODE_VERSION: "20"
+
+jobs:
+  validate-and-setup:
+    name: Validate Inputs & Setup Environment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          # Install Salesforce CLI
+          npm install --global @salesforce/cli
+          sf plugins:update
+          sf --version
+          
+          sf plugins:update
+          sf --version
