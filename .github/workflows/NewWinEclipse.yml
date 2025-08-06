@@ -355,7 +355,7 @@ jobs:
         shell: pwsh
 
 
-      - name: Create and Split Eclipse portable package
+      - name: Create and Split Eclipse Portable Package
         run: |
           try {
             Write-Host "Creating optimized Eclipse package..."
@@ -363,7 +363,7 @@ jobs:
             $tempEclipse = "C:\eclipse_temp"
             New-Item -ItemType Directory -Path $tempEclipse -Force
 
-            # Copy essential files only (as before)
+            # Copy essential files only
             Copy-Item -Path "C:\eclipse\eclipse.exe" -Destination $tempEclipse
             Copy-Item -Path "C:\eclipse\eclipsec.exe" -Destination $tempEclipse -ErrorAction SilentlyContinue
             Copy-Item -Path "C:\eclipse\eclipse.ini" -Destination $tempEclipse
@@ -389,62 +389,73 @@ jobs:
             $sizeMB = (Get-Item $zipPath).Length / 1MB
             Write-Host "Final package size: $([math]::Round($sizeMB, 2)) MB"
 
-            # Now split into 99 MB chunks for artifact upload
-            Write-Host "Splitting into chunks under 100 MB for GitHub Artifacts..."
-            $chunkSizeBytes = 99 * 1024 * 1024  # 99 MB
-            $fileStream = [System.IO.File]::OpenRead($zipPath)
-            $buffer = New-Object byte[] $chunkSizeBytes
-            $index = 0
-            while ($bytesRead = $fileStream.Read($buffer, 0, $buffer.Length)) {
-              $chunkPath = "eclipse_package\eclipse-part-{0:D2}.zip" -f $index
-              [System.IO.File]::WriteAllBytes($chunkPath, $buffer[0..($bytesRead-1)])
-              Write-Host "Created chunk: $chunkPath ($([math]::Round($bytesRead / 1MB, 2)) MB)"
-              $index++
+            # Split into ~99MB chunks if needed
+            if ($sizeMB -gt 90) {
+              Write-Host "Splitting into chunks under 100 MB for GitHub compatibility..."
+
+              $chunkSizeBytes = 99 * 1024 * 1024  # 99 MB
+              $fileStream = [System.IO.File]::OpenRead($zipPath)
+              $buffer = New-Object byte[] $chunkSizeBytes
+              $index = 0
+              while ($bytesRead = $fileStream.Read($buffer, 0, $buffer.Length)) {
+                $chunkPath = "eclipse_package\eclipse-part-{0:D2}.zip" -f $index
+                [System.IO.File]::WriteAllBytes($chunkPath, $buffer[0..($bytesRead-1)])
+                Write-Host "Created: $chunkPath ($([math]::Round($bytesRead / 1MB, 2)) MB)"
+                $index++
+              }
+              $fileStream.Close()
+
+              # Remove original large zip
+              Remove-Item $zipPath
+
+              # ✅ SAFE STRING CONCATENATION (NO HERE-STRING)
+              $reassembleScript = ""
+              $reassembleScript += "Write-Host `"Reassembling eclipse-portable.zip from split parts...`"`n"
+              $reassembleScript += "`$parts = Get-ChildItem `"eclipse-part-*`" | Sort-Object Name`n"
+              $reassembleScript += "`$output = [System.IO.File]::Create(`"eclipse-portable.zip`")`n"
+              $reassembleScript += "foreach (`$part in `$parts) {`n"
+              $reassembleScript += "    Write-Host `"Processing `$(`$part.Name)...`"`n"
+              $reassembleScript += "    `$data = [System.IO.File]::ReadAllBytes(`$part.FullName)`n"
+              $reassembleScript += "    `$output.Write(`$data, 0, `$data.Length)`n"
+              $reassembleScript += "}`n"
+              $reassembleScript += "`$output.Close()`n"
+              $reassembleScript += "Write-Host `"Reassembly complete: eclipse-portable.zip`"`n"
+              $reassembleScript += "Write-Host `"You can now extract it with any ZIP tool.`"`n"
+
+              $reassembleScript | Out-File -FilePath "eclipse_package\reassemble.ps1" -Encoding UTF8
+
+              # Create README
+              $readme = ""
+              $readme += "# Eclipse Portable Package (Split)`n`n"
+              $readme += "This package was split into multiple parts to fit GitHub size limits.`n`n"
+              $readme += "## How to Reassemble:`n"
+              $readme += "1. Open PowerShell in this folder`n"
+              $readme += "2. Run: `".\reassemble.ps1`"`n"
+              $readme += "3. Extract the generated `eclipse-portable.zip` to your desired location`n`n"
+              $readme += "Generated on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n"
+
+              $readme | Out-File -FilePath "eclipse_package\README.md" -Encoding UTF8
+
+              Write-Host "Splitting completed and reassembly script created."
+            } else {
+              Write-Host "Package is small enough, no splitting needed."
             }
-            $fileStream.Close()
-
-            # Remove original large zip to avoid confusion
-            Remove-Item $zipPath
-
-            # Create reassembly script
-            $reassembleScript = @'
-            Write-Host "Reassembling eclipse-portable.zip from split parts..."
-            $parts = Get-ChildItem "eclipse-part-*" | Sort-Object Name
-            $output = [System.IO.File]::Create("eclipse-portable.zip")
-            foreach ($part in $parts) {
-                Write-Host "Processing $($part.Name)..."
-                $data = [System.IO.File]::ReadAllBytes($part.FullName)
-                $output.Write($data, 0, $data.Length)
-            }
-            $output.Close()
-            Write-Host "Reassembly complete: eclipse-portable.zip"
-            Write-Host "You can now extract it with any ZIP tool."
-            '@
-            $reassembleScript | Out-File -FilePath "eclipse_package\reassemble.ps1" -Encoding UTF8
-
-            # Add README
-            $readme = "# Eclipse Portable Package (Split)`n"
-            $readme += "This package was split into multiple parts due to GitHub size limits.`n`n"
-            $readme += "## To Reassemble:`n"
-            $readme += "1. Download all `eclipse-part-*.zip` files`n"
-            $readme += "2. Run ``.\reassemble.ps1`` in PowerShell`n"
-            $readme += "3. Extract ``eclipse-portable.zip`` to desired location (e.g., ``C:\eclipse``)`n"
-            $readme | Out-File -FilePath "eclipse_package\README.md" -Encoding UTF8
-
           }
           catch {
             Write-Error "Failed to create or split Eclipse package: $_"
             exit 1
           }
         shell: pwsh
-
-
-      - name: Upload Eclipse chunks as artifacts
+        
+      - name: Upload Eclipse Chunks
         uses: actions/upload-artifact@v4
         with:
-          name: eclipse-part-{{00}}
-          path: eclipse_package/eclipse-part-??.zip
-          retention-days: 7
+          name: eclipse-portable-chunks
+          path: |
+            eclipse_package/eclipse-part-??.zip
+            eclipse_package/reassemble.ps1
+            eclipse_package/README.md
+          retention-days: 30
         
       # Create setup instructions
       - name: Create setup instructions
