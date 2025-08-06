@@ -452,31 +452,39 @@ jobs:
           echo "M2_REPO=$env:USERPROFILE\.m2\repository" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
-
       - name: Force Download maven-archetype-plugin
         run: |
-          $m2Repo = "$env:USERPROFILE\.m2\repository"
-          $archetypePluginDir = "$m2Repo\org\apache\maven\plugins\maven-archetype-plugin"
-      
-          if (Test-Path $archetypePluginDir) {
-            Write-Host "Cleaning incomplete maven-archetype-plugin cache..."
-            Remove-Item -Path $archetypePluginDir -Recurse -Force
+          # Clean up any old incomplete plugin cache (optional)
+          $pluginDir = "$env:USERPROFILE\.m2\repository\org\apache\maven\plugins\maven-archetype-plugin"
+          if (Test-Path $pluginDir) {
+            Write-Host "Cleaning existing maven-archetype-plugin cache..."
+            Remove-Item -Path $pluginDir -Recurse -Force
           }
       
-          Write-Host "Forcing download of maven-archetype-plugin..."
+          # Create a clean temp directory for project generation
+          $tempDir = "D:\maven-offline-cache"
+          New-Item -ItemType Directory -Path $tempDir -Force
+          Set-Location $tempDir
+      
+          Write-Host "Running mvn archetype:generate in $tempDir to force download of maven-archetype-plugin..."
+      
+          # Run archetype generate (creates a dummy project to trigger plugin download)
           mvn archetype:generate -B `
             -DgroupId=com.example `
-            -DartifactId=test-offline-project `
+            -DartifactId=maven-offline-cache-project `
             -Dversion=1.0.0 `
             -DarchetypeGroupId=org.apache.maven.archetypes `
             -DarchetypeArtifactId=maven-archetype-quickstart `
             -DarchetypeVersion=1.4
       
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "Maven archetype generation failed!"
+            Write-Error "Failed to generate archetype (exit code: $LASTEXITCODE)"
             exit 1
           }
-        shell: pwsh  # 🔥 REQUIRED: tells GitHub Actions to use PowerShell
+      
+          Write-Host "maven-archetype-plugin and dependencies downloaded successfully."
+        shell: pwsh
+  
               
       - name: Upload Maven Repository for Offline Use
         uses: actions/upload-artifact@v4
