@@ -458,15 +458,11 @@ jobs:
           $m2Repo = "$env:USERPROFILE\.m2\repository"
           $archetypePluginDir = "$m2Repo\org\apache\maven\plugins\maven-archetype-plugin"
       
-          # Optional: Clean incomplete downloads
           if (Test-Path $archetypePluginDir) {
             Write-Host "Cleaning incomplete maven-archetype-plugin cache..."
             Remove-Item -Path $archetypePluginDir -Recurse -Force
           }
-          mvn help:help
-          mvn dependency:resolve
-          mvn dependency:go-offline
-          
+      
           Write-Host "Forcing download of maven-archetype-plugin..."
           mvn archetype:generate -B `
             -DgroupId=com.example `
@@ -474,16 +470,13 @@ jobs:
             -Dversion=1.0.0 `
             -DarchetypeGroupId=org.apache.maven.archetypes `
             -DarchetypeArtifactId=maven-archetype-quickstart `
-            -DarchetypeVersion=1.4 `
-            -DinteractiveMode=false
+            -DarchetypeVersion=1.4
       
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Maven archetype generation failed!"
             exit 1
           }
-      
-          Write-Host "maven-archetype-plugin and dependencies downloaded successfully."
-        shell: cmd
+        shell: pwsh  # 🔥 REQUIRED: tells GitHub Actions to use PowerShell
               
       - name: Upload Maven Repository for Offline Use
         uses: actions/upload-artifact@v4
