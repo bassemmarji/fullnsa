@@ -65,6 +65,7 @@ jobs:
           fi
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
+
       - name: 📦 Retrieve Org Metadata
         run: |
           # Create full project structure
@@ -320,7 +321,7 @@ jobs:
           fi
       
           echo "✅ Successfully deployed ${{ env.CLASS_NAME }}Test.cls"
-    
+
       - name: 🧪 Run Tests for Generated Class
         run: |
           TEST_CLASS="${{ env.CLASS_NAME }}Test"
