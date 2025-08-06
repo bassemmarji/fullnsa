@@ -38,6 +38,7 @@ jobs:
           sf --version
           # Install jq for JSON processing
           sudo apt-get update && sudo apt-get install -y jq
+
       - name: 🧠 Install Ollama And Pull Qwen-Coder Model
         run: |
           curl -fsSL https://ollama.com/install.sh  | sh
@@ -324,8 +325,7 @@ jobs:
         run: |
           TEST_CLASS="${{ env.CLASS_NAME }}Test"
           echo "🧪 Running Apex test: $TEST_CLASS"
-    
-          # Run test and capture result + exit code
+      
           TEST_RESULT=$(sf apex run test \
             --tests "$TEST_CLASS" \
             --target-org "$ORG_ALIAS" \
@@ -333,31 +333,32 @@ jobs:
             --result-format json \
             --code-coverage \
             --json)
-    
+      
           EXIT_CODE=$?
-    
+      
           if [ $EXIT_CODE -ne 0 ]; then
-            echo "❌ Test execution failed (compile error, timeout, or class not found):"
+            echo "❌ Test execution failed:"
             echo "$TEST_RESULT" | jq -r '.message // "Unknown error"'
             exit 1
           fi
-    
-          # Save test result for downstream steps
-          echo "test_result<<EOF" >> $GITHUB_ENV
-          echo "$TEST_RESULT"
-          echo "EOF"
-    
+      
+          # Output summary
           echo "Test Results Summary:"
-          echo "$TEST_RESULT" | jq '.result.summary'
-    
+          echo "$TEST_RESULT" | jq '.'
+      
           # Check for test failures
           if echo "$TEST_RESULT" | jq -e '.result.summary.failures > 0' > /dev/null; then
             echo "❌ Some tests failed"
             echo "$TEST_RESULT" | jq '.result.failures'
             exit 1
           fi
-    
+      
           echo "✅ All tests passed!"
+      
+          # ✅ Correct way to set multi-line env var
+          echo "test_result<<EOF_GH_ACTION" >> $GITHUB_ENV
+          echo "$TEST_RESULT" >> $GITHUB_ENV
+          echo "EOF_GH_ACTION" >> $GITHUB_ENV
     
       - name: 📦 Upload ONLY Generated Apex Test Class as Artifact
         if: success()
