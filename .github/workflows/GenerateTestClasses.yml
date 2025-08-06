@@ -165,7 +165,7 @@ jobs:
               RESPONSE=$(echo "$RESPONSE" | sed '$a}')
             done
           fi
-          
+                    
           # Block known bad patterns
           
           # 1. Instantiating HttpCalloutMock directly (not via implements)
@@ -188,33 +188,42 @@ jobs:
             else
               echo "✅ 'new HttpResponse' used in valid HttpCalloutMock.respond() context"
             fi
-          fi      
+          fi          
           
-          # Final validation
-          if [[ "$RESPONSE" == *"@"isTest"* ]] && [[ "$RESPONSE" == *"class GitHubActionTriggerTest"* ]] && ! echo "$RESPONSE" | grep -q "assertTrue\|assertNull"; then
-            echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
-            cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
-            <?xml version="1.0" encoding="UTF-8"?>
-            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-                <apiVersion>60.0</apiVersion>
-                <status>Active</status>
-            </ApexClass>
-            EOF
-            echo "✅ Successfully generated test class for $CLASS"
-          else
-            echo "// Auto-generated test class (failed)" > "$GENERATED_DIR/${CLASS}Test.cls"
-            cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
-            <?xml version="1.0" encoding="UTF-8"?>
-            <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-                <apiVersion>60.0</apiVersion>
-                <status>Active</status>
-            </ApexClass>
-            EOF
-            echo "⚠️ Failed to generate valid test class for $CLASS"
-            echo "Generated content:"
-            echo "$RESPONSE" | head -50
+          # Final validation using file-based checks (safe)
+          echo "$RESPONSE" > /tmp/apex_test_output.cls
+          
+          if ! grep -q "@isTest" /tmp/apex_test_output.cls; then
+            echo "❌ Missing @isTest annotation"
+            rm -f /tmp/apex_test_output.cls
             exit 1
           fi
+          
+          if ! grep -q "class ${CLASS}Test" /tmp/apex_test_output.cls; then
+            echo "❌ Missing expected class name 'class ${CLASS}Test'"
+            rm -f /tmp/apex_test_output.cls
+            exit 1
+          fi
+          
+          if grep -q "assertTrue\|assertFalse\|assertNull" /tmp/apex_test_output.cls; then
+            echo "❌ Detected invalid assertion methods: assertTrue, assertFalse, assertNull"
+            rm -f /tmp/apex_test_output.cls
+            exit 1
+          fi
+          
+          # If all checks pass, proceed
+          echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
+          cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+              <apiVersion>60.0</apiVersion>
+              <status>Active</status>
+          </ApexClass>
+          EOF
+          echo "✅ Successfully generated test class for $CLASS"
+          
+          # Clean up
+          rm -f /tmp/apex_test_output.cls
 
       - name: 📄 Output Generated Test Class
         run: |
