@@ -35,7 +35,7 @@ jobs:
           C:\eclipse\eclipse.exe -application org.eclipse.equinox.p2.director -noSplash -repository https://download.eclipse.org/bpmn2-modeler/releases/ -installIU org.eclipse.bpmn2.modeler.feature.feature.group
 
       - name: Setup Maven
-        uses: s4u/setup-maven-action@v1.2.1
+        uses: s4u/setup-maven-action@v1.18.0
         with:
           maven-version: '3.8.5'
           java-version: '8'
