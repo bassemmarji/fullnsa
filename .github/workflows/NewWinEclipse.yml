@@ -35,6 +35,10 @@ jobs:
       - name: Verify Maven version
         run: mvn -version
 
+      - name: Compress Eclipse folder
+        run: |
+          Compress-Archive -Path C:\eclipse -DestinationPath eclipse.zip -CompressionLevel Optimal
+          
       - name: Configure git
         run: |
           git config --global user.name "bassemmarji"
@@ -42,6 +46,6 @@ jobs:
 
       - name: Add Eclipse folder to repo
         run: |
-          git add eclipse/
-          git commit -m "Add installed Eclipse Oxygen folder"
+          git add eclipse.zip
+          git commit -m "Add compressed Eclipse Oxygen folder"
           git push
