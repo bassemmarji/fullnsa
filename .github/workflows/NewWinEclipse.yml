@@ -452,25 +452,39 @@ jobs:
           Write-Host "Initializing Maven to cache core plugins..."
           # Force Maven to download essential plugins
           mvn help:help
-          mvn archetype:generate -B -DgroupId=com.example -DartifactId=hello-world -DarchetypeArtifactId=maven-archetype-quickstart
+          mvn archetype:generate -B -DgroupId=com.example -DartifactId=maven-offline-cache -Dversion=1.0.0 -DarchetypeGroupId=org.apache.maven.archetypes -DarchetypeArtifactId=maven-archetype-quickstart -DarchetypeVersion=1.4
         shell: cmd
-        
-      - name: Upload Eclipse Chunks
-        uses: actions/upload-artifact@v4
-        with:
-          name: eclipse-portable-chunks
-          path: |
-            eclipse_package/eclipse-part-??.zip
-            eclipse_package/reassemble.ps1
-            eclipse_package/README.md
-          retention-days: 7
 
+      - name: Check .m2 Directory
+        run: |
+          $repo = "$env:USERPROFILE\.m2\repository"
+          if (Test-Path $repo) {
+            Write-Host "Found repository with files."
+            (Get-ChildItem $repo -Recurse).Count
+          } else {
+            Write-Error "No repository found!"
+            exit 1
+          }
+        shell: pwsh
+      
       - name: Upload Maven Repository for Offline Use
         uses: actions/upload-artifact@v4
         with:
           name: maven-repository-offline
           path: ${{ env.USERPROFILE }}\.m2\repository
           retention-days: 7
+          if-no-files-found: error
+      
+      - name: Upload Eclipse Chunks
+        uses: actions/upload-artifact@v4
+        with:
+                name: eclipse-portable-chunks
+                path: |
+                  eclipse_package/eclipse-part-??.zip
+                  eclipse_package/reassemble.ps1
+                  eclipse_package/README.md
+                retention-days: 7
+
     
       # Create setup instructions
       - name: Create setup instructions
