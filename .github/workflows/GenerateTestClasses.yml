@@ -167,26 +167,37 @@ jobs:
           fi
       
           # Block known bad patterns
+          
+          # 1. Instantiating HttpCalloutMock directly
           if echo "$RESPONSE" | grep -i "HttpCalloutMock *(" | grep -v "implements" > /dev/null; then
             echo "❌ Detected invalid attempt to instantiate HttpCalloutMock"
             exit 1
           fi
-      
-          if echo "$RESPONSE" | grep -i "new *HttpResponse" > /dev/null; then
-            echo "❌ Detected invalid 'new HttpResponse'"
-            exit 1
-          fi
-      
+          
+          # 2. DML on Custom Metadata
           if echo "$RESPONSE" | grep -i "DML.*Github_Settings__mdt" > /dev/null; then
             echo "❌ Detected DML on Github_Settings__mdt"
             exit 1
           fi
-      
+          
+          # 3. Using assertNull (not a real method)
           if echo "$RESPONSE" | grep -i "assertNull" > /dev/null; then
             echo "❌ Detected invalid 'assertNull' usage"
             exit 1
           fi
-      
+          
+          # 4. new HttpResponse — only allow in HttpCalloutMock.respond()
+          if echo "$RESPONSE" | grep -i "new *HttpResponse" > /dev/null; then
+            if ! echo "$RESPONSE" | grep -A 10 -B 10 "implements HttpCalloutMock" | grep -q "respond" ; then
+              echo "❌ Detected 'new HttpResponse' outside of HttpCalloutMock.respond() method"
+              echo "Context:"
+              echo "$RESPONSE" | grep -C 5 -i "new *HttpResponse"
+              exit 1
+            else
+              echo "✅ 'new HttpResponse' detected in valid HttpCalloutMock.respond() context"
+            fi
+          fi
+          
           # Final validation
           if [[ "$RESPONSE" == *"@"isTest"* ]] && [[ "$RESPONSE" == *"class GitHubActionTriggerTest"* ]] && ! echo "$RESPONSE" | grep -q "assertTrue\|assertNull"; then
             echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
