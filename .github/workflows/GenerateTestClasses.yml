@@ -1,386 +1,551 @@
-name: AI Powered Apex Tests Generator with (Qwen-Coder)
+name: AI Powered Apex Tests Generator with Qwen-Coder
 
 on:
   workflow_dispatch:
     inputs:
-      ORG_ALIAS:
+      org_alias:
         type: string
         description: "Salesforce org alias"
         required: true
         default: "dev"
-      CLASS_NAME:
+      class_name:
         type: string
         description: "Name of the Apex class to generate test class for"
         required: true
         default: "GitHubActionTrigger"
+      api_version:
+        type: string
+        description: "Salesforce API version"
+        required: false
+        default: "60.0"
+      test_timeout:
+        type: number
+        description: "Test execution timeout in seconds"
+        required: false
+        default: 120
 
 env:
-  ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS }}
-  CLASS_NAME: ${{ github.event.inputs.CLASS_NAME }}
+  ORG_ALIAS: ${{ github.event.inputs.org_alias }}
+  CLASS_NAME: ${{ github.event.inputs.class_name }}
+  API_VERSION: ${{ github.event.inputs.api_version || '60.0' }}
+  TEST_TIMEOUT: ${{ github.event.inputs.test_timeout || 120 }}
+  OLLAMA_MODEL: "qwen2.5-coder:7b"
+  NODE_VERSION: "20"
 
 jobs:
-  generate_test_class:
+  validate-inputs:
+    name: Validate Inputs
     runs-on: ubuntu-latest
+    outputs:
+      class_name: ${{ steps.validate.outputs.class_name }}
+      org_alias: ${{ steps.validate.outputs.org_alias }}
     steps:
-      - name: 🧾 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: ⚙️ Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: ⚡ Install Dependencies
+      - name: Validate input parameters
+        id: validate
         run: |
-          # Install Salesforce CLI
-          npm install --global @salesforce/cli
-          sf plugins:update
-          sf --version
-          # Install jq for JSON processing
-          sudo apt-get update && sudo apt-get install -y jq
-
-      - name: 🧠 Install Ollama And Pull Qwen-Coder Model
-        run: |
-          curl -fsSL https://ollama.com/install.sh  | sh
-          nohup ollama serve > /dev/null 2>&1 &
-          
-          # Wait for Ollama to be ready
-          for i in {1..30}; do
-            if ollama list | grep -q "qwen"; then
-              echo "Ollama is ready."
-              break
-            fi
-            echo "Waiting for Ollama... ($i/30)"
-            sleep 5
-          done
-      
-          # ✅ Use a valid model name
-          ollama pull qwen2.5-coder:7b
-    
-      - name: 🔐 Authenticate to Salesforce Org
-        run: |
-          if [ -z "${{ secrets.ORG_SFDX_URL }}" ]; then
-            echo "❌ Error: ORG_SFDX_URL secret is missing"
+          # Validate class name format
+          if [[ ! "${{ env.CLASS_NAME }}" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
+            echo "❌ Invalid class name format: ${{ env.CLASS_NAME }}"
             exit 1
           fi
-          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
-          sf org list
-
-      - name: 📦 Retrieve Org Metadata
-        run: |
-          # Create full project structure
-          sf project generate --name "org-metadata" --manifest
-          cd ./org-metadata
           
-          # Create package.xml
+          # Validate org alias
+          if [[ ! "${{ env.ORG_ALIAS }}" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]]; then
+            echo "❌ Invalid org alias format: ${{ env.ORG_ALIAS }}"
+            exit 1
+          fi
+          
+          echo "class_name=${{ env.CLASS_NAME }}" >> $GITHUB_OUTPUT
+          echo "org_alias=${{ env.ORG_ALIAS }}" >> $GITHUB_OUTPUT
+          echo "✅ Input validation passed"
+
+  setup-environment:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    outputs:
+      ollama-ready: ${{ steps.ollama.outputs.ready }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Install Salesforce CLI
+        run: |
+          npm install --global @salesforce/cli
+          sf plugins update
+          sf version --verbose
+
+      - name: Setup Ollama and AI Model
+        id: ollama
+        run: |
+          # Install Ollama
+          curl -fsSL https://ollama.com/install.sh | sh
+          
+          # Start Ollama service
+          nohup ollama serve > ollama.log 2>&1 &
+          OLLAMA_PID=$!
+          
+          # Wait for Ollama to be ready with better error handling
+          echo "⏳ Waiting for Ollama to start..."
+          for i in {1..60}; do
+            if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+              echo "✅ Ollama service is ready"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "❌ Ollama failed to start within 5 minutes"
+              cat ollama.log
+              exit 1
+            fi
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+          
+          # Pull the AI model
+          echo "📥 Pulling ${{ env.OLLAMA_MODEL }}..."
+          if ! ollama pull ${{ env.OLLAMA_MODEL }}; then
+            echo "❌ Failed to pull model ${{ env.OLLAMA_MODEL }}"
+            exit 1
+          fi
+          
+          echo "ready=true" >> $GITHUB_OUTPUT
+          echo "✅ Environment setup complete"
+
+  retrieve-apex-class:
+    name: Retrieve Apex Class
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, setup-environment]
+    outputs:
+      class-retrieved: ${{ steps.retrieve.outputs.success }}
+      class-path: ${{ steps.retrieve.outputs.class_path }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Salesforce CLI
+        run: |
+          npm install --global @salesforce/cli
+          sf version
+
+      - name: Authenticate to Salesforce
+        env:
+          SFDX_URL: ${{ secrets.ORG_SFDX_URL }}
+        run: |
+          if [ -z "$SFDX_URL" ]; then
+            echo "❌ Missing required secret: ORG_SFDX_URL"
+            exit 1
+          fi
+          
+          echo "$SFDX_URL" | sf org login sfdx-url \
+            --alias ${{ env.ORG_ALIAS }} \
+            --set-default \
+            --sfdx-url-stdin
+          
+          # Verify authentication
+          sf org display --target-org ${{ env.ORG_ALIAS }}
+
+      - name: Create SFDX project structure
+        run: |
+          sf project generate --name "apex-retrieval" --manifest
+          cd apex-retrieval
+          
+          # Create optimized package.xml for single class
           mkdir -p manifest
-          cat <<EOF > manifest/package.xml
+          cat > manifest/package.xml << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <Package xmlns="http://soap.sforce.com/2006/04/metadata">
             <types>
               <members>${{ env.CLASS_NAME }}</members>
               <name>ApexClass</name>
             </types>
-            <version>60.0</version>
+            <version>${{ env.API_VERSION }}</version>
           </Package>
           EOF
-          sf project retrieve start --target-org $ORG_ALIAS --manifest manifest/package.xml
 
-      - name: ✍️ Generate Test Class Using Ollama
+      - name: Retrieve Apex class metadata
+        id: retrieve
         run: |
-          SRC_DIR="$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes"
-          GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
-          mkdir -p "$GENERATED_DIR"
+          cd apex-retrieval
           
-          CLASS="GitHubActionTrigger"
-          echo "Generating test class for: $CLASS"
-          
-          # Read limited class content
-          CLASS_CONTENT=$(head -c 1500 "$SRC_DIR/${CLASS}.cls")
-          if [ -z "$CLASS_CONTENT" ]; then
-            echo "⚠️ Class content is empty or too small, skipping..."
-            exit 1
-          fi
-      
-          # Create a temporary prompt file to avoid shell parsing issues
-          PROMPT_FILE=$(mktemp)
-          cat > "$PROMPT_FILE" << 'EOF'
-          Write a valid Salesforce Apex test class named GitHubActionTriggerTest for the following Apex class.
-          Important rules:
-          - Use '@isTest' annotation before the class
-          - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
-          - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
-          - For HTTP callouts:
-            - Define a private inner class that implements 'HttpCalloutMock'
-            - Implement 'HttpResponse respond(HTTPRequest req)'
-            - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
-          - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
-          - Use ONLY these assertion methods:
-            - System.assert(condition, 'optional message')
-            - System.assertEquals(expected, actual, 'optional message')
-            - System.assertNotEquals(unexpected, actual, 'optional message')
-          - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
-          - Ensure all methods have proper bodies enclosed in { }
-          - Do NOT nest methods or classes incorrectly
-          - The entire output must be a single, compilable Apex class
+          # Retrieve with better error handling
+          if sf project retrieve start \
+            --target-org ${{ env.ORG_ALIAS }} \
+            --manifest manifest/package.xml \
+            --wait 10; then
             
-          Class to test:
-          EOF
+            CLASS_PATH="force-app/main/default/classes/${{ env.CLASS_NAME }}.cls"
             
-          # Append the actual class content (safe because not in shell string)
-          cat "$SRC_DIR/${CLASS}.cls" >> "$PROMPT_FILE"
-            
-          cat >> "$PROMPT_FILE" << 'EOF'
-          Requirements:
-          1. Include @isTest annotation
-          2. Include at least one meaningful test method with setup and assertions
-          3. Test both positive and negative/exception paths if applicable
-          4. Use proper test data setup (avoid inserting __mdt)
-          5. Achieve at least 75% code coverage
-          6. Follow Salesforce Apex testing best practices
-          7. Output ONLY the Apex class definition — nothing before or after
-          EOF
-      
-          # Call ollama using the file (no shell injection)
-          RESPONSE=$(timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b < "$PROMPT_FILE" 2>/dev/null)
-      
-          # Clean up
-          rm -f "$PROMPT_FILE"
-      
-          # Clean up response: remove ANSI codes, markdown fences
-          RESPONSE=$(echo "$RESPONSE" \
-            | sed -E 's/\x1b\[[0-9;]*m?//g' \
-            | sed -E 's/^```[a-zA-Z]*\s*//g' \
-            | sed -E 's/^```$//g' \
-            | sed '/^$/d' \
-          )
-      
-          # Extract only from @isTest to final }
-          if echo "$RESPONSE" | grep -q "}"; then
-            RESPONSE=$(echo "$RESPONSE" | sed -n '/@isTest/,/\}/p')
-          fi
-      
-          # Count braces and auto-close if needed
-          OPEN=$(echo "$RESPONSE" | grep -o "{" | wc -l)
-          CLOSE=$(echo "$RESPONSE" | grep -o "}" | wc -l)
-          if [ "$OPEN" -gt "$CLOSE" ]; then
-            for i in $(seq 1 $((OPEN - CLOSE))); do
-              RESPONSE=$(echo "$RESPONSE" | sed '$a}')
-            done
-          fi
-                    
-          # Block known bad patterns
-          
-          # 1. Instantiating HttpCalloutMock directly (not via implements)
-          if echo "$RESPONSE" | grep -i "HttpCalloutMock *(" | grep -v "implements" > /dev/null; then
-            echo "❌ Detected invalid attempt to instantiate HttpCalloutMock"
-            exit 1
-          fi
-          
-          # 2. Check for 'new HttpResponse' — only allow if in a mock respond() method
-          if echo "$RESPONSE" | grep -iq "new *HttpResponse"; then
-            # Use printf to avoid interpretation issues
-            printf '%s' "$RESPONSE" | grep -A 10 -B 10 "implements *HttpCalloutMock" | grep -q "respond" > /dev/null 2>&1
-            IN_MOCK_CONTEXT=$?
-          
-            if [ $IN_MOCK_CONTEXT -ne 0 ]; then
-              echo "❌ Detected 'new HttpResponse' outside of HttpCalloutMock.respond() method"
-              echo "Context around 'new HttpResponse':"
-              printf '%s' "$RESPONSE" | grep -C 5 -i "new *HttpResponse"
-              exit 1
+            if [ -f "$CLASS_PATH" ]; then
+              echo "✅ Successfully retrieved ${{ env.CLASS_NAME }}.cls"
+              echo "success=true" >> $GITHUB_OUTPUT
+              echo "class_path=$CLASS_PATH" >> $GITHUB_OUTPUT
+              
+              # Show class info
+              echo "📊 Class size: $(wc -c < "$CLASS_PATH") bytes"
+              echo "📄 First 10 lines of retrieved class:"
+              head -10 "$CLASS_PATH"
             else
-              echo "✅ 'new HttpResponse' used in valid HttpCalloutMock.respond() context"
+              echo "❌ Class file not found after retrieval: $CLASS_PATH"
+              exit 1
             fi
-          fi          
+          else
+            echo "❌ Failed to retrieve class ${{ env.CLASS_NAME }}"
+            exit 1
+          fi
+
+      - name: Upload retrieved class as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieved-apex-class
+          path: apex-retrieval/force-app/main/default/classes/
+          retention-days: 1
+
+  generate-test-class:
+    name: Generate AI Test Class
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, setup-environment, retrieve-apex-class]
+    if: needs.retrieve-apex-class.outputs.class-retrieved == 'true'
+    outputs:
+      test-generated: ${{ steps.generate.outputs.success }}
+      test-class-name: ${{ steps.generate.outputs.test_class_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download retrieved class
+        uses: actions/download-artifact@v4
+        with:
+          name: retrieved-apex-class
+          path: ./retrieved-classes/
+
+      - name: Setup Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve > /dev/null 2>&1 &
           
-          # Final validation using file-based checks (safe)
-          echo "$RESPONSE" > /tmp/apex_test_output.cls
+          # Wait for service
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
           
-          if ! grep -q "@isTest" /tmp/apex_test_output.cls; then
-            echo "❌ Missing @isTest annotation"
-            rm -f /tmp/apex_test_output.cls
+          ollama pull ${{ env.OLLAMA_MODEL }}
+
+      - name: Generate test class with AI
+        id: generate
+        run: |
+          CLASS_FILE="./retrieved-classes/${{ env.CLASS_NAME }}.cls"
+          OUTPUT_DIR="./generated-tests"
+          TEST_CLASS="${{ env.CLASS_NAME }}Test"
+          
+          mkdir -p "$OUTPUT_DIR"
+          
+          if [ ! -f "$CLASS_FILE" ]; then
+            echo "❌ Source class not found: $CLASS_FILE"
             exit 1
           fi
           
-          if ! grep -q "class ${CLASS}Test" /tmp/apex_test_output.cls; then
-            echo "❌ Missing expected class name 'class ${CLASS}Test'"
-            rm -f /tmp/apex_test_output.cls
+          # Read and validate class content
+          CLASS_CONTENT=$(cat "$CLASS_FILE")
+          if [ ${#CLASS_CONTENT} -lt 50 ]; then
+            echo "❌ Class content too small (${#CLASS_CONTENT} chars)"
             exit 1
           fi
           
-          if grep -q "assertTrue\|assertFalse\|assertNull" /tmp/apex_test_output.cls; then
-            echo "❌ Detected invalid assertion methods: assertTrue, assertFalse, assertNull"
-            rm -f /tmp/apex_test_output.cls
+          # Create structured prompt
+          cat > prompt.txt << 'PROMPT_EOF'
+          You are an expert Salesforce Apex developer. Generate a comprehensive test class following these strict requirements:
+
+          MANDATORY STRUCTURE:
+          - Start with @IsTest annotation
+          - Class name must be exactly: {{ CLASS_NAME }}Test
+          - Use proper Apex syntax and indentation
+          
+          TESTING REQUIREMENTS:
+          - Test all public methods with positive and negative scenarios
+          - Achieve minimum 75% code coverage
+          - Use proper test data setup
+          - Handle governor limits appropriately
+          
+          ASSERTION RULES (CRITICAL):
+          - Use ONLY: System.assert(), System.assertEquals(), System.assertNotEquals()
+          - NEVER use: assertTrue(), assertFalse(), assertNull()
+          
+          HTTP CALLOUT HANDLING:
+          - Implement HttpCalloutMock interface for HTTP calls
+          - Create inner mock class: implements HttpCalloutMock
+          - Use Test.setMock(HttpCalloutMock.class, mockInstance)
+          
+          METADATA RESTRICTIONS:
+          - Do NOT perform DML on Custom Metadata Types (__mdt)
+          - Assume metadata records exist or use @TestSetup
+          
+          OUTPUT FORMAT:
+          - Return ONLY the Apex class code
+          - No explanations, markdown, or additional text
+          - Must compile without errors
+
+          SOURCE CLASS TO TEST:
+          PROMPT_EOF
+          
+          # Append class content and close prompt
+          cat "$CLASS_FILE" >> prompt.txt
+          
+          # Generate test with timeout and validation
+          echo "🤖 Generating test class using ${{ env.OLLAMA_MODEL }}..."
+          
+          if !RESPONSE=$(timeout 600 ollama run ${{ env.OLLAMA_MODEL }} < prompt.txt 2>/dev/null); then
+            echo "❌ AI generation failed or timed out"
             exit 1
           fi
           
-          # If all checks pass, proceed
-          echo "$RESPONSE" > "$GENERATED_DIR/${CLASS}Test.cls"
-          cat > "$GENERATED_DIR/${CLASS}Test.cls-meta.xml" <<EOF
+          # Clean and validate response
+          CLEAN_RESPONSE=$(echo "$RESPONSE" | \
+            sed -E 's/\x1b\[[0-9;]*[mK]//g' | \
+            sed '/^```/d' | \
+            sed '/^\s*$/d' | \
+            awk '/^@[Ii]s[Tt]est/{flag=1} flag{print}')
+          
+          if [ -z "$CLEAN_RESPONSE" ]; then
+            echo "❌ No valid test class generated"
+            exit 1
+          fi
+          
+          # Write generated test
+          echo "$CLEAN_RESPONSE" > "$OUTPUT_DIR/${TEST_CLASS}.cls"
+          
+          # Create metadata file
+          cat > "$OUTPUT_DIR/${TEST_CLASS}.cls-meta.xml" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
-              <apiVersion>60.0</apiVersion>
+              <apiVersion>${{ env.API_VERSION }}</apiVersion>
               <status>Active</status>
           </ApexClass>
           EOF
-          echo "✅ Successfully generated test class for $CLASS"
           
-          # Clean up
-          rm -f /tmp/apex_test_output.cls
+          echo "success=true" >> $GITHUB_OUTPUT
+          echo "test_class_name=$TEST_CLASS" >> $GITHUB_OUTPUT
+          echo "✅ Test class generated successfully"
 
-      - name: 📄 Output Generated Test Class
+      - name: Validate generated test class
         run: |
-          GENERATED_TEST_PATH="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls"
+          TEST_FILE="./generated-tests/${{ env.CLASS_NAME }}Test.cls"
           
-          if [ -f "$GENERATED_TEST_PATH" ]; then
-            echo "📄 Generated Test Class: ${{ env.CLASS_NAME }}Test.cls"
-            echo "=================================================="
-            cat "$GENERATED_TEST_PATH"
-            echo "=================================================="
-            echo "✅ Successfully printed generated test class"
-          else
-            echo "❌ Error: Generated test class file not found at $GENERATED_TEST_PATH"
+          # Basic validations
+          [ -f "$TEST_FILE" ] || { echo "❌ Test file not created"; exit 1; }
+          [ -s "$TEST_FILE" ] || { echo "❌ Test file is empty"; exit 1; }
+          
+          # Content validations
+          grep -q "@[Ii]s[Tt]est" "$TEST_FILE" || { echo "❌ Missing @IsTest"; exit 1; }
+          grep -q "class.*${{ env.CLASS_NAME }}Test" "$TEST_FILE" || { echo "❌ Wrong class name"; exit 1; }
+          
+          # Check for forbidden assertions
+          if grep -E "(assertTrue|assertFalse|assertNull)\s*\(" "$TEST_FILE"; then
+            echo "❌ Contains forbidden assertion methods"
             exit 1
           fi
+          
+          echo "✅ Test class validation passed"
 
-      - name: ✅ Validate Generated Test Class
+      - name: Display generated test class
         run: |
-          GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
-          CLASS="${{ env.CLASS_NAME }}"
-          TEST_CLASS_PATH="$GENERATED_DIR/${CLASS}Test.cls"
+          echo "📄 Generated Test Class:"
+          echo "======================================"
+          cat "./generated-tests/${{ env.CLASS_NAME }}Test.cls"
+          echo "======================================"
+
+      - name: Upload generated test as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-test-class
+          path: ./generated-tests/
+          retention-days: 7
+
+  deploy-and-test:
+    name: Deploy & Execute Tests
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, generate-test-class]
+    if: needs.generate-test-class.outputs.test-generated == 'true'
+    outputs:
+      deployment-success: ${{ steps.deploy.outputs.success }}
+      test-results: ${{ steps.test.outputs.results }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js and Salesforce CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
       
-          if [ ! -f "$TEST_CLASS_PATH" ]; then
-            echo "❌ Error: Generated test class file not found: $TEST_CLASS_PATH"
-            exit 1
-          fi
-      
-          if [ ! -s "$TEST_CLASS_PATH" ]; then
-            echo "❌ Error: Generated test class is empty"
-            exit 1
-          fi
-      
-          if ! grep -q "@isTest" "$TEST_CLASS_PATH"; then
-            echo "❌ Error: Missing @isTest in ${CLASS}Test.cls"
-            cat "$TEST_CLASS_PATH"
-            exit 1
-          fi
-      
-          if ! grep -q "class ${CLASS}Test" "$TEST_CLASS_PATH"; then
-            echo "❌ Error: Missing expected class name"
-            cat "$TEST_CLASS_PATH"
-            exit 1
-          fi
-    
-      - name: 🚀 Deploy Only Generated Test Class
+      - run: |
+          npm install --global @salesforce/cli
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-class*'
+          merge-multiple: true
+          path: ./artifacts/
+
+      - name: Authenticate to Salesforce
         run: |
-          GENERATED_TEST_CLASS="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls"
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias ${{ env.ORG_ALIAS }} \
+            --set-default \
+            --sfdx-url-stdin
+
+      - name: Setup deployment project
+        run: |
+          sf project generate --name "deployment-project" --manifest
+          cd deployment-project
           
-          if [ ! -f "$GENERATED_TEST_CLASS" ]; then
-            echo "❌ Generated test class not found: $GENERATED_TEST_CLASS"
-            exit 1
-          fi
-      
-          # 🔴 Copy the generated test class into the org-metadata project
-          echo "📦 Copying generated test class into org-metadata project..."
-          cp "$GENERATED_TEST_CLASS" "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes/"
-          cp "$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls-meta.xml" \
-             "$GITHUB_WORKSPACE/org-metadata/force-app/main/default/classes/"
-      
-          # 🔴 Change into the org-metadata directory (valid SFDX project)
-          cd "$GITHUB_WORKSPACE/org-metadata"
-      
-          echo "🚀 Deploying test class: ${{ env.CLASS_NAME }}Test.cls"
+          # Copy artifacts to project
+          cp -r ../artifacts/* force-app/main/default/classes/ 2>/dev/null || true
+          
+          # Verify files exist
+          ls -la force-app/main/default/classes/
+
+      - name: Deploy test class
+        id: deploy
+        run: |
+          cd deployment-project
+          TEST_CLASS="${{ env.CLASS_NAME }}Test"
+          
+          echo "🚀 Deploying $TEST_CLASS..."
           
           DEPLOY_RESULT=$(sf project deploy start \
-            --source-dir "force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls" \
-            --target-org "$ORG_ALIAS" \
-            --wait 120 \
-            --json \
-            || true)
-      
-          if echo "$DEPLOY_RESULT" | jq -e '.status != 0' > /dev/null; then
+            --source-dir "force-app/main/default/classes/${TEST_CLASS}.cls" \
+            --target-org ${{ env.ORG_ALIAS }} \
+            --wait ${{ env.TEST_TIMEOUT }} \
+            --json 2>/dev/null || echo '{"status":1}')
+          
+          if echo "$DEPLOY_RESULT" | jq -e '.status != 0' >/dev/null; then
             echo "❌ Deployment failed:"
-            echo "$DEPLOY_RESULT" | jq -r '.result?.details?.componentFailures // .'
+            echo "$DEPLOY_RESULT" | jq -r '.message // .result.details // "Unknown error"'
+            echo "success=false" >> $GITHUB_OUTPUT
             exit 1
           fi
-      
-          echo "✅ Successfully deployed ${{ env.CLASS_NAME }}Test.cls"
-    
-      - name: 🧪 Run Tests for Generated Class
+          
+          echo "success=true" >> $GITHUB_OUTPUT
+          echo "✅ Deployment successful"
+
+      - name: Execute Apex tests
+        id: test
+        if: steps.deploy.outputs.success == 'true'
         run: |
+          cd deployment-project
           TEST_CLASS="${{ env.CLASS_NAME }}Test"
-          echo "🧪 Running Apex test: $TEST_CLASS"
-    
-          # Run test and capture result + exit code
+          
+          echo "🧪 Running tests for $TEST_CLASS..."
+          
           TEST_RESULT=$(sf apex run test \
             --tests "$TEST_CLASS" \
-            --target-org "$ORG_ALIAS" \
-            --wait 120 \
+            --target-org ${{ env.ORG_ALIAS }} \
+            --wait ${{ env.TEST_TIMEOUT }} \
             --result-format json \
             --code-coverage \
-            --json)
-    
-          EXIT_CODE=$?
-    
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "❌ Test execution failed (compile error, timeout, or class not found):"
+            --json 2>/dev/null || echo '{"status":1}')
+          
+          # Save results for reporting
+          echo 'results<<EOF' >> $GITHUB_OUTPUT
+          echo "$TEST_RESULT" | jq -c '.' >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+          
+          # Analyze results
+          if echo "$TEST_RESULT" | jq -e '.status != 0' >/dev/null; then
+            echo "❌ Test execution failed"
             echo "$TEST_RESULT" | jq -r '.message // "Unknown error"'
             exit 1
           fi
-    
-          # Save test result for downstream steps
-          echo "test_result<<EOF" >> $GITHUB_ENV
-          echo "$TEST_RESULT"
-          echo "EOF"
-    
-          echo "Test Results Summary:"
-          echo "$TEST_RESULT" | jq '.result.summary'
-    
-          # Check for test failures
-          if echo "$TEST_RESULT" | jq -e '.result.summary.failures > 0' > /dev/null; then
-            echo "❌ Some tests failed"
-            echo "$TEST_RESULT" | jq '.result.failures'
-            exit 1
+          
+          # Check test outcomes
+          SUMMARY=$(echo "$TEST_RESULT" | jq -r '.result.summary // empty')
+          if [ -n "$SUMMARY" ]; then
+            echo "📊 Test Summary:"
+            echo "$SUMMARY" | jq .
+            
+            FAILURES=$(echo "$SUMMARY" | jq -r '.failures // 0')
+            if [ "$FAILURES" -gt 0 ]; then
+              echo "❌ $FAILURES test(s) failed"
+              echo "$TEST_RESULT" | jq '.result.tests[] | select(.Outcome == "Fail")'
+              exit 1
+            fi
+            
+            echo "✅ All tests passed!"
           fi
-    
-          echo "✅ All tests passed!"
-    
-      - name: 📦 Upload ONLY Generated Apex Test Class as Artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-apex-test-class-qwen
-          path: |
-            ${{ github.workspace }}/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls
-            ${{ github.workspace }}/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls-meta.xml
-    
-      - name: 📝 Create Test Report
-        if: always()
+
+  generate-report:
+    name: Generate Final Report
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, generate-test-class, deploy-and-test]
+    if: always()
+    steps:
+      - name: Create comprehensive report
         run: |
-          CLASS_NAME="${{ env.CLASS_NAME }}"
-          TEST_CLASS="${CLASS_NAME}Test"
-    
-          echo "## 🧪 Apex Test Generation Report (Qwen-Coder)" >> $GITHUB_STEP_SUMMARY
-          echo "### Generated Test Class" >> $GITHUB_STEP_SUMMARY
-          echo "| Class Name | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${TEST_CLASS}.cls\` | ✅ Generated & Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "# 🤖 AI Apex Test Generation Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-    
-          # Add test summary if available
-          if [ -n "$TEST_RESULT" ]; then
-            echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-            echo "$TEST_RESULT" | jq '.result.summary' >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## 📋 Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Input Validation | ${{ needs.validate-inputs.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Generation | ${{ needs.generate-test-class.result == 'success' && '✅ Generated' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deployment | ${{ needs.deploy-and-test.outputs.deployment-success == 'true' && '✅ Deployed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Execution | ${{ needs.deploy-and-test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## 🎯 Generated Artifacts" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.generate-test-class.result }}" == "success" ]; then
+            echo "- ✅ **${{ needs.generate-test-class.outputs.test-class-name }}.cls** - AI-generated test class" >> $GITHUB_STEP_SUMMARY
+            echo "- 📝 **Metadata file** - Salesforce deployment descriptor" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Test did not run or failed to execute." >> $GITHUB_STEP_SUMMARY
+            echo "- ❌ No artifacts generated due to failures" >> $GITHUB_STEP_SUMMARY
           fi
-    
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Review the generated test class in **Artifacts**" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 Check code coverage and assertion details" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔁 Refactor prompt or Apex logic if test fails" >> $GITHUB_STEP_SUMMARY
-          echo "- 🚀 Promote to higher environments after validation" >> $GITHUB_STEP_SUMMARY
+          
+          # Add test results if available
+          if [ -n "${{ needs.deploy-and-test.outputs.test-results }}" ]; then
+            echo "## 📊 Test Results" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo '${{ needs.deploy-and-test.outputs.test-results }}' | jq '.result.summary // .' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "## 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Review** generated test class in workflow artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Validate** code coverage meets your requirements (≥75%)" >> $GITHUB_STEP_SUMMARY
+          echo "3. **Enhance** tests with additional edge cases if needed" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Deploy** to higher environments following your CI/CD process" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated with Qwen-Coder AI Model*" >> $GITHUB_STEP_SUMMARY
