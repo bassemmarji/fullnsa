@@ -215,14 +215,12 @@ jobs:
               Write-Host "Downloaded $downloadedPlugins BPMN2 plugin files to dropins folder"
               
               # Create a simple plugin manifest
-              $manifest = @"
-Manifest-Version: 1.0
-Bundle-ManifestVersion: 2
-Bundle-Name: BPMN2 Modeler Manual Install
-Bundle-SymbolicName: org.eclipse.bpmn2.modeler.manual
-Bundle-Version: 1.5.3
-Bundle-Vendor: Manual Installation
-"@
+              $manifest = "Manifest-Version: 1.0`n"
+              $manifest += "Bundle-ManifestVersion: 2`n"
+              $manifest += "Bundle-Name: BPMN2 Modeler Manual Install`n"
+              $manifest += "Bundle-SymbolicName: org.eclipse.bpmn2.modeler.manual`n"
+              $manifest += "Bundle-Version: 1.5.3`n"
+              $manifest += "Bundle-Vendor: Manual Installation`n"
               $manifest | Out-File -FilePath "$dropinsPath\MANIFEST.MF" -Encoding ASCII
             } else {
               Write-Warning "No BPMN2 plugins could be downloaded manually"
@@ -297,35 +295,28 @@ Bundle-Vendor: Manual Installation
       # Create setup instructions
       - name: Create setup instructions
         run: |
-          $instructions = @"
-# Eclipse Setup Instructions
-
-## What's Included
-- Eclipse IDE for Java Developers (2023-03)
-- BPMN2 Modeler Plugin
-- Maven Integration (m2e)
-
-## Setup Steps
-1. Download ``eclipse-portable.zip`` from the ``eclipse_package`` folder
-2. Extract to desired location (e.g., ``C:\eclipse``)
-3. Run ``eclipse.exe`` to start Eclipse
-4. Create workspace when prompted
-5. Verify plugins: Help → Installation Details
-
-## Creating Activiti Project
-1. File → New → Maven Project
-2. Use archetype or create simple project
-3. Add Activiti 6.0 dependencies to pom.xml
-4. Create BPMN diagrams: File → New → Other → BPMN
-
-## Troubleshooting
-- If BPMN2 Modeler not working: Help → Install New Software → Add Local → Point to plugins folder
-- Maven issues: Right-click project → Maven → Reload Projects
-- Memory issues: Edit eclipse.ini, increase -Xmx value
-
-Generated on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
-Runner OS: Windows
-"@
+          $instructions = "# Eclipse Setup Instructions`n`n"
+          $instructions += "## What's Included`n"
+          $instructions += "- Eclipse IDE for Java Developers (2023-03)`n"
+          $instructions += "- BPMN2 Modeler Plugin`n"
+          $instructions += "- Maven Integration (m2e)`n`n"
+          $instructions += "## Setup Steps`n"
+          $instructions += "1. Download ``eclipse-portable.zip`` from the ``eclipse_package`` folder`n"
+          $instructions += "2. Extract to desired location (e.g., ``C:\eclipse``)`n"
+          $instructions += "3. Run ``eclipse.exe`` to start Eclipse`n"
+          $instructions += "4. Create workspace when prompted`n"
+          $instructions += "5. Verify plugins: Help → Installation Details`n`n"
+          $instructions += "## Creating Activiti Project`n"
+          $instructions += "1. File → New → Maven Project`n"
+          $instructions += "2. Use archetype or create simple project`n"
+          $instructions += "3. Add Activiti 6.0 dependencies to pom.xml`n"
+          $instructions += "4. Create BPMN diagrams: File → New → Other → BPMN`n`n"
+          $instructions += "## Troubleshooting`n"
+          $instructions += "- If BPMN2 Modeler not working: Help → Install New Software → Add Local → Point to plugins folder`n"
+          $instructions += "- Maven issues: Right-click project → Maven → Reload Projects`n"
+          $instructions += "- Memory issues: Edit eclipse.ini, increase -Xmx value`n`n"
+          $instructions += "Generated on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n"
+          $instructions += "Runner OS: Windows`n"
           
           $instructions | Out-File -FilePath "eclipse_package\README.md" -Encoding UTF8
           
