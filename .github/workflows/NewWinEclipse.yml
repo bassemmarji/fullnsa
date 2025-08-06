@@ -249,7 +249,7 @@ jobs:
             Write-Host "Compressing Eclipse installation..."
             Compress-Archive -Path "C:\eclipse\*" -DestinationPath "eclipse_package\eclipse-portable.zip" -CompressionLevel Optimal
             
-            $size = (Get-Item "eclipse_package\eclipse-oxygen-portable.zip").Length / 1MB
+            $size = (Get-Item "eclipse_package\eclipse-portable.zip").Length / 1MB
             Write-Host "Eclipse package created: $([math]::Round($size, 2)) MB"
           }
           catch {
