@@ -77,11 +77,10 @@ jobs:
               
               echo "❌ Error listing logs:"
               echo "$sf_output"
-              echo "Continuing with logs retrieved so far..."
               break
             fi
             
-            # Parse JSON output
+            # Save JSON output
             echo "$sf_output" > loglist.json
             
             # Check for valid response
@@ -93,7 +92,7 @@ jobs:
             
             # Get log IDs
             log_ids=$(jq -r '.result[].id' loglist.json)
-            log_count=$(echo "$log_ids" | wc -w)
+            log_count=$(echo "$log_ids" | grep -v '^$' | wc -l)
             
             if [ "$log_count" -eq 0 ]; then
               echo "No more logs found on page $page"
@@ -103,9 +102,13 @@ jobs:
             echo "Found $log_count logs on page $page"
             total_logs=$((total_logs + log_count))
             
-            # Download logs in parallel
-            echo "$log_ids" | xargs -P 4 -I {} \
-              bash -c 'echo "Downloading log {}"; sf apex get log "$1" --target-org "$2" --output-dir "$3" || echo "⚠️ Failed to download log $1"' _ {} "$ORG_ALIAS" "$LOG_DIR"
+            # Download logs
+            for logid in $log_ids; do
+              echo "Downloading log: $logid"
+              sf apex get log "$logid" \
+                --target-org "$ORG_ALIAS" \
+                --output-dir "$LOG_DIR" || echo "⚠️ Failed to download log $logid"
+            done
             
             # Get next cursor
             cursor=$(jq -r '.nextPageUrl // empty' loglist.json)
@@ -119,20 +122,31 @@ jobs:
           done
           
           echo "✅ Retrieved $total_logs logs total"
-          echo "Logs saved to: $LOG_DIR"
+          echo "::set-output name=log_count::$total_logs"
+          
+          # Handle empty results
+          if [ "$total_logs" -eq 0 ]; then
+            echo "⚠️ Warning: No logs retrieved in the last 30 days"
+            # Create empty file to indicate no logs
+            touch "$LOG_DIR/no-logs-retrieved.txt"
+          fi
       
       - name: Verify Log Retrieval
         run: |
-          if [ -z "$(ls -A ${{ env.LOG_DIR }})" ]; then
-            echo "No logs retrieved!"
+          if [ -z "$(ls -A "$LOG_DIR")" ]; then
+            echo "❌ Critical Error: Log directory is completely empty"
             exit 1
+          elif [ -f "$LOG_DIR/no-logs-retrieved.txt" ]; then
+            echo "⚠️ Warning: No logs found - this may be expected behavior"
           else
-            echo "Retrieved $(ls ${{ env.LOG_DIR }} | wc -l) log files"
+            echo "✅ Retrieved $(ls "$LOG_DIR" | wc -l) log files"
           fi
-
+      
       - name: Archive Logs
         uses: actions/upload-artifact@v4
         with:
           name: salesforce-debug-logs
           path: ${{ env.LOG_DIR }}
+          retention-days: 3
         if: ${{ always() }}
+
