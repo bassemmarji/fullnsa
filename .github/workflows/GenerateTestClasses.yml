@@ -326,6 +326,7 @@ jobs:
           TEST_CLASS="${{ env.CLASS_NAME }}Test"
           echo "🧪 Running Apex test: $TEST_CLASS"
       
+          # Run test and capture result + exit code
           TEST_RESULT=$(sf apex run test \
             --tests "$TEST_CLASS" \
             --target-org "$ORG_ALIAS" \
@@ -337,12 +338,11 @@ jobs:
           EXIT_CODE=$?
       
           if [ $EXIT_CODE -ne 0 ]; then
-            echo "❌ Test execution failed:"
+            echo "❌ Test execution failed (compile error, timeout, or class not found):"
             echo "$TEST_RESULT" | jq -r '.message // "Unknown error"'
             exit 1
           fi
       
-          # Output summary
           echo "Test Results Summary:"
           echo "$TEST_RESULT" | jq '.'
       
@@ -355,11 +355,11 @@ jobs:
       
           echo "✅ All tests passed!"
       
-          # ✅ Correct way to set multi-line env var
+          # ✅ CORRECT way to set multi-line env var
           echo "test_result<<EOF_GH_ACTION" >> $GITHUB_ENV
           echo "$TEST_RESULT" >> $GITHUB_ENV
           echo "EOF_GH_ACTION" >> $GITHUB_ENV
-    
+          
       - name: 📦 Upload ONLY Generated Apex Test Class as Artifact
         if: success()
         uses: actions/upload-artifact@v4
