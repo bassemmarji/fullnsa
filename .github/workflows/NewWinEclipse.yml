@@ -57,18 +57,60 @@ jobs:
       - name: Verify Maven version
         run: mvn -version
         
-      # Download and extract Eclipse with error handling
-      - name: Download Eclipse Oxygen 4.7
+      # Download and extract Eclipse with multiple fallback URLs
+      - name: Download Eclipse IDE
         run: |
+          $eclipseUrls = @(
+            # Try Eclipse 2023-03 (more recent, stable)
+            "https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2023-03/R/eclipse-java-2023-03-R-win32-x86_64.zip&mirror_id=1",
+            # Try Eclipse 2022-12
+            "https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2022-12/R/eclipse-java-2022-12-R-win32-x86_64.zip&mirror_id=1",
+            # Direct mirror link for 2023-03
+            "https://mirror.math.princeton.edu/pub/eclipse/technology/epp/downloads/release/2023-03/R/eclipse-java-2023-03-R-win32-x86_64.zip",
+            # Archive.org backup
+            "https://archive.org/download/eclipse-java-2023-03-R-win32-x86_64/eclipse-java-2023-03-R-win32-x86_64.zip"
+          )
+          
+          $downloadSuccess = $false
+          
+          foreach ($url in $eclipseUrls) {
+            try {
+              Write-Host "Attempting to download Eclipse from: $url"
+              Invoke-WebRequest -Uri $url -OutFile "eclipse.zip" -TimeoutSec 600 -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              
+              # Verify download
+              $fileSize = (Get-Item "eclipse.zip").Length
+              if ($fileSize -gt 100MB) {
+                Write-Host "Download successful - Size: $([math]::Round($fileSize / 1MB, 2)) MB"
+                $downloadSuccess = $true
+                break
+              } else {
+                Write-Warning "Downloaded file seems too small ($([math]::Round($fileSize / 1MB, 2)) MB), trying next URL..."
+                Remove-Item "eclipse.zip" -ErrorAction SilentlyContinue
+              }
+            }
+            catch {
+              Write-Warning "Failed to download from $url : $_"
+              Remove-Item "eclipse.zip" -ErrorAction SilentlyContinue
+              continue
+            }
+          }
+          
+          if (-not $downloadSuccess) {
+            Write-Error "Failed to download Eclipse from all available sources"
+            exit 1
+          }
+          
           try {
-            Write-Host "Downloading Eclipse..."
-            Invoke-WebRequest -Uri "https://archive.eclipse.org/eclipse/downloads/drops/R-4.7-201706111000/eclipse-SDK-4.7-win32-x86_64.zip" -OutFile "eclipse.zip" -TimeoutSec 300
             Write-Host "Extracting Eclipse..."
             Expand-Archive -Path "eclipse.zip" -DestinationPath "C:\" -Force
-            Write-Host "Eclipse downloaded and extracted successfully"
+            Write-Host "Eclipse extracted successfully"
+            
+            # Cleanup
+            Remove-Item "eclipse.zip" -ErrorAction SilentlyContinue
           }
           catch {
-            Write-Error "Failed to download or extract Eclipse: $_"
+            Write-Error "Failed to extract Eclipse: $_"
             exit 1
           }
         shell: pwsh
@@ -85,57 +127,109 @@ jobs:
           }
         shell: pwsh
         
-      # Install BPMN2 plugin with better error handling
+      # Install BPMN2 plugin with updated repositories
       - name: Install BPMN2 plugin
         run: |
           try {
             Write-Host "Installing BPMN2 Modeler plugin..."
-            $process = Start-Process -FilePath "C:\eclipse\eclipse.exe" -ArgumentList @(
-              "-application", "org.eclipse.equinox.p2.director",
-              "-noSplash",
-              "-repository", "https://download.eclipse.org/bpmn2-modeler/releases/oxygen/1.5.2/",
-              "-installIU", "org.eclipse.bpmn2.modeler.feature.feature.group"
-            ) -Wait -PassThru -WindowStyle Hidden
             
-            if ($process.ExitCode -eq 0) {
-              Write-Host "BPMN2 plugin installed successfully"
-            } else {
-              Write-Warning "BPMN2 plugin installation may have failed (Exit code: $($process.ExitCode))"
+            # For newer Eclipse versions, use updated repository
+            $repositories = @(
+              "https://download.eclipse.org/bpmn2-modeler/updates/",
+              "https://download.eclipse.org/releases/2023-03/"
+            )
+            
+            $installSuccess = $false
+            
+            foreach ($repo in $repositories) {
+              try {
+                Write-Host "Trying repository: $repo"
+                $process = Start-Process -FilePath "C:\eclipse\eclipse.exe" -ArgumentList @(
+                  "-application", "org.eclipse.equinox.p2.director",
+                  "-noSplash",
+                  "-repository", $repo,
+                  "-installIU", "org.eclipse.bpmn2.modeler.feature.feature.group"
+                ) -Wait -PassThru -WindowStyle Hidden -RedirectStandardError "error.log" -RedirectStandardOutput "output.log"
+                
+                if ($process.ExitCode -eq 0) {
+                  Write-Host "BPMN2 plugin installed successfully from $repo"
+                  $installSuccess = $true
+                  break
+                } else {
+                  Write-Warning "Installation failed from $repo (Exit code: $($process.ExitCode))"
+                  if (Test-Path "error.log") {
+                    Get-Content "error.log" | Write-Warning
+                  }
+                }
+              }
+              catch {
+                Write-Warning "Error trying repository $repo : $_"
+              }
+            }
+            
+            if (-not $installSuccess) {
+              Write-Warning "Could not install BPMN2 plugin via p2 director, will try manual installation"
             }
           }
           catch {
-            Write-Error "Failed to install BPMN2 plugin: $_"
-            # Don't fail the build, continue without the plugin
+            Write-Warning "Failed to install BPMN2 plugin: $_"
           }
         shell: pwsh
         
-      # Alternative: Download BPMN2 plugin manually if above fails
-      - name: Download BPMN2 Plugin (Alternative)
+      # Enhanced manual BPMN2 Plugin download
+      - name: Download BPMN2 Plugin (Manual Backup)
         run: |
           try {
-            Write-Host "Downloading BPMN2 plugin as backup..."
-            $pluginUrl = "https://download.eclipse.org/bpmn2-modeler/releases/oxygen/1.5.2/plugins/"
+            Write-Host "Setting up manual BPMN2 plugin installation..."
             $dropinsPath = "C:\eclipse\dropins"
             New-Item -ItemType Directory -Path $dropinsPath -Force
             
-            # Download main plugin files
-            $plugins = @(
-              "org.eclipse.bpmn2.modeler.core_1.5.2.Final-v20201216-1825-B93.jar",
-              "org.eclipse.bpmn2.modeler.ui_1.5.2.Final-v20201216-1825-B93.jar"
-            )
+            # Updated plugin download URLs for newer Eclipse versions
+            $pluginUrls = @{
+              "org.eclipse.bpmn2.modeler.core.jar" = "https://repo1.maven.org/maven2/org/eclipse/bpmn2/org.eclipse.bpmn2.modeler.core/1.5.3.Final/org.eclipse.bpmn2.modeler.core-1.5.3.Final.jar"
+              "org.eclipse.bpmn2.modeler.ui.jar" = "https://repo1.maven.org/maven2/org/eclipse/bpmn2/org.eclipse.bpmn2.modeler.ui/1.5.3.Final/org.eclipse.bpmn2.modeler.ui-1.5.3.Final.jar"
+            }
             
-            foreach ($plugin in $plugins) {
+            $downloadedPlugins = 0
+            
+            foreach ($plugin in $pluginUrls.GetEnumerator()) {
               try {
-                Invoke-WebRequest -Uri "$pluginUrl$plugin" -OutFile "$dropinsPath\$plugin" -TimeoutSec 120
-                Write-Host "Downloaded $plugin"
+                Write-Host "Downloading $($plugin.Key)..."
+                Invoke-WebRequest -Uri $plugin.Value -OutFile "$dropinsPath\$($plugin.Key)" -TimeoutSec 120 -UserAgent "Mozilla/5.0"
+                
+                $fileSize = (Get-Item "$dropinsPath\$($plugin.Key)").Length
+                if ($fileSize -gt 1KB) {
+                  Write-Host "Successfully downloaded $($plugin.Key) - Size: $([math]::Round($fileSize / 1KB, 2)) KB"
+                  $downloadedPlugins++
+                } else {
+                  Write-Warning "$($plugin.Key) download seems incomplete"
+                  Remove-Item "$dropinsPath\$($plugin.Key)" -ErrorAction SilentlyContinue
+                }
               }
               catch {
-                Write-Warning "Could not download $plugin"
+                Write-Warning "Could not download $($plugin.Key): $_"
               }
+            }
+            
+            if ($downloadedPlugins -gt 0) {
+              Write-Host "Downloaded $downloadedPlugins BPMN2 plugin files to dropins folder"
+              
+              # Create a simple plugin manifest
+              $manifest = @"
+              Manifest-Version: 1.0
+              Bundle-ManifestVersion: 2
+              Bundle-Name: BPMN2 Modeler Manual Install
+              Bundle-SymbolicName: org.eclipse.bpmn2.modeler.manual
+              Bundle-Version: 1.5.3
+              Bundle-Vendor: Manual Installation
+              "@
+              $manifest | Out-File -FilePath "$dropinsPath\MANIFEST.MF" -Encoding ASCII
+            } else {
+              Write-Warning "No BPMN2 plugins could be downloaded manually"
             }
           }
           catch {
-            Write-Warning "Alternative plugin download failed: $_"
+            Write-Warning "Manual BPMN2 plugin setup failed: $_"
           }
         shell: pwsh
         
