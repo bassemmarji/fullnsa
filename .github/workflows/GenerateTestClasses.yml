@@ -100,33 +100,58 @@ jobs:
             echo "⚠️ Class content is empty or too small, skipping..."
             exit 1
           fi
-      
-          # Create a temporary prompt file to avoid shell parsing issues
+
           PROMPT_FILE=$(mktemp)
           cat > "$PROMPT_FILE" << 'EOF'
           Write a valid Salesforce Apex test class named GitHubActionTriggerTest for the following Apex class.
+          
           Important rules:
           - Use '@isTest' annotation before the class
           - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
           - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
-          - When mocking HTTP callouts:
-            - Define a private class that implements 'HttpCalloutMock'
+          - For HTTP callouts:
+            - Define a private inner class that implements 'HttpCalloutMock' **inside** the test class
             - Implement 'HttpResponse respond(HTTPRequest req)'
-            - Register it with: 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
-          - NEVER use: 'new HttpCalloutMock()', 'new HttpCalloutMock(...)', or instantiate the interface
-          - Use 'Test.setMock(HttpCalloutMock.class, ...)' — do NOT omit '.class'
+            - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
+            - Example:
+              private class MockSuccess implements HttpCalloutMock {
+                public HttpResponse respond(HTTPRequest req) {
+                  HttpResponse res = new HttpResponse();
+                  res.setStatusCode(200);
+                  res.setBody('{"status":"ok"}');
+                  return res;
+                }
+              }
+          - If you need a mock or helper class, define it as a private inner class within the test class
+          - Do NOT use syntax like 'new OuterClass.InnerClass()' — inner classes must be defined and used within the same class          
           - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
           - Use ONLY these assertion methods:
-            - System.assert(Boolean condition, String message)
-            - System.assertEquals(Object expected, Object actual, String message)
-            - System.assertNotEquals(Object unexpected, Object actual, String message)
-          - NEVER use: assertTrue, assertFalse, assertNull, assertNotNull — these are NOT valid Apex methods
+            - System.assert(condition, 'optional message')
+            - System.assertEquals(expected, actual, 'optional message')
+            - System.assertNotEquals(unexpected, actual, 'optional message')
+          - NEVER use: assertTrue, assertFalse, assertNull, assertNotNull, fail — these are NOT valid Apex methods
+          - Define all inner classes (like mocks) inside the test class and ensure they are fully declared
+          - Do NOT reference a class that is not defined in this file
           - Ensure all methods have proper bodies enclosed in { }
           - Do NOT nest methods or classes incorrectly
           - The entire output must be a single, compilable Apex class
-            
+          
           Class to test:
           EOF
+          
+          cat "$SRC_DIR/${CLASS}.cls" >> "$PROMPT_FILE"
+          
+          cat >> "$PROMPT_FILE" << 'EOF'
+          Requirements:
+          1. Include @isTest annotation
+          2. Include at least one meaningful test method with setup and assertions
+          3. Test both positive and negative/exception paths if applicable
+          4. Use proper test data setup (avoid inserting __mdt)
+          5. Achieve at least 75% code coverage
+          6. Follow Salesforce Apex testing best practices
+          7. Output ONLY the Apex class definition — nothing before or after
+          EOF
+
             
           # Append the actual class content (safe because not in shell string)
           cat "$SRC_DIR/${CLASS}.cls" >> "$PROMPT_FILE"
@@ -210,6 +235,20 @@ jobs:
             fi
           fi
 
+          # Block invalid 'fail()' usage (not valid in Apex)
+          if echo "$RESPONSE" | grep -i "fail *(" > /dev/null; then
+            echo "❌ Detected invalid 'fail(...)' usage — not valid in Apex"
+            echo "Use 'System.assert(false, message)' instead"
+            exit 1
+          fi
+          
+          # Block undefined inner class references like 'new Outer.Inner()'
+          if echo "$RESPONSE" | grep -E "new [a-zA-Z0-9]+\\.[a-zA-Z0-9]+\\(\\)" > /dev/null; then
+            echo "❌ Detected invalid inner class instantiation: new Outer.Inner()"
+            echo "Inner classes must be defined within the same class"
+            exit 1
+          fi
+          
           # Final validation using file-based checks (safe)
           echo "$RESPONSE" > /tmp/apex_test_output.cls
           
