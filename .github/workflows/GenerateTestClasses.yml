@@ -105,38 +105,38 @@ jobs:
           # Create a temporary prompt file to avoid shell parsing issues
           PROMPT_FILE=$(mktemp)
           cat > "$PROMPT_FILE" << 'EOF'
-            Write a valid Salesforce Apex test class named GitHubActionTriggerTest for the following Apex class.
-            Important rules:
-            - Use '@isTest' annotation before the class
-            - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
-            - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
-            - For HTTP callouts:
-              - Define a private inner class that implements 'HttpCalloutMock'
-              - Implement 'HttpResponse respond(HTTPRequest req)'
-              - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
-            - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
-            - Use 'System.assert(condition)', 'System.assertEquals(expected, actual)', or 'System.assertNotEquals(unexpected, actual)'
-            - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
-            - Ensure all methods have proper bodies enclosed in { }
-            - Do NOT nest methods or classes incorrectly
-            - The entire output must be a single, compilable Apex class
+          Write a valid Salesforce Apex test class named GitHubActionTriggerTest for the following Apex class.
+          Important rules:
+          - Use '@isTest' annotation before the class
+          - Output ONLY the Apex code — no explanations, markdown, comments, or extra text
+          - Do NOT invent fake classes like 'MockHttp' — use only real Salesforce types
+          - For HTTP callouts:
+            - Define a private inner class that implements 'HttpCalloutMock'
+            - Implement 'HttpResponse respond(HTTPRequest req)'
+            - Use 'Test.setMock(HttpCalloutMock.class, new YourMockClass())'
+          - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
+          - Use 'System.assert(condition)', 'System.assertEquals(expected, actual)', or 'System.assertNotEquals(unexpected, actual)'
+          - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
+          - Ensure all methods have proper bodies enclosed in { }
+          - Do NOT nest methods or classes incorrectly
+          - The entire output must be a single, compilable Apex class
             
-            Class to test:
+          Class to test:
           EOF
             
-                # Append the actual class content (safe because not in shell string)
-                cat "$SRC_DIR/${CLASS}.cls" >> "$PROMPT_FILE"
+          # Append the actual class content (safe because not in shell string)
+          cat "$SRC_DIR/${CLASS}.cls" >> "$PROMPT_FILE"
             
-                cat >> "$PROMPT_FILE" << 'EOF'
-            Requirements:
-            1. Include @isTest annotation
-            2. Include at least one meaningful test method with setup and assertions
-            3. Test both positive and negative/exception paths if applicable
-            4. Use proper test data setup (avoid inserting __mdt)
-            5. Achieve at least 75% code coverage
-            6. Follow Salesforce Apex testing best practices
-            7. Output ONLY the Apex class definition — nothing before or after
-            EOF
+          cat >> "$PROMPT_FILE" << 'EOF'
+          Requirements:
+          1. Include @isTest annotation
+          2. Include at least one meaningful test method with setup and assertions
+          3. Test both positive and negative/exception paths if applicable
+          4. Use proper test data setup (avoid inserting __mdt)
+          5. Achieve at least 75% code coverage
+          6. Follow Salesforce Apex testing best practices
+          7. Output ONLY the Apex class definition — nothing before or after
+          EOF
       
           # Call ollama using the file (no shell injection)
           RESPONSE=$(timeout 900 env TERM=dumb ollama run qwen2.5-coder:7b < "$PROMPT_FILE" 2>/dev/null)
@@ -213,19 +213,49 @@ jobs:
             exit 1
           fi
 
+      - name: 📄 Output Generated Test Class
+        run: |
+          GENERATED_TEST_PATH="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls"
+          
+          if [ -f "$GENERATED_TEST_PATH" ]; then
+            echo "📄 Generated Test Class: ${{ env.CLASS_NAME }}Test.cls"
+            echo "=================================================="
+            cat "$GENERATED_TEST_PATH"
+            echo "=================================================="
+            echo "✅ Successfully printed generated test class"
+          else
+            echo "❌ Error: Generated test class file not found at $GENERATED_TEST_PATH"
+            exit 1
+          fi
+
       - name: ✅ Validate Generated Test Class
         run: |
           GENERATED_DIR="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes"
           CLASS="${{ env.CLASS_NAME }}"
-          if ! grep -q "@isTest" "$GENERATED_DIR/${CLASS}Test.cls"; then
+          TEST_CLASS_PATH="$GENERATED_DIR/${CLASS}Test.cls"
+      
+          if [ ! -f "$TEST_CLASS_PATH" ]; then
+            echo "❌ Error: Generated test class file not found: $TEST_CLASS_PATH"
+            exit 1
+          fi
+      
+          if [ ! -s "$TEST_CLASS_PATH" ]; then
+            echo "❌ Error: Generated test class is empty"
+            exit 1
+          fi
+      
+          if ! grep -q "@isTest" "$TEST_CLASS_PATH"; then
             echo "❌ Error: Missing @isTest in ${CLASS}Test.cls"
+            cat "$TEST_CLASS_PATH"
             exit 1
           fi
-          if ! grep -q "class ${CLASS}Test" "$GENERATED_DIR/${CLASS}Test.cls"; then
-            echo "❌ Error: Wrong class name in ${CLASS}Test.cls"
+      
+          if ! grep -q "class ${CLASS}Test" "$TEST_CLASS_PATH"; then
+            echo "❌ Error: Missing expected class name"
+            cat "$TEST_CLASS_PATH"
             exit 1
           fi
-
+    
       - name: 🚀 Deploy Only Generated Test Class
         run: |
           GENERATED_TEST_CLASS="$GITHUB_WORKSPACE/generated-tests/force-app/main/default/classes/${{ env.CLASS_NAME }}Test.cls"
