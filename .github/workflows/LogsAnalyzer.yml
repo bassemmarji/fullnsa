@@ -11,10 +11,11 @@ on:
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
   NODE_VERSION: "20"
+  LOG_DIR: "sf-logs"
 
 jobs:
-  validate-and-setup:
-    name: Validate Inputs & Setup Environment
+  collect-logs:
+    name: Setup Environment & Collect Logs
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -34,3 +35,27 @@ jobs:
           
           sf plugins:update
           sf --version
+      
+      - name: 🔐 Authenticate to Salesforce Org
+        run: |
+          if [ -z "${{ secrets.ORG_SFDX_URL }}" ]; then
+            echo "❌ Error: ORG_SFDX_URL secret is missing"
+            exit 1
+          fi
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+          sf org list
+
+      - name: Retrieve Debug Logs
+        run: |
+          mkdir -p ${{ env.LOG_DIR }}
+          sf apex get log \
+            --target-org ${{ env.ORG_ALIAS }} \
+            --output-dir ${{ env.LOG_DIR }} \
+            --log-level warn
+
+      - name: Archive Logs
+        uses: actions/upload-artifact@v3
+        with:
+          name: salesforce-debug-logs
+          path: ${{ env.LOG_DIR }}
+        if: ${{ always() }}
