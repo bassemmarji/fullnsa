@@ -30,11 +30,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
             
-      # Set up Maven
+      # Set up Maven manually (avoiding deprecated cache issue)
       - name: Setup Maven
-        uses: s4u/setup-maven-action@v1.14.0
-        with:
-          maven-version: '3.8.8'
+        run: |
+          $mavenVersion = "3.8.8"
+          $mavenUrl = "https://archive.apache.org/dist/maven/maven-3/$mavenVersion/binaries/apache-maven-$mavenVersion-bin.zip"
+          
+          Write-Host "Downloading Maven $mavenVersion..."
+          Invoke-WebRequest -Uri $mavenUrl -OutFile "maven.zip" -TimeoutSec 300
+          
+          Write-Host "Extracting Maven..."
+          Expand-Archive -Path "maven.zip" -DestinationPath "C:\" -Force
+          
+          # Add Maven to PATH
+          $mavenHome = "C:\apache-maven-$mavenVersion"
+          $env:MAVEN_HOME = $mavenHome
+          $env:PATH = "$mavenHome\bin;$env:PATH"
+          
+          # Set for subsequent steps
+          echo "MAVEN_HOME=$mavenHome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$mavenHome\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
+          Write-Host "Maven setup completed"
+        shell: pwsh
           
       - name: Verify Maven version
         run: mvn -version
