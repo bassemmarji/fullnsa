@@ -221,8 +221,7 @@ jobs:
               Bundle-Name: BPMN2 Modeler Manual Install
               Bundle-SymbolicName: org.eclipse.bpmn2.modeler.manual
               Bundle-Version: 1.5.3
-              Bundle-Vendor: Manual Installation
-              "@
+              Bundle-Vendor: Manual Installation"@
               $manifest | Out-File -FilePath "$dropinsPath\MANIFEST.MF" -Encoding ASCII
             } else {
               Write-Warning "No BPMN2 plugins could be downloaded manually"
@@ -324,8 +323,7 @@ jobs:
           - Memory issues: Edit eclipse.ini, increase -Xmx value
           
           Generated on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
-          Runner OS: Windows
-          "@
+          Runner OS: Windows"@
           
           $instructions | Out-File -FilePath "eclipse_package\README.md" -Encoding UTF8
           
