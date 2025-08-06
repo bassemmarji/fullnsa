@@ -45,34 +45,81 @@ jobs:
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
-      - name: Retrieve Debug Logs
-        timeout-minutes: 15
+      - name: Retrieve Debug Logs (Last 30 Days)
+        timeout-minutes: 30
         run: |
-          # Calculate start time (1 month ago in UTC)
-          START_TIME=$(date -u -d "1 month ago" +'%Y-%m-%dT%H:%M:%SZ')
+          # Calculate start time (30 days ago in UTC)
+          START_TIME=$(date -u -d "30 days ago" +'%Y-%m-%dT%H:%M:%SZ')
           echo "Retrieving logs since: $START_TIME"
           
-          mkdir -p ${{ env.LOG_DIR }}
+          # Create log directory
+          mkdir -p "$LOG_DIR"
+          echo "Log directory: $LOG_DIR"
           
-          # Pagination handling example
+          # Initialize counters
+          total_logs=0
+          page=1
+          
+          # Start with empty cursor
           cursor=""
-          while true; do
-            sf apex list log \
-              --target-org $ORG_ALIAS \
+          
+          # Pagination loop
+          while :; do
+            echo "Processing page $page..."
+            
+            # Get log list with error handling
+            if ! sf_output=$(sf apex list log \
+              --target-org "$ORG_ALIAS" \
               --start-time "$START_TIME" \
               --debug-level "USER_DEBUG,APEX_CODE" \
               --cursor "$cursor" \
-              --json > loglist.json
+              --json 2>&1); then
+              
+              echo "❌ Error listing logs:"
+              echo "$sf_output"
+              echo "Continuing with logs retrieved so far..."
+              break
+            fi
             
-            jq -r '.result[].id' loglist.json | while read logid; do
-              sf apex get log "$logid" --target-org $ORG_ALIAS --output-dir $LOG_DIR
-            done
-          
-            cursor=$(jq -r '.nextPageUrl' loglist.json)
-            [ -z "$cursor" ] || [ "$cursor" = "null" ] && break
+            # Parse JSON output
+            echo "$sf_output" > loglist.json
+            
+            # Check for valid response
+            if ! jq -e '.result' loglist.json >/dev/null; then
+              echo "⚠️ Invalid response format. Response content:"
+              cat loglist.json
+              break
+            fi
+            
+            # Get log IDs
+            log_ids=$(jq -r '.result[].id' loglist.json)
+            log_count=$(echo "$log_ids" | wc -w)
+            
+            if [ "$log_count" -eq 0 ]; then
+              echo "No more logs found on page $page"
+              break
+            fi
+            
+            echo "Found $log_count logs on page $page"
+            total_logs=$((total_logs + log_count))
+            
+            # Download logs in parallel
+            echo "$log_ids" | xargs -P 4 -I {} \
+              bash -c 'echo "Downloading log {}"; sf apex get log "$1" --target-org "$2" --output-dir "$3" || echo "⚠️ Failed to download log $1"' _ {} "$ORG_ALIAS" "$LOG_DIR"
+            
+            # Get next cursor
+            cursor=$(jq -r '.nextPageUrl // empty' loglist.json)
+            
+            if [ -z "$cursor" ]; then
+              echo "No more pages"
+              break
+            fi
+            
+            page=$((page + 1))
           done
-            
-          echo "Log retrieval completed"
+          
+          echo "✅ Retrieved $total_logs logs total"
+          echo "Logs saved to: $LOG_DIR"
       
       - name: Verify Log Retrieval
         run: |
