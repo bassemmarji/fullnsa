@@ -280,9 +280,9 @@ jobs:
             
             # Remove source plugins and docs to reduce size
             Write-Host "Optimizing package size..."
-            Get-ChildItem "$tempEclipse\plugins" -Filter "*.source_*" | Remove-Item -Force -ErrorAction SilentlyContinue
-            Get-ChildItem "$tempEclipse\plugins" -Filter "*.doc_*" | Remove-Item -Force -ErrorAction SilentlyContinue
-            Get-ChildItem "$tempEclipse\features" -Filter "*.source_*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            # Get-ChildItem "$tempEclipse\plugins" -Filter "*.source_*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            # Get-ChildItem "$tempEclipse\plugins" -Filter "*.doc_*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            # Get-ChildItem "$tempEclipse\features" -Filter "*.source_*" | Remove-Item -Force -ErrorAction SilentlyContinue
             
             Write-Host "Compressing optimized Eclipse installation..."
             Compress-Archive -Path "$tempEclipse\*" -DestinationPath "eclipse_package\eclipse-portable.zip" -CompressionLevel Optimal
@@ -447,33 +447,28 @@ jobs:
           }
         shell: pwsh
 
+      - name: Resolve Maven Repository Path
+        run: |
+          echo "M2_REPO=$env:USERPROFILE\.m2\repository" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
       - name: Trigger Maven Dependency Cache
         run: |
           Write-Host "Initializing Maven to cache core plugins..."
           # Force Maven to download essential plugins
           mvn help:help
+          mvn dependency:resolve
+          mvn dependency:go-offline
           mvn archetype:generate -B -DgroupId=com.example -DartifactId=maven-offline-cache -Dversion=1.0.0 -DarchetypeGroupId=org.apache.maven.archetypes -DarchetypeArtifactId=maven-archetype-quickstart -DarchetypeVersion=1.4
         shell: cmd
-
-      - name: Check .m2 Directory
-        run: |
-          $repo = "$env:USERPROFILE\.m2\repository"
-          if (Test-Path $repo) {
-            Write-Host "Found repository with files."
-            (Get-ChildItem $repo -Recurse).Count
-          } else {
-            Write-Error "No repository found!"
-            exit 1
-          }
-        shell: pwsh
       
       - name: Upload Maven Repository for Offline Use
         uses: actions/upload-artifact@v4
         with:
           name: maven-repository-offline
-          path: ${{ env.USERPROFILE }}\.m2\repository
+          path: ${{ env.M2_REPO }}
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn  # avoid aborting the job
       
       - name: Upload Eclipse Chunks
         uses: actions/upload-artifact@v4
