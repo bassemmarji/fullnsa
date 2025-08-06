@@ -33,8 +33,8 @@ jobs:
           sf plugins:update
           sf --version
           
-          sf plugins:update
-          sf --version
+          # Install jq for JSON processing
+          sudo apt-get update && sudo apt-get install -y jq
       
       - name: 🔐 Authenticate to Salesforce Org
         run: |
@@ -54,12 +54,23 @@ jobs:
           
           mkdir -p ${{ env.LOG_DIR }}
           
-          sf apex get log \
-            --target-org ${{ env.ORG_ALIAS }} \
-            --output-dir ${{ env.LOG_DIR }} \
-            --log-level warn \
-            --debug-level 'USER_DEBUG|APEX_CODE' \
-            --start-time "$START_TIME"
+          # Pagination handling example
+          cursor=""
+          while true; do
+            sf apex list log \
+              --target-org $ORG_ALIAS \
+              --start-time "$START_TIME" \
+              --debug-level "USER_DEBUG,APEX_CODE" \
+              --cursor "$cursor" \
+              --json > loglist.json
+            
+            jq -r '.result[].id' loglist.json | while read logid; do
+              sf apex get log "$logid" --target-org $ORG_ALIAS --output-dir $LOG_DIR
+            done
+          
+            cursor=$(jq -r '.nextPageUrl' loglist.json)
+            [ -z "$cursor" ] || [ "$cursor" = "null" ] && break
+          done
             
           echo "Log retrieval completed"
       
