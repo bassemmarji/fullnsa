@@ -16,6 +16,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      # Example cache step for Maven dependencies
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
       - name: Download Eclipse Oxygen 4.7
         run: |
           Invoke-WebRequest -Uri https://archive.eclipse.org/eclipse/downloads/drops/R-4.7-201706111000/eclipse-SDK-4.7-win32-x86_64.zip -OutFile eclipse.zip
@@ -31,21 +40,22 @@ jobs:
           maven-version: '3.8.5'
           java-version: '8'
 
-      # Additional steps to build or run Maven commands here
       - name: Verify Maven version
         run: mvn -version
 
-      - name: Compress Eclipse folder
-        run: |
-          Compress-Archive -Path C:\eclipse -DestinationPath eclipse.zip -CompressionLevel Optimal
-          
       - name: Configure git
         run: |
           git config --global user.name "bassemmarji"
           git config --global user.email "bassemmarji@gmail.com"
 
-      - name: Add Eclipse folder to repo
+      - name: Compress Eclipse folder
         run: |
-          git add eclipse.zip
-          git commit -m "Add compressed Eclipse Oxygen folder"
+          Compress-Archive -Path C:\eclipse\* -DestinationPath C:\eclipse.zip
+
+      - name: Add compressed Eclipse archive to repo
+        run: |
+          mkdir eclipse_archive
+          move C:\eclipse.zip eclipse_archive\
+          git add eclipse_archive/eclipse.zip
+          git commit -m "Add compressed Eclipse Oxygen setup"
           git push
