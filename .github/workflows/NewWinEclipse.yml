@@ -446,6 +446,14 @@ jobs:
             exit 1
           }
         shell: pwsh
+
+      - name: Trigger Maven Dependency Cache
+        run: |
+          Write-Host "Initializing Maven to cache core plugins..."
+          # Force Maven to download essential plugins
+          mvn help:help
+          mvn archetype:generate -B -DgroupId=com.example -DartifactId=hello-world -DarchetypeArtifactId=maven-archetype-quickstart
+        shell: cmd
         
       - name: Upload Eclipse Chunks
         uses: actions/upload-artifact@v4
@@ -455,8 +463,15 @@ jobs:
             eclipse_package/eclipse-part-??.zip
             eclipse_package/reassemble.ps1
             eclipse_package/README.md
-          retention-days: 30
-        
+          retention-days: 7
+
+      - name: Upload Maven Repository for Offline Use
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-repository-offline
+          path: ${{ env.USERPROFILE }}\.m2\repository
+          retention-days: 7
+    
       # Create setup instructions
       - name: Create setup instructions
         run: |
