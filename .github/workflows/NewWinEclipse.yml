@@ -248,11 +248,8 @@ jobs:
             # Create eclipse_package directory
             New-Item -ItemType Directory -Path "eclipse_package" -Force
             
-            # Copy only essential Eclipse files (exclude some large unnecessary files)
-            $excludePatterns = @("*.log", "*.tmp", "workspace", "configuration\*.log")
-            
             Write-Host "Compressing Eclipse installation..."
-            Compress-Archive -Path "C:\eclipse\*" -DestinationPath "eclipse_package\eclipse-oxygen-portable.zip" -CompressionLevel Optimal
+            Compress-Archive -Path "C:\eclipse\*" -DestinationPath "eclipse_package\eclipse-portable.zip" -CompressionLevel Optimal
             
             $size = (Get-Item "eclipse_package\eclipse-oxygen-portable.zip").Length / 1MB
             Write-Host "Eclipse package created: $([math]::Round($size, 2)) MB"
@@ -266,8 +263,8 @@ jobs:
       # Verify package before committing
       - name: Verify package integrity
         run: |
-          if (Test-Path "eclipse_package\eclipse-oxygen-portable.zip") {
-            $size = (Get-Item "eclipse_package\eclipse-oxygen-portable.zip").Length
+          if (Test-Path "eclipse_package\eclipse-portable.zip") {
+            $size = (Get-Item "eclipse_package\eclipse-portable.zip").Length
             if ($size -gt 100MB) {
               Write-Host "Package verification successful - Size: $($size / 1MB) MB"
             } else {
@@ -301,15 +298,15 @@ jobs:
       - name: Create setup instructions
         run: |
           $instructions = @"
-          # Eclipse Oxygen Setup Instructions
+          # Eclipse Setup Instructions
           
           ## What's Included
-          - Eclipse Oxygen 4.7 (SDK)
+          - Eclipse IDE for Java Developers (2023-03)
           - BPMN2 Modeler Plugin
           - Maven Integration (m2e)
           
           ## Setup Steps
-          1. Download ``eclipse-oxygen-portable.zip`` from the ``eclipse_package`` folder
+          1. Download ``eclipse-portable.zip`` from the ``eclipse_package`` folder
           2. Extract to desired location (e.g., ``C:\eclipse``)
           3. Run ``eclipse.exe`` to start Eclipse
           4. Create workspace when prompted
