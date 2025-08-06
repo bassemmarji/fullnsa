@@ -46,15 +46,34 @@ jobs:
           sf org list
 
       - name: Retrieve Debug Logs
+        timeout-minutes: 15
         run: |
+          # Calculate start time (1 month ago in UTC)
+          START_TIME=$(date -u -d "1 month ago" +'%Y-%m-%dT%H:%M:%SZ')
+          echo "Retrieving logs since: $START_TIME"
+          
           mkdir -p ${{ env.LOG_DIR }}
+          
           sf apex get log \
             --target-org ${{ env.ORG_ALIAS }} \
             --output-dir ${{ env.LOG_DIR }} \
-            --log-level warn
+            --log-level warn \
+            --debug-level 'USER_DEBUG|APEX_CODE' \
+            --start-time "$START_TIME"
+            
+          echo "Log retrieval completed"
+      
+      - name: Verify Log Retrieval
+        run: |
+          if [ -z "$(ls -A ${{ env.LOG_DIR }})" ]; then
+            echo "No logs retrieved!"
+            exit 1
+          else
+            echo "Retrieved $(ls ${{ env.LOG_DIR }} | wc -l) log files"
+          fi
 
       - name: Archive Logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: salesforce-debug-logs
           path: ${{ env.LOG_DIR }}
