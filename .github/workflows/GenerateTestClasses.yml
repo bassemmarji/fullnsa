@@ -115,10 +115,10 @@ jobs:
           - Use 'Test.setMock(HttpCalloutMock.class, ...)' — do NOT omit '.class'
           - Do NOT perform DML on Custom Metadata Types (e.g. Settings__mdt) — assume they exist or skip
           - Use ONLY these assertion methods:
-            - System.assert(condition, 'optional message')
-            - System.assertEquals(expected, actual, 'optional message')
-            - System.assertNotEquals(unexpected, actual, 'optional message')
-          - Do NOT use 'assertTrue', 'assertFalse', or 'assertNull' — these are not standard methods
+            - System.assert(Boolean condition, String message)
+            - System.assertEquals(Object expected, Object actual, String message)
+            - System.assertNotEquals(Object unexpected, Object actual, String message)
+          - NEVER use: assertTrue, assertFalse, assertNull, assertNotNull — these are NOT valid Apex methods
           - Ensure all methods have proper bodies enclosed in { }
           - Do NOT nest methods or classes incorrectly
           - The entire output must be a single, compilable Apex class
