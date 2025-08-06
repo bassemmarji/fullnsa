@@ -241,16 +241,76 @@ jobs:
       - name: Create Eclipse portable package
         run: |
           try {
-            Write-Host "Creating portable Eclipse package..."
+            Write-Host "Creating optimized Eclipse package..."
             
             # Create eclipse_package directory
             New-Item -ItemType Directory -Path "eclipse_package" -Force
             
-            Write-Host "Compressing Eclipse installation..."
-            Compress-Archive -Path "C:\eclipse\*" -DestinationPath "eclipse_package\eclipse-portable.zip" -CompressionLevel Optimal
+            # Create a temporary directory for optimized Eclipse
+            $tempEclipse = "C:\eclipse_temp"
+            New-Item -ItemType Directory -Path $tempEclipse -Force
+            
+            # Copy essential Eclipse files only (exclude large unnecessary files)
+            Write-Host "Copying essential Eclipse files..."
+            $excludePatterns = @(
+              "*.log",
+              "*.tmp", 
+              "workspace",
+              "configuration\*.log",
+              "dropins\*.source_*",
+              "features\*.source_*",
+              "plugins\*.source_*",
+              "plugins\*.doc_*",
+              "plugins\*.examples_*"
+            )
+            
+            # Copy main Eclipse files
+            Copy-Item -Path "C:\eclipse\eclipse.exe" -Destination $tempEclipse
+            Copy-Item -Path "C:\eclipse\eclipsec.exe" -Destination $tempEclipse -ErrorAction SilentlyContinue
+            Copy-Item -Path "C:\eclipse\eclipse.ini" -Destination $tempEclipse
+            
+            # Copy essential directories
+            $essentialDirs = @("configuration", "features", "plugins", "dropins")
+            foreach ($dir in $essentialDirs) {
+              if (Test-Path "C:\eclipse\$dir") {
+                Write-Host "Copying $dir..."
+                Copy-Item -Path "C:\eclipse\$dir" -Destination $tempEclipse -Recurse -Force
+              }
+            }
+            
+            # Remove source plugins and docs to reduce size
+            Write-Host "Optimizing package size..."
+            Get-ChildItem "$tempEclipse\plugins" -Filter "*.source_*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            Get-ChildItem "$tempEclipse\plugins" -Filter "*.doc_*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            Get-ChildItem "$tempEclipse\features" -Filter "*.source_*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            
+            Write-Host "Compressing optimized Eclipse installation..."
+            Compress-Archive -Path "$tempEclipse\*" -DestinationPath "eclipse_package\eclipse-portable.zip" -CompressionLevel Optimal
+            
+            # Cleanup temp directory
+            Remove-Item -Path $tempEclipse -Recurse -Force
             
             $size = (Get-Item "eclipse_package\eclipse-portable.zip").Length / 1MB
-            Write-Host "Eclipse package created: $([math]::Round($size, 2)) MB"
+            Write-Host "Optimized Eclipse package created: $([math]::Round($size, 2)) MB"
+            
+            # If still too large, create instructions instead
+            if ($size -gt 90) {
+              Write-Warning "Package is still large ($([math]::Round($size, 2)) MB). Creating download instructions instead."
+              Remove-Item "eclipse_package\eclipse-portable.zip" -Force
+              
+              # Create download script instead
+              $downloadScript = "# Eclipse Download Script`n"
+              $downloadScript += "# This script downloads and sets up Eclipse with Activiti support`n`n"
+              $downloadScript += "# Download Eclipse IDE for Java Developers`n"
+              $downloadScript += "Invoke-WebRequest -Uri 'https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2023-03/R/eclipse-java-2023-03-R-win32-x86_64.zip&mirror_id=1' -OutFile 'eclipse.zip'`n"
+              $downloadScript += "Expand-Archive -Path 'eclipse.zip' -DestinationPath 'C:\' -Force`n"
+              $downloadScript += "Write-Host 'Eclipse installed to C:\eclipse'`n`n"
+              $downloadScript += "# Install BPMN2 Modeler Plugin`n"
+              $downloadScript += "C:\eclipse\eclipse.exe -application org.eclipse.equinox.p2.director -noSplash -repository https://download.eclipse.org/bpmn2-modeler/updates/ -installIU org.eclipse.bpmn2.modeler.feature.feature.group`n"
+              
+              $downloadScript | Out-File -FilePath "eclipse_package\setup-eclipse.ps1" -Encoding UTF8
+              Write-Host "Created setup script instead of large archive"
+            }
           }
           catch {
             Write-Error "Failed to create Eclipse package: $_"
@@ -263,14 +323,16 @@ jobs:
         run: |
           if (Test-Path "eclipse_package\eclipse-portable.zip") {
             $size = (Get-Item "eclipse_package\eclipse-portable.zip").Length
-            if ($size -gt 100MB) {
-              Write-Host "Package verification successful - Size: $($size / 1MB) MB"
-            } else {
-              Write-Error "Package seems too small, might be corrupted"
-              exit 1
+            Write-Host "Package verification successful - Size: $([math]::Round($size / 1MB, 2)) MB"
+            
+            # Check if it's within GitHub limits
+            if ($size -gt 90MB) {
+              Write-Warning "Package exceeds GitHub's recommended size limit"
             }
+          } elseif (Test-Path "eclipse_package\setup-eclipse.ps1") {
+            Write-Host "Setup script created instead of large archive"
           } else {
-            Write-Error "Package file not found"
+            Write-Error "Neither package file nor setup script found"
             exit 1
           }
         shell: pwsh
@@ -295,33 +357,44 @@ jobs:
       # Create setup instructions
       - name: Create setup instructions
         run: |
-          $instructions = "# Eclipse Setup Instructions`n`n"
-          $instructions += "## What's Included`n"
-          $instructions += "- Eclipse IDE for Java Developers (2023-03)`n"
-          $instructions += "- BPMN2 Modeler Plugin`n"
-          $instructions += "- Maven Integration (m2e)`n`n"
-          $instructions += "## Setup Steps`n"
-          $instructions += "1. Download ``eclipse-portable.zip`` from the ``eclipse_package`` folder`n"
-          $instructions += "2. Extract to desired location (e.g., ``C:\eclipse``)`n"
-          $instructions += "3. Run ``eclipse.exe`` to start Eclipse`n"
-          $instructions += "4. Create workspace when prompted`n"
-          $instructions += "5. Verify plugins: Help → Installation Details`n`n"
+          if (Test-Path "eclipse_package\eclipse-portable.zip") {
+            # Instructions for portable package
+            $instructions = "# Eclipse Portable Package`n`n"
+            $instructions += "## What's Included`n"
+            $instructions += "- Eclipse IDE for Java Developers (2023-03) - Optimized`n"
+            $instructions += "- BPMN2 Modeler Plugin`n"
+            $instructions += "- Maven Integration (m2e)`n`n"
+            $instructions += "## Setup Steps`n"
+            $instructions += "1. Download ``eclipse-portable.zip``from this folder`n"
+            $instructions += "2. Extract to desired location (e.g., ``C:\eclipse``)`n"
+            $instructions += "3. Run ``eclipse.exe`` to start Eclipse`n"
+            $instructions += "4. Create workspace when prompted`n`n"
+          } else {
+            # Instructions for download script
+            $instructions = "# Eclipse Setup via Download Script`n`n"
+            $instructions += "## What's Included`n"
+            $instructions += "- Automated download script for Eclipse IDE`n"
+            $instructions += "- BPMN2 Modeler Plugin installation`n"
+            $instructions += "- Maven Integration (m2e)`n`n"
+            $instructions += "## Setup Steps`n"
+            $instructions += "1. Download and run ``setup-eclipse.ps1`` (Run as Administrator)`n"
+            $instructions += "2. Script will download and install Eclipse automatically`n"
+            $instructions += "3. Run ``C:\eclipse\eclipse.exe`` when complete`n"
+            $instructions += "4. Create workspace when prompted`n`n"
+          }
+          
           $instructions += "## Creating Activiti Project`n"
           $instructions += "1. File → New → Maven Project`n"
           $instructions += "2. Use archetype or create simple project`n"
           $instructions += "3. Add Activiti 6.0 dependencies to pom.xml`n"
           $instructions += "4. Create BPMN diagrams: File → New → Other → BPMN`n`n"
           $instructions += "## Troubleshooting`n"
-          $instructions += "- If BPMN2 Modeler not working: Help → Install New Software → Add Local → Point to plugins folder`n"
+          $instructions += "- If BPMN2 Modeler not working: Help → Install New Software → Add Local`n"
           $instructions += "- Maven issues: Right-click project → Maven → Reload Projects`n"
           $instructions += "- Memory issues: Edit eclipse.ini, increase -Xmx value`n`n"
           $instructions += "Generated on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n"
-          $instructions += "Runner OS: Windows`n"
+          $instructions += "Package optimized for GitHub file size limits`n"
           
           $instructions | Out-File -FilePath "eclipse_package\README.md" -Encoding UTF8
-          
-          # Add README to git
-          git add eclipse_package/README.md
-          git commit -m "Add Eclipse setup instructions"
-          git push
+          Write-Host "Setup instructions created"
         shell: pwsh
