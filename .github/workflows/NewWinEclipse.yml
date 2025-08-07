@@ -481,6 +481,19 @@ jobs:
             exit 1
           }
         shell: pwsh
+
+      - name: Force Download maven-archetype-plugin (explicit plugin call)
+        run: |
+          Write-Host "Forcing download of maven-archetype-plugin..."
+          mvn org.apache.maven.plugins:maven-archetype-plugin:3.2.1:help
+      
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to download maven-archetype-plugin"
+            exit 1
+          } else {
+            Write-Host "Plugin downloaded successfully"
+          }
+        shell: pwsh
   
       - name: Verify required plugins are cached
         run: |
