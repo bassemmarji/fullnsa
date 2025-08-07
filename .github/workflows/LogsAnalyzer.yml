@@ -8,8 +8,16 @@ on:
         description: "Salesforce org alias"
         required: true
         default: "dev"
+      days_back:
+        type: number
+        description: "Number of days back to retrieve logs"
+        required: true
+        default: 30
+
+    
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
+  DAYS_BACK: ${{ github.event.inputs.days_back }}
   NODE_VERSION: "20"
   LOG_DIR: "sf-logs"
 
@@ -45,101 +53,56 @@ jobs:
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
-      - name: Retrieve Debug Logs (Last 30 Days)
+      - name: Retrieve Debug Logs
         timeout-minutes: 30
         run: |
-          # Calculate start time (30 days ago in UTC)
-          START_TIME=$(date -u -d "30 days ago" +'%Y-%m-%dT%H:%M:%SZ')
+          # Calculate start time
+          START_TIME=$(date -u -d "$DAYS_BACK days ago" +'%Y-%m-%dT%H:%M:%SZ')
           echo "Retrieving logs since: $START_TIME"
           
           # Create log directory
           mkdir -p "$LOG_DIR"
           echo "Log directory: $LOG_DIR"
           
-          # Initialize counters
-          total_logs=0
-          page=1
+          # Query logs using SOQL
+          # , Application, DurationMilliseconds, Location, LogLength, LogUserId, Operation, Request, StartTime, Status
+          query="SELECT Id FROM ApexLog WHERE StartTime > $START_TIME"
           
-          # Start with empty cursor
-          cursor=""
+          # Execute query and save results
+          sf data query --query "$query" --target-org "$ORG_ALIAS" --result-format json > logs.json
           
-          # Pagination loop
-          while :; do
-            echo "Processing page $page..."
+          # Extract log IDs
+          log_ids=$(jq -r '.result.records[].Id' logs.json)
+          log_count=$(echo "$log_ids" | grep -v '^$' | wc -l)
+          
+          if [ "$log_count" -eq 0 ]; then
+            echo "⚠️ No logs found in the last $DAYS_BACK days"
+            touch "$LOG_DIR/no-logs-retrieved.txt"
+          else
+            echo "Found $log_count logs to download"
             
-            # Get log list with error handling
-            if ! sf_output=$(sf apex list log \
-              --target-org "$ORG_ALIAS" \
-              --start-time "$START_TIME" \
-              --debug-level "USER_DEBUG,APEX_CODE" \
-              --cursor "$cursor" \
-              --json 2>&1); then
-              
-              echo "❌ Error listing logs:"
-              echo "$sf_output"
-              break
-            fi
-            
-            # Save JSON output
-            echo "$sf_output" > loglist.json
-            
-            # Check for valid response
-            if ! jq -e '.result' loglist.json >/dev/null; then
-              echo "⚠️ Invalid response format. Response content:"
-              cat loglist.json
-              break
-            fi
-            
-            # Get log IDs
-            log_ids=$(jq -r '.result[].id' loglist.json)
-            log_count=$(echo "$log_ids" | grep -v '^$' | wc -l)
-            
-            if [ "$log_count" -eq 0 ]; then
-              echo "No more logs found on page $page"
-              break
-            fi
-            
-            echo "Found $log_count logs on page $page"
-            total_logs=$((total_logs + log_count))
-            
-            # Download logs
+            # Download each log
             for logid in $log_ids; do
               echo "Downloading log: $logid"
               sf apex get log "$logid" \
                 --target-org "$ORG_ALIAS" \
                 --output-dir "$LOG_DIR" || echo "⚠️ Failed to download log $logid"
             done
-            
-            # Get next cursor
-            cursor=$(jq -r '.nextPageUrl // empty' loglist.json)
-            
-            if [ -z "$cursor" ]; then
-              echo "No more pages"
-              break
-            fi
-            
-            page=$((page + 1))
-          done
-          
-          echo "✅ Retrieved $total_logs logs total"
-          echo "::set-output name=log_count::$total_logs"
-          
-          # Handle empty results
-          if [ "$total_logs" -eq 0 ]; then
-            echo "⚠️ Warning: No logs retrieved in the last 30 days"
-            # Create empty file to indicate no logs
-            touch "$LOG_DIR/no-logs-retrieved.txt"
           fi
+          
+          echo "log_count=$log_count" >> $GITHUB_ENV
+          echo "✅ Log retrieval completed"
       
       - name: Verify Log Retrieval
         run: |
-          if [ -z "$(ls -A "$LOG_DIR")" ]; then
-            echo "❌ Critical Error: Log directory is completely empty"
+          if [ -f "$LOG_DIR/no-logs-retrieved.txt" ]; then
+            echo "⚠️ Warning: No logs found in the last $DAYS_BACK days - this may be expected behavior"
+            exit 0
+          elif [ -z "$(ls -A "$LOG_DIR")" ]; then
+            echo "❌ Critical Error: Log directory is empty despite $log_count logs found"
             exit 1
-          elif [ -f "$LOG_DIR/no-logs-retrieved.txt" ]; then
-            echo "⚠️ Warning: No logs found - this may be expected behavior"
           else
-            echo "✅ Retrieved $(ls "$LOG_DIR" | wc -l) log files"
+            echo "✅ Retrieved $(ls "$LOG_DIR" | wc -l) log files from the last $DAYS_BACK days"
           fi
       
       - name: Archive Logs
@@ -149,4 +112,7 @@ jobs:
           path: ${{ env.LOG_DIR }}
           retention-days: 3
         if: ${{ always() }}
+
+
+
 
