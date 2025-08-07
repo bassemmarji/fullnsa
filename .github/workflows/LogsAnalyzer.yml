@@ -37,19 +37,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install Latest Salesforce CLI
+
+      - name: Install Dependencies
         run: |
-          # Download the official install script
+          # Install jq
+          sudo apt-get update && sudo apt-get install -y jq
+      
+          # Install latest Salesforce CLI using official installer
           curl https://raw.githubusercontent.com/salesforcecli/installer/main/scripts/install.sh | bash
           echo "$HOME/.sf/bin" >> $GITHUB_PATH
       
-          # Verify installation
+          # Verify
           sf version --verbose
-    
-      - name: Install dependencies
-        run: |
-          # Install jq for JSON processing
-          sudo apt-get update && sudo apt-get install -y jq
+
       
       - name: 🔐 Authenticate to Salesforce Org
         run: |
