@@ -14,7 +14,6 @@ on:
         required: true
         default: 30
 
-    
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
   DAYS_BACK: ${{ github.event.inputs.days_back }}
@@ -121,11 +120,10 @@ jobs:
             response=$(mktemp)
             if sf data get record \
                 --sobject "ApexLog" \
-                --sobject-id "$logid" \
+                --where "Id = '$logid'" \
                 --target-org "$ORG_ALIAS" \
                 --json > "$response" 2>&1; then
             
-              # Extract Log field (should be base64)
               log_base64=$(jq -r '.result.Log' "$response")
               
               if echo "$log_base64" | grep -qE '^[a-zA-Z0-9+/]*={0,2}$'; then
@@ -142,7 +140,7 @@ jobs:
               cat "$response"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
             fi
-
+            
             rm -f "$response"
             sleep 0.5
           done
