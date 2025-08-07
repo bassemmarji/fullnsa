@@ -517,7 +517,7 @@ jobs:
           } else {
             Write-Host "Archetype downloaded successfully"
           }
-        shell: pwsh
+        shell: pwsh  
   
       - name: Verify required plugins are cached
         run: |
