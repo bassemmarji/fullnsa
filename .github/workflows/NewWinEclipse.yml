@@ -189,7 +189,7 @@ jobs:
               "org.eclipse.bpmn2.modeler.core.jar" = "https://repo1.maven.org/maven2/org/eclipse/bpmn2/org.eclipse.bpmn2.modeler.core/1.5.3.Final/org.eclipse.bpmn2.modeler.core-1.5.3.Final.jar"
               "org.eclipse.bpmn2.modeler.ui.jar" = "https://repo1.maven.org/maven2/org/eclipse/bpmn2/org.eclipse.bpmn2.modeler.ui/1.5.3.Final/org.eclipse.bpmn2.modeler.ui-1.5.3.Final.jar"
             }
-            
+
             $downloadedPlugins = 0
             
             foreach ($plugin in $pluginUrls.GetEnumerator()) {
@@ -452,40 +452,53 @@ jobs:
           echo "M2_REPO=$env:USERPROFILE\.m2\repository" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
-      - name: Force Download maven-archetype-plugin
+      - name: Pre-fetch all Maven dependencies
         run: |
-          # Clean up any old incomplete plugin cache (optional)
-          $pluginDir = "$env:USERPROFILE\.m2\repository\org\apache\maven\plugins\maven-archetype-plugin"
-          if (Test-Path $pluginDir) {
-            Write-Host "Cleaning existing maven-archetype-plugin cache..."
-            Remove-Item -Path $pluginDir -Recurse -Force
-          }
+          Write-Host "Running 'mvn dependency:go-offline' to cache all dependencies..."
+          
+          # Create dummy project directory
+          $projectDir = "D:\dummy-project"
+          New-Item -ItemType Directory -Path $projectDir -Force
+          Set-Location $projectDir
       
-          # Create a clean temp directory for project generation
-          $tempDir = "D:\maven-offline-cache"
-          New-Item -ItemType Directory -Path $tempDir -Force
-          Set-Location $tempDir
+          # Create minimal pom.xml
+          @"
+          <project xmlns="http://maven.apache.org/POM/4.0.0" 
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+               http://maven.apache.org/xsd/maven-4.0.0.xsd">
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>dummy-project</artifactId>
+          <version>1.0-SNAPSHOT</version>
+          </project>
+          "@ | Out-File -FilePath "$projectDir\pom.xml" -Encoding UTF8
       
-          Write-Host "Running mvn archetype:generate in $tempDir to force download of maven-archetype-plugin..."
-      
-          # Run archetype generate (creates a dummy project to trigger plugin download)
-          mvn archetype:generate -B `
-            -DgroupId=com.example `
-            -DartifactId=maven-offline-cache-project `
-            -Dversion=1.0.0 `
-            -DarchetypeGroupId=org.apache.maven.archetypes `
-            -DarchetypeArtifactId=maven-archetype-quickstart `
-            -DarchetypeVersion=1.4
+          mvn dependency:go-offline
       
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to generate archetype (exit code: $LASTEXITCODE)"
+            Write-Error "Maven failed to cache all dependencies"
             exit 1
           }
-      
-          Write-Host "maven-archetype-plugin and dependencies downloaded successfully."
         shell: pwsh
   
-              
+      - name: Verify required plugins are cached
+        run: |
+          $requiredPaths = @(
+            "$env:USERPROFILE\.m2\repository\org\apache\maven\plugins\maven-archetype-plugin",
+            "$env:USERPROFILE\.m2\repository\org\apache\maven\archetypes\maven-archetype-quickstart"
+          )
+          
+          foreach ($path in $requiredPaths) {
+            if (-not (Test-Path $path)) {
+              Write-Error "Missing required Maven plugin: $path"
+              exit 1
+            } else {
+              Write-Host "Found: $path"
+            }
+          }
+        shell: pwsh
+        
       - name: Upload Maven Repository for Offline Use
         uses: actions/upload-artifact@v4
         with:
