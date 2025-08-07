@@ -37,13 +37,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Install Latest Salesforce CLI
+        run: |
+          # Download latest sf CLI
+          wget https://developer.salesforce.com/media/salesforce-cli/sf-linux-x64.tar.xz
+          mkdir sf
+          tar xJf sf-linux-x64.tar.xz -C sf
+          echo "$GITHUB_WORKSPACE/sf" >> $GITHUB_PATH
+      
+          # Verify
+          sf version --verbose
+    
       - name: Install dependencies
         run: |
-          # Install Salesforce CLI
-          npm install --global @salesforce/cli
-          sf plugins:update
-          sf --version
-          
           # Install jq for JSON processing
           sudo apt-get update && sudo apt-get install -y jq
       
