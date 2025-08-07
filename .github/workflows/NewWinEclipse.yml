@@ -494,6 +494,30 @@ jobs:
             Write-Host "Plugin downloaded successfully"
           }
         shell: pwsh
+
+      - name: Generate Maven project to force archetype download
+        run: |
+          Write-Host "Generating a dummy Maven project to download 'maven-archetype-quickstart'..."
+          
+          $projectDir = "D:\dummy-project"
+          New-Item -ItemType Directory -Path $projectDir -Force
+          Set-Location $projectDir
+      
+          mvn archetype:generate -B `
+            -DgroupId=com.example `
+            -DartifactId=demo `
+            -Dversion=1.0.0 `
+            -DarchetypeGroupId=org.apache.maven.archetypes `
+            -DarchetypeArtifactId=maven-archetype-quickstart `
+            -DarchetypeVersion=1.4
+      
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Archetype generation failed"
+            exit 1
+          } else {
+            Write-Host "Archetype downloaded successfully"
+          }
+        shell: pwsh
   
       - name: Verify required plugins are cached
         run: |
