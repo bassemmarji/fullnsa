@@ -110,21 +110,19 @@ jobs:
           current=0
           
           echo "Starting download of $total_logs logs..."
-          
+
           # Download logs with progress tracking
           for logid in $log_ids; do
             current=$((current + 1))
             echo "[$current/$total_logs] Attempting to download log: $logid"
             
-            # Use sf data get record to fetch the Log field (base64-encoded)
             response=$(mktemp)
-            if sf data get record \
-                --sobject "ApexLog" \
-                --where "Id=$logid" \
-                --target-org "$ORG_ALIAS" \
-                --fields "Log" \
+            if sfdx force:data:record:get \
+                -s ApexLog \
+                -i "$logid" \
+                -u "$ORG_ALIAS" \
                 --json > "$response" 2>&1; then
-            
+          
               log_text=$(jq -r '.result.Log' "$response")
               
               if [ -n "$log_text" ] && [ "$log_text" != "null" ]; then
@@ -143,7 +141,6 @@ jobs:
             fi
             
             rm -f "$response"
-
             sleep 0.5
           done
           
