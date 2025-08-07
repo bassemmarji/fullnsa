@@ -122,17 +122,18 @@ jobs:
             if sf data get record \
                 --sobject "ApexLog" \
                 --sobject-id "$logid" \
-                --field-content "Log" \
-                --target-org "$ORG_ALIAS" > "$response" 2>&1; then
-      
-              # Check if response is non-empty and looks like base64
-              if [ -s "$response" ] && head -c 100 "$response" | grep -qE '^[a-zA-Z0-9+/]*={0,2}$'; then
-                # Decode base64 to .log file
-                base64 -d "$response" > "$LOG_DIR/$logid.log"
+                --target-org "$ORG_ALIAS" \
+                --json > "$response" 2>&1; then
+            
+              # Extract Log field (should be base64)
+              log_base64=$(jq -r '.result.Log' "$response")
+              
+              if echo "$log_base64" | grep -qE '^[a-zA-Z0-9+/]*={0,2}$'; then
+                echo "$log_base64" | base64 -d > "$LOG_DIR/$logid.log"
                 echo "✅ Successfully downloaded and decoded $logid"
                 downloaded_count=$((downloaded_count + 1))
               else
-                echo "⚠️ Log $logid downloaded but content appears invalid"
+                echo "⚠️ Invalid base64 content for $logid"
                 echo "$logid (invalid content)" >> "$LOG_DIR/failed_downloads.txt"
                 cat "$response" >> "$LOG_DIR/errors_$logid.txt"
               fi
@@ -141,7 +142,7 @@ jobs:
               cat "$response"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
             fi
-      
+
             rm -f "$response"
             sleep 0.5
           done
