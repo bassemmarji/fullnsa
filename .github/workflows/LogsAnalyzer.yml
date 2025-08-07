@@ -120,7 +120,7 @@ jobs:
             response=$(mktemp)
             if sf data get record \
                 --sobject "ApexLog" \
-                --where "Id = '$logid'" \
+                --where "Id=$logid" \
                 --target-org "$ORG_ALIAS" \
                 --json > "$response" 2>&1; then
             
