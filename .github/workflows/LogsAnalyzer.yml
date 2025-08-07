@@ -111,36 +111,28 @@ jobs:
           
           echo "Starting download of $total_logs logs..."
 
-          # Download logs with progress tracking
+          # Download logs with progress tracking using `sf apex log get`
           for logid in $log_ids; do
             current=$((current + 1))
             echo "[$current/$total_logs] Attempting to download log: $logid"
-            
-            response=$(mktemp)
-            if sfdx force:data:record:get \
-                -s ApexLog \
-                -i "$logid" \
-                -u "$ORG_ALIAS" \
-                --json > "$response" 2>&1; then
           
-              log_text=$(jq -r '.result.Log' "$response")
-              
-              if [ -n "$log_text" ] && [ "$log_text" != "null" ]; then
-                echo "$log_text" > "$LOG_DIR/$logid.log"
+            # Set file path
+            log_file="$LOG_DIR/$logid.log"
+          
+            # Download the log using sf apex log get
+            if sf apex log get --log-id "$logid" --output-file "$log_file" --target-org "$ORG_ALIAS"; then
+              if [ -s "$log_file" ]; then
                 echo "✅ Successfully downloaded $logid"
                 downloaded_count=$((downloaded_count + 1))
               else
-                echo "⚠️ Log $logid is empty or null"
+                echo "⚠️ Log $logid is empty (0 bytes)"
                 echo "$logid (empty content)" >> "$LOG_DIR/failed_downloads.txt"
-                cat "$response" >> "$LOG_DIR/errors_$logid.txt"
               fi
             else
-              echo "❌ Failed to retrieve log record $logid:"
-              cat "$response"
+              echo "❌ Failed to download log $logid"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
             fi
-            
-            rm -f "$response"
+          
             sleep 0.5
           done
           
