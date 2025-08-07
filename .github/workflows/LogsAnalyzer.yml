@@ -113,16 +113,16 @@ jobs:
           # Download logs with progress tracking
           for logid in $log_ids; do
             current=$((current + 1))
-            echo "[$current/$total_logs] Downloading log: $logid"
+            echo "[$current/$total_logs] Attempting to download log: $logid"
             
             # Use sf apex get log with proper error handling
-            if ! sf apex get log "$logid" \
-                --target-org "$ORG_ALIAS" \
-                --output-dir "$LOG_DIR" 2>/dev/null; then
-              echo "⚠️ Warning: Failed to download log $logid (may have been deleted or inaccessible)"
+            if sf apex get log "$logid" --target-org "$ORG_ALIAS" --output-dir "$LOG_DIR"; then
+              echo "✅ Downloaded $logid"
+            else
+              echo "⚠️ Failed to download $logid"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
             fi
-            
+
             # Add small delay to avoid rate limiting
             sleep 0.5
           done
