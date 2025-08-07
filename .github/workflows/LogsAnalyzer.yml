@@ -115,15 +115,32 @@ jobs:
             current=$((current + 1))
             echo "[$current/$total_logs] Attempting to download log: $logid"
             
-            # Use sf apex get log with proper error handling
-            if sf apex get log "$logid" --target-org "$ORG_ALIAS" --output-dir "$LOG_DIR"; then
-              echo "✅ Downloaded $logid"
+            # Use sf data get record to fetch the Log field (base64-encoded)
+            response=$(mktemp)
+            if sf data get record \
+                --sobject "ApexLog" \
+                --sobject-id "$logid" \
+                --field-content "Log" \
+                --target-org "$ORG_ALIAS" > "$response" 2>&1; then
+      
+              # Check if response is non-empty and looks like base64
+              if [ -s "$response" ] && head -c 100 "$response" | grep -qE '^[a-zA-Z0-9+/]*={0,2}$'; then
+                # Decode base64 to .log file
+                base64 -d "$response" > "$LOG_DIR/$logid.log"
+                echo "✅ Successfully downloaded and decoded $logid"
+                downloaded_count=$((downloaded_count + 1))
+              else
+                echo "⚠️ Log $logid downloaded but content appears invalid"
+                echo "$logid (invalid content)" >> "$LOG_DIR/failed_downloads.txt"
+                cat "$response" >> "$LOG_DIR/errors_$logid.txt"
+              fi
             else
-              echo "⚠️ Failed to download $logid"
+              echo "❌ Failed to retrieve log record $logid:"
+              cat "$response"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
             fi
-
-            # Add small delay to avoid rate limiting
+      
+            rm -f "$response"
             sleep 0.5
           done
           
@@ -139,7 +156,7 @@ jobs:
           Successfully downloaded: $downloaded_count
           Failed downloads: $([ -f "$LOG_DIR/failed_downloads.txt" ] && wc -l < "$LOG_DIR/failed_downloads.txt" || echo "0")
           Time range: Last $DAYS_BACK days
-          Query executed: $(date -u)
+          Downloaded on: $(date -u)
           EOF
 
       - name: Upload Log Artifacts
