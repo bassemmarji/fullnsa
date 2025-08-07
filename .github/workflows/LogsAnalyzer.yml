@@ -122,9 +122,9 @@ jobs:
                 --sobject "ApexLog" \
                 --where "Id=$logid" \
                 --target-org "$ORG_ALIAS" \
+                --fields "Log" \
                 --json > "$response" 2>&1; then
             
-              # Extract plain text log content
               log_text=$(jq -r '.result.Log' "$response")
               
               if [ -n "$log_text" ] && [ "$log_text" != "null" ]; then
@@ -141,7 +141,9 @@ jobs:
               cat "$response"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
             fi
+            
             rm -f "$response"
+
             sleep 0.5
           done
           
