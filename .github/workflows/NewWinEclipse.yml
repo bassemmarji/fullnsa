@@ -497,11 +497,15 @@ jobs:
 
       - name: Generate Maven project to force archetype download
         run: |
-          Write-Host "Generating a dummy Maven project to download 'maven-archetype-quickstart'..."
-          
           $projectDir = "D:\dummy-project"
           New-Item -ItemType Directory -Path $projectDir -Force
           Set-Location $projectDir
+      
+          # Clean previous corrupted downloads
+          Remove-Item -Recurse -Force "$env:USERPROFILE\.m2\repository\org\maven-archetype-quickstart" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "$env:USERPROFILE\.m2\repository\org\apache\maven\archetypes\maven-archetype-quickstart" -ErrorAction SilentlyContinue
+      
+          Write-Host "Generating Maven project with explicit archetype repository..."
       
           mvn archetype:generate -B `
             -DgroupId=com.example `
@@ -509,15 +513,16 @@ jobs:
             -Dversion=1.0.0 `
             -DarchetypeGroupId=org.apache.maven.archetypes `
             -DarchetypeArtifactId=maven-archetype-quickstart `
-            -DarchetypeVersion=1.4
+            -DarchetypeVersion=1.4 `
+            -DarchetypeRepository=https://repo.maven.apache.org/maven2
       
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Archetype generation failed"
             exit 1
           } else {
-            Write-Host "Archetype downloaded successfully"
+            Write-Host "Maven archetype downloaded successfully"
           }
-        shell: pwsh  
+        shell: pwsh
   
       - name: Verify required plugins are cached
         run: |
