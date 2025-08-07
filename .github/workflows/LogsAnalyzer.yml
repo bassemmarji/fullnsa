@@ -70,8 +70,7 @@ jobs:
           sf data query \
             --query "$QUERY" \
             --target-org "$ORG_ALIAS" \
-            --result-format json \
-            --wait 10 > logs_query.json
+            --result-format json > logs_query.json
             
           # Check if query was successful
           if [ $? -ne 0 ]; then
