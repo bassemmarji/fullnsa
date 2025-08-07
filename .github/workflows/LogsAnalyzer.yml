@@ -38,34 +38,16 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
 
-      - name: Install Salesforce CLI
+      - name: Install dependencies
         run: |
-          # Define version (pin for reliability)
-          SF_VERSION="2.25.2"
-          TARGET_DIR="$HOME/.sf"
-      
-          # Create target directory
-          mkdir -p "$TARGET_DIR"
-      
-          # Download tar.xz package
-          echo "🔽 Downloading sf CLI v$SF_VERSION..."
-          wget -q "https://github.com/salesforcecli/cli/releases/download/v$SF_VERSION/sf-linux-x64.tar.xz" -O sf.tar.xz
-      
-          # Extract binary
-          tar -xJf sf.tar.xz -C "$TARGET_DIR"
-      
-          # Add to PATH
-          echo "$TARGET_DIR/bin" >> $GITHUB_PATH
-      
-          # Verify installation
-          sf version --verbose
-
-
-      - name: Install Dependencies
-        run: |
-          # Install jq
+          # Install Salesforce CLI
+          npm install --global @salesforce/cli
+          sf plugins:update
+          sf --version
+          
+          # Install jq for JSON processing
           sudo apt-get update && sudo apt-get install -y jq
-      
+       
       
       - name: 🔐 Authenticate to Salesforce Org
         run: |
