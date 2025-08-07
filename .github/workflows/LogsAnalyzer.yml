@@ -25,6 +25,9 @@ jobs:
   collect-logs:
     name: Setup Environment & Collect Logs
     runs-on: ubuntu-latest
+    outputs:
+      log_count: ${{ steps.query.outputs.log_count }}
+      has_logs: ${{ steps.query.outputs.has_logs }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,73 +49,107 @@ jobs:
       
       - name: 🔐 Authenticate to Salesforce Org
         run: |
-          if [ -z "${{ secrets.ORG_SFDX_URL }}" ]; then
-            echo "❌ Error: ORG_SFDX_URL secret is missing"
-            exit 1
-          fi
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
-      - name: Retrieve Debug Logs
-        timeout-minutes: 30
+      - name: Query Debug Logs
+        id: query
+        timeout-minutes: 10
         run: |
-          # Calculate start time
-          START_TIME=$(date -u -d "$DAYS_BACK days ago" +'%Y-%m-%dT%H:%M:%SZ')
-          echo "Retrieving logs since: $START_TIME"
+          # Calculate start time (UTC)
+          START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
+          echo "🔍 Querying logs since: $START_TIME"
           
           # Create log directory
           mkdir -p "$LOG_DIR"
-          echo "Log directory: $LOG_DIR"
           
-          # Query logs using SOQL
-          # , Application, DurationMilliseconds, Location, LogLength, LogUserId, Operation, Request, StartTime, Status
-          query="SELECT Id FROM ApexLog WHERE StartTime > $START_TIME"
+          # Query logs with proper SOQL syntax
+          QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status FROM ApexLog WHERE StartTime >= ${START_TIME} ORDER BY StartTime DESC LIMIT 1000"
           
-          # Execute query and save results
-          sf data query --query "$query" --target-org "$ORG_ALIAS" --result-format json > logs.json
+          echo "Executing SOQL query..."
+          sf data query \
+            --query "$QUERY" \
+            --target-org "$ORG_ALIAS" \
+            --result-format json \
+            --wait 10 > logs_query.json
+            
+          # Check if query was successful
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to execute SOQL query"
+            cat logs_query.json
+            exit 1
+          fi
           
-          # Extract log IDs
-          log_ids=$(jq -r '.result.records[].Id' logs.json)
-          log_count=$(echo "$log_ids" | grep -v '^$' | wc -l)
+          # Extract log information
+          log_count=$(jq -r '.result.totalSize' logs_query.json)
           
           if [ "$log_count" -eq 0 ]; then
             echo "⚠️ No logs found in the last $DAYS_BACK days"
-            touch "$LOG_DIR/no-logs-retrieved.txt"
+            echo "log_count=0" >> $GITHUB_OUTPUT
+            echo "has_logs=false" >> $GITHUB_OUTPUT
+            echo "No logs found in the last $DAYS_BACK days" > "$LOG_DIR/no-logs-found.txt"
           else
-            echo "Found $log_count logs to download"
+            echo "📊 Found $log_count debug logs"
+            echo "log_count=$log_count" >> $GITHUB_OUTPUT
+            echo "has_logs=true" >> $GITHUB_OUTPUT
             
-            # Download each log
-            for logid in $log_ids; do
-              echo "Downloading log: $logid"
-              sf apex get log "$logid" \
-                --target-org "$ORG_ALIAS" \
-                --output-dir "$LOG_DIR" || echo "⚠️ Failed to download log $logid"
-            done
+            # Save log metadata
+            jq '.result.records[] | {Id, Application, DurationMilliseconds, LogLength, Operation, StartTime, Status}' \
+              logs_query.json > "$LOG_DIR/log_metadata.json"
           fi
-          
-          echo "log_count=$log_count" >> $GITHUB_ENV
-          echo "✅ Log retrieval completed"
-      
-      - name: Verify Log Retrieval
+
+      - name: Download Log Contents
+        if: steps.query.outputs.has_logs == 'true'
+        timeout-minutes: 45
         run: |
-          if [ -f "$LOG_DIR/no-logs-retrieved.txt" ]; then
-            echo "⚠️ Warning: No logs found in the last $DAYS_BACK days - this may be expected behavior"
-            exit 0
-          elif [ -z "$(ls -A "$LOG_DIR")" ]; then
-            echo "❌ Critical Error: Log directory is empty despite $log_count logs found"
-            exit 1
-          else
-            echo "✅ Retrieved $(ls "$LOG_DIR" | wc -l) log files from the last $DAYS_BACK days"
-          fi
-      
-      - name: Archive Logs
+          echo "📥 Downloading log contents..."
+          
+          # Extract log IDs
+          log_ids=$(jq -r '.result.records[].Id' logs_query.json)
+          total_logs=$(echo "$log_ids" | wc -l)
+          current=0
+          
+          echo "Starting download of $total_logs logs..."
+          
+          # Download logs with progress tracking
+          for logid in $log_ids; do
+            current=$((current + 1))
+            echo "[$current/$total_logs] Downloading log: $logid"
+            
+            # Use sf apex get log with proper error handling
+            if ! sf apex get log "$logid" \
+                --target-org "$ORG_ALIAS" \
+                --output-dir "$LOG_DIR" 2>/dev/null; then
+              echo "⚠️ Warning: Failed to download log $logid (may have been deleted or inaccessible)"
+              echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
+            fi
+            
+            # Add small delay to avoid rate limiting
+            sleep 0.5
+          done
+          
+          # Count successful downloads
+          downloaded_count=$(find "$LOG_DIR" -name "*.log" | wc -l)
+          echo "✅ Successfully downloaded $downloaded_count out of $total_logs logs"
+          
+          # Create download summary
+          cat > "$LOG_DIR/download_summary.txt" << EOF
+          Download Summary
+          ================
+          Total logs found: $total_logs
+          Successfully downloaded: $downloaded_count
+          Failed downloads: $([ -f "$LOG_DIR/failed_downloads.txt" ] && wc -l < "$LOG_DIR/failed_downloads.txt" || echo "0")
+          Time range: Last $DAYS_BACK days
+          Query executed: $(date -u)
+          EOF
+
+      - name: Upload Log Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: salesforce-debug-logs
+          name: salesforce-debug-logs-${{ env.ORG_ALIAS }}-${{ github.run_number }}
           path: ${{ env.LOG_DIR }}
-          retention-days: 3
-        if: ${{ always() }}
-
-
+          retention-days: 7
+          if-no-files-found: warn
+          
 
 
