@@ -501,11 +501,11 @@ jobs:
           New-Item -ItemType Directory -Path $projectDir -Force
           Set-Location $projectDir
       
-          # Clean previous corrupted downloads
+          # Clean corrupted entries
           Remove-Item -Recurse -Force "$env:USERPROFILE\.m2\repository\org\maven-archetype-quickstart" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "$env:USERPROFILE\.m2\repository\org\apache\maven\archetypes\maven-archetype-quickstart" -ErrorAction SilentlyContinue
       
-          Write-Host "Generating Maven project with explicit archetype repository..."
+          Write-Host "Generating project with fixed archetype coordinates and internal catalog..."
       
           mvn archetype:generate -B `
             -DgroupId=com.example `
@@ -514,13 +514,13 @@ jobs:
             -DarchetypeGroupId=org.apache.maven.archetypes `
             -DarchetypeArtifactId=maven-archetype-quickstart `
             -DarchetypeVersion=1.4 `
-            -DarchetypeRepository=https://repo.maven.apache.org/maven2
+            -DarchetypeCatalog=internal
       
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Archetype generation failed"
             exit 1
           } else {
-            Write-Host "Maven archetype downloaded successfully"
+            Write-Host "Archetype downloaded successfully"
           }
         shell: pwsh
   
