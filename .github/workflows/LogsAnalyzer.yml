@@ -117,23 +117,36 @@ jobs:
             echo "[$current/$total_logs] Attempting to download log: $logid"
           
             log_file="$LOG_DIR/$logid.log"
+            tmp_error=$(mktemp)
           
-            if sf apex log get --log-id "$logid" --target-org "$ORG_ALIAS" > "$log_file" 2> "$LOG_DIR/errors_$logid.txt"; then
+            # Run and redirect stdout to log, stderr to temp error
+            if sf apex log get --log-id "$logid" --target-org "$ORG_ALIAS" > "$log_file" 2> "$tmp_error"; then
               if [ -s "$log_file" ]; then
                 echo "✅ Successfully downloaded $logid"
                 downloaded_count=$((downloaded_count + 1))
               else
                 echo "⚠️ Log $logid is empty (0 bytes)"
                 echo "$logid (empty content)" >> "$LOG_DIR/failed_downloads.txt"
+                rm -f "$log_file"  # Optional: delete empty log files
               fi
             else
               echo "❌ Failed to download log $logid"
               echo "$logid" >> "$LOG_DIR/failed_downloads.txt"
-              cat "$LOG_DIR/errors_$logid.txt"
+              if [ -s "$tmp_error" ]; then
+                echo "🔍 Error details for $logid:"
+                cat "$tmp_error"
+                # Optional: Save the error only if non-empty
+                cp "$tmp_error" "$LOG_DIR/errors_$logid.txt"
+              else
+                echo "⚠️ No error output for $logid"
+              fi
             fi
           
+            rm -f "$tmp_error"
             sleep 0.5
-          done          
+          done
+
+          
           # Count successful downloads
           downloaded_count=$(find "$LOG_DIR" -name "*.log" | wc -l)
           echo "✅ Successfully downloaded $downloaded_count out of $total_logs logs"
