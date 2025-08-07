@@ -39,13 +39,11 @@ jobs:
 
       - name: Install Latest Salesforce CLI
         run: |
-          # Download latest sf CLI
-          wget https://developer.salesforce.com/media/salesforce-cli/sf-linux-x64.tar.xz
-          mkdir sf
-          tar xJf sf-linux-x64.tar.xz -C sf
-          echo "$GITHUB_WORKSPACE/sf" >> $GITHUB_PATH
+          # Download the official install script
+          curl https://raw.githubusercontent.com/salesforcecli/installer/main/scripts/install.sh | bash
+          echo "$HOME/.sf/bin" >> $GITHUB_PATH
       
-          # Verify
+          # Verify installation
           sf version --verbose
     
       - name: Install dependencies
