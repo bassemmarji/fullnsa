@@ -210,57 +210,6 @@ jobs:
           ollama list
 
 
-name: AI Log Analysis
-
-on:
-  workflow_dispatch:
-    inputs:
-      ORG_ALIAS:
-        type: string
-        description: "Salesforce org alias"
-        required: true
-      MODEL_NAME:
-        type: choice
-        description: "Ollama model to use"
-        options:
-          - deepseek-coder:6.7b
-          - mistral
-          - mistral:instruct
-        default: mistral
-
-jobs:
-  retrieve-logs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Retrieve Apex Logs
-        run: |
-          sf apex log list --target-org ${{ inputs.ORG_ALIAS }} --json > logs.json
-          mkdir -p logs
-          jq -r '.result[].Id' logs.json | while read -r log_id; do
-            sf apex log get --target-org ${{ inputs.ORG_ALIAS }} --log-id "$log_id" --output-dir logs
-          done
-
-  analyze-logs:
-    runs-on: ubuntu-latest
-    needs: retrieve-logs
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Ollama
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve & sleep 10
-
-      - name: Download selected model
-        run: |
-          MODEL="${{ inputs.MODEL_NAME }}"
-          echo "Downloading Ollama model: $MODEL"
-          ollama pull "$MODEL"
-
       - name: Analyze logs in batches
         run: |
           REPORT_FILE="analysis_report.md"
