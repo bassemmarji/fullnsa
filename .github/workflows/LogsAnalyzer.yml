@@ -276,30 +276,30 @@ jobs:
           generate_prompt() {
             local combined_logs="$1"
             cat <<- EOF
-          	You are a Salesforce Debug Log analyzer. 
-          	Read the following Apex debug logs (multiple) and produce a **short structured report** in markdown.
+            You are a Salesforce Debug Log analyzer. 
+            Read the following Apex debug logs (multiple) and produce a **short structured report** in markdown.
           
-          	**Rules:**
-          	- Use ONLY the information present in the logs. Do not speculate.
-          	- NO Java, pseudo-code, or unrelated language examples.
-          	- NO generic Salesforce explanations.
-          	- Output must be under 500 words.
+            **Rules:**
+            - Use ONLY the information present in the logs. Do not speculate.
+            - NO Java, pseudo-code, or unrelated language examples.
+            - NO generic Salesforce explanations.
+            - Output must be under 500 words.
           
-          	**Output Format (Markdown table):**
-          	| Category | Findings |
-          	|----------|----------|
-          	| Problems & Errors | Bullet points of exceptions, failed DML, missing data, etc. |
-          	| Latency Sources | Bullet points with operation names and durations in ms (if available) |
-          	| Governor Limit Usage | Bullet points showing limit name, used/total, and % |
-          
-          	**Additional:**
-          	  - Sort each section by severity/impact.
-          	  - For governor limits, only list limits above 50% usage or breached.
-          	  - Indicate which log file each finding came from in parentheses.
-          
+            **Output Format (Markdown table):**
+            | Category | Findings |
+            |----------|----------|
+            | Problems & Errors | Bullet points of exceptions, failed DML, missing data, etc. |
+            | Latency Sources | Bullet points with operation names and durations in ms (if available) |
+            | Governor Limit Usage | Bullet points showing limit name, used/total, and % |
+
+            **Additional:**
+              - Sort each section by severity/impact.
+              - For governor limits, only list limits above 50% usage or breached.
+              - Indicate which log file each finding came from in parentheses.
+              
           	Logs:
-          	$combined_logs
-          	EOF
+            $combined_logs
+            EOF
           }      
           # Process logs in batches
           batch=()
