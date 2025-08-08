@@ -170,28 +170,27 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
           
-  setup-ollama:
-    name: Setup Ollama & DeepSeek Model
+  analyze-logs:
+    name: Analyze Logs with Ollama
     runs-on: ubuntu-latest
-    outputs:
-      ollama_ready: ${{ steps.verify.outputs.ollama_ready }}
+    needs: collect-logs
+    if: needs.collect-logs.outputs.has_logs == 'true'
     steps:
+      - name: Download Log Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: salesforce-debug-logs
+          path: logs
+
       - name: Install Ollama
         run: |
           echo "🚀 Installing Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
-          
-          # Start Ollama service in the background
           ollama serve &
-          
-          # Wait for the service to be ready
-          echo "⏳ Waiting for Ollama service to start..."
           for i in {1..30}; do
             if curl -s http://localhost:11434/api/version > /dev/null; then
-              echo "✅ Ollama service is ready"
               break
             fi
-            echo "Waiting... ($i/30)"
             sleep 2
           done
 
@@ -201,24 +200,35 @@ jobs:
           echo "📦 Downloading DeepSeek 6.7B model..."
           ollama pull deepseek-coder:6.7b
           
-          # Verify the model is downloaded
           echo "🔍 Verifying model installation..."
           ollama list
-          
-          # Test model with a simple prompt
-          echo "🧪 Testing model..."
-          echo "Hello, can you help analyze code?" | ollama run deepseek-coder:6.7b
 
-      - name: Verify Ollama Setup
-        id: verify
+      - name: Analyze Logs
         run: |
-          if ollama list | grep -q "deepseek-coder:6.7b"; then
-            echo "✅ DeepSeek model is ready"
-            echo "ollama_ready=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ DeepSeek model not found"
-            echo "ollama_ready=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+          REPORT_FILE="analysis_report.md"
+          echo "# Salesforce Debug Log Analysis" > "$REPORT_FILE"
+          echo "Generated on $(date -u)" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
 
-
+          for file in logs/*.log; do
+            if [ -s "$file" ]; then
+              echo "Analyzing $file..."
+              prompt="You are a Salesforce Apex performance and error analyst."
+              prompt+="Analyze the following debug log and provide:" 
+              prompt+="  1. Summary of key errors and their causes."
+              prompt+="  2. Identification of any governor limits hit or nearing."
+              prompt+="  3. Performance observations including long-running operations."
+              prompt+="  4. Recommendations for optimization or fixes."
+              prompt+="  5. Any recurring patterns or anomalies detected."
+              prompt+="Summarize clearly in bullet points.\n\n$(cat "$file")"
+              ollama run deepseek-coder:6.7b "$prompt" >> "$REPORT_FILE"
+              echo -e "\n---\n" >> "$REPORT_FILE"
+            fi
+          done
+          
+      - name: Upload Analysis Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: salesforce-log-analysis
+          path: analysis_report.md
+          retention-days: 7
