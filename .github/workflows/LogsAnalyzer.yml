@@ -224,7 +224,7 @@ jobs:
           # Function to generate AI prompt
           generate_prompt() {
             local combined_logs="$1"
-            cat <<- EOF
+            cat <<EOF
             You are a Salesforce Debug Log analyzer. 
             Read the following Apex debug logs (multiple) and produce a **short structured report** in markdown.
             
