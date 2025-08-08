@@ -61,11 +61,10 @@ jobs:
           
           # Query logs with proper SOQL syntax
           QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status \
-                QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status \
-                        FROM ApexLog \
-                        WHERE StartTime >= $START_TIME \
-                        ORDER BY StartTime DESC \
-                        LIMIT 1000"          
+                   FROM ApexLog \
+                  WHERE StartTime >= $START_TIME \
+                  ORDER BY StartTime DESC \
+                  LIMIT 1000"          
           echo "Executing SOQL query..."
           sf data query \
             --query "$QUERY" \
