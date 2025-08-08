@@ -1,4 +1,4 @@
-name: Salesforce Logs Analyzer
+name: AI Powered Logs Analyzer
 
 on:
   workflow_dispatch:
