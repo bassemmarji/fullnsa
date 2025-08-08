@@ -41,7 +41,6 @@ jobs:
         run: |
           npm install --global @salesforce/cli
           sf plugins:update
-          # Install jq for JSON processing
           sudo apt-get update && sudo apt-get install -y jq
       
       - name: 🔐 Authenticate to Salesforce Org
@@ -61,10 +60,12 @@ jobs:
           mkdir -p "$LOG_DIR"
           
           # Query logs with proper SOQL syntax
-          QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status" 
-          QUERY+=" FROM ApexLog"
-          QUERY+=" WHERE StartTime >= ${START_TIME} ORDER BY StartTime DESC LIMIT 1000"
-          
+          QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status \
+                QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status \
+                        FROM ApexLog \
+                        WHERE StartTime >= $START_TIME \
+                        ORDER BY StartTime DESC \
+                        LIMIT 1000"          
           echo "Executing SOQL query..."
           sf data query \
             --query "$QUERY" \
@@ -103,6 +104,7 @@ jobs:
           echo "Starting download of $total_logs logs..."
 
           # Download logs with progress tracking using `sf apex log get`
+          downloaded_count=0
           for logid in $log_ids; do
             current=$((current + 1))
             echo "[$current/$total_logs] Attempting to download log: $logid"
@@ -136,23 +138,11 @@ jobs:
             rm -f "$tmp_error"
             sleep 0.5
           done
-
           
           # Count successful downloads
           downloaded_count=$(find "$LOG_DIR" -name "*.log" | wc -l)
           echo "✅ Successfully downloaded $downloaded_count out of $total_logs logs"
           
-          # Create download summary
-          cat > "$LOG_DIR/download_summary.txt" << EOF
-          Download Summary
-          ================
-          Total logs found: $total_logs
-          Successfully downloaded: $downloaded_count
-          Failed downloads: $([ -f "$LOG_DIR/failed_downloads.txt" ] && wc -l < "$LOG_DIR/failed_downloads.txt" || echo "0")
-          Time range: Last $DAYS_BACK days
-          Downloaded on: $(date -u)
-          EOF
-
       - name: Upload Log Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -160,6 +150,22 @@ jobs:
           path: ${{ env.LOG_DIR }}
           retention-days: 7
           if-no-files-found: warn
+
+      - name: 📄 Summary of Collected Logs
+        run: |
+          {
+            echo "## 📊 Collect Logs Summary" 
+            echo "- Org Alias: **$ORG_ALIAS**" 
+            echo "- Days Back: **$DAYS_BACK**"
+            echo "- Logs Found: **${{ steps.query.outputs.log_count }}**" 
+            if [ "${{ steps.query.outputs.has_logs }}" = "true" ]; then
+              downloaded=$(find "$LOG_DIR" -name "*.log" | wc -l)
+              echo "- Logs Downloaded: **$downloaded**" 
+              echo "- Artifact: \`salesforce-debug-logs\`"
+            else
+              echo "- No logs found in specified period"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
           
   analyze-logs:
     name: Analyze Logs with Ollama
@@ -203,15 +209,33 @@ jobs:
 
           for file in logs/*.log; do
             if [ -s "$file" ]; then
-              echo "Analyzing $file..."
-              prompt="You are a Salesforce Apex performance and error analyst."
-              prompt+="Analyze the following debug log and provide:" 
-              prompt+="  1. Summary of key errors and their causes."
-              prompt+="  2. Identification of any governor limits hit or nearing."
-              prompt+="  3. Performance observations including long-running operations."
-              prompt+="  4. Recommendations for optimization or fixes."
-              prompt+="  5. Any recurring patterns or anomalies detected."
-              prompt+="Summarize clearly in bullet points.\n\n$(cat "$file")"
+              echo "Analyzing log: $file..."
+
+              prompt="You are a Salesforce Debug Log analyzer. 
+              Read the following Apex debug log and produce a **short structured report** in markdown.
+              
+              **Rules:**
+              - Use ONLY the information present in the log. Do not speculate.
+              - NO Java, pseudo-code, or unrelated language examples.
+              - NO generic Salesforce explanations.
+              - Output must be under 500 words.
+              
+              **Output Format (Markdown table):**
+              
+              | Category | Findings |
+              |----------|----------|
+              | Problems & Errors | Bullet points of exceptions, failed DML, missing data, etc. |
+              | Latency Sources | Bullet points with operation names and durations in ms (if available) |
+              | Governor Limit Usage | Bullet points showing limit name, used/total, and % |
+              
+              **Additional:**
+              - Sort each section by severity/impact.
+              - For governor limits, only list limits above 50% usage or breached.
+              - Do not add any advice unless it is directly derived from the log.
+              
+              Log:
+              $(cat "$file")
+              "
               ollama run deepseek-coder:6.7b "$prompt" >> "$REPORT_FILE"
               echo -e "\n---\n" >> "$REPORT_FILE"
             fi
@@ -223,3 +247,17 @@ jobs:
           name: salesforce-log-analysis
           path: analysis_report.md
           retention-days: 7
+
+      - name: 📄 Summary of Analysis
+        run: |
+          {
+            echo "## 🧠 Analysis Summary"
+            total_logs=$(ls logs/*.log 2>/dev/null | wc -l || echo 0)
+            echo "- Logs Analyzed: **$total_logs**" 
+            echo "- Model: \`deepseek-coder:6.7b\`"
+            echo "- Report File: \`analysis_report.md\` (saved as artifact \`salesforce-log-analysis\`)" 
+            echo "- Each log analyzed for:"
+            echo "  - Errors & problems"
+            echo "  - Latency sources"
+            echo "  - Governor limit breaches" 
+          } >> $GITHUB_STEP_SUMMARY
