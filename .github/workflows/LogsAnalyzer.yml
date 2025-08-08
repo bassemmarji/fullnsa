@@ -64,7 +64,7 @@ jobs:
                    FROM ApexLog \
                   WHERE StartTime >= $START_TIME \
                   ORDER BY StartTime DESC \
-                  LIMIT 1000"          
+                  LIMIT 100"          
           echo "Executing SOQL query..."
           sf data query \
             --query "$QUERY" \
@@ -199,44 +199,65 @@ jobs:
           echo "🔍 Verifying model installation..."
           ollama list
 
-      - name: Analyze Logs
+
+      - name: Analyze Logs (Batched)
         run: |
           REPORT_FILE="analysis_report.md"
           echo "# Salesforce Debug Log Analysis" > "$REPORT_FILE"
           echo "Generated on $(date -u)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
 
+          BATCH_SIZE=5 # Number of logs per Ollama request
+          batch_files=()
+          batch_count=0
+
           for file in logs/*.log; do
             if [ -s "$file" ]; then
-              echo "Analyzing log: $file..."
+              batch_files+=("$file")
+              batch_count=$((batch_count + 1))
+            fi
+
+            # If batch is full or last file, process
+            if [ "$batch_count" -eq "$BATCH_SIZE" ] || [ "$file" == "$(ls logs/*.log | tail -n 1)" ]; then
+              echo "📦 Processing batch of $batch_count logs..."
+
+              # Combine logs into one string with clear separators
+              combined_logs=""
+              for f in "${batch_files[@]}"; do
+                combined_logs+="===== LOG FILE: $f =====\n$(cat "$f")\n\n"
+              done
 
               prompt="You are a Salesforce Debug Log analyzer. 
-              Read the following Apex debug log and produce a **short structured report** in markdown.
-              
+              Read the following Apex debug logs (multiple) and produce a **short structured report** in markdown.
+
               **Rules:**
-              - Use ONLY the information present in the log. Do not speculate.
+              - Use ONLY the information present in the logs. Do not speculate.
               - NO Java, pseudo-code, or unrelated language examples.
               - NO generic Salesforce explanations.
               - Output must be under 500 words.
-              
+
               **Output Format (Markdown table):**
-              
               | Category | Findings |
               |----------|----------|
               | Problems & Errors | Bullet points of exceptions, failed DML, missing data, etc. |
               | Latency Sources | Bullet points with operation names and durations in ms (if available) |
               | Governor Limit Usage | Bullet points showing limit name, used/total, and % |
-              
+
               **Additional:**
               - Sort each section by severity/impact.
               - For governor limits, only list limits above 50% usage or breached.
-              - Do not add any advice unless it is directly derived from the log.
-              
-              Log:
-              $(cat "$file")
+              - Indicate which log file each finding came from in parentheses.
+
+              Logs:
+              $combined_logs
               "
+              
               ollama run deepseek-coder:6.7b "$prompt" >> "$REPORT_FILE"
               echo -e "\n---\n" >> "$REPORT_FILE"
+
+              # Reset batch
+              batch_files=()
+              batch_count=0
             fi
           done
           
@@ -255,8 +276,6 @@ jobs:
             echo "- Logs Analyzed: **$total_logs**" 
             echo "- Model: \`deepseek-coder:6.7b\`"
             echo "- Report File: \`analysis_report.md\` (saved as artifact \`salesforce-log-analysis\`)" 
-            echo "- Each log analyzed for:"
-            echo "  - Errors & problems"
-            echo "  - Latency sources"
-            echo "  - Governor limit breaches" 
           } >> $GITHUB_STEP_SUMMARY
+
+
