@@ -293,6 +293,8 @@ jobs:
           retention-days: 7
 
       - name: 📄 Summary of Analysis
+        env:
+          MODEL: ${{ inputs.model_name }}
         run: |
           {
             echo "## 🧠 Analysis Summary"
