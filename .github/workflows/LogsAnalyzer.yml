@@ -214,7 +214,7 @@ jobs:
         run: |
           REPORT_FILE="analysis_report.md"
           BATCH_SIZE=5
-          MODEL="${{ inputs.MODEL_NAME }}"
+          MODEL="${{ inputs.model_name }}"
       
           # Initialize report
           echo "# AI Log Analysis Report" > "$REPORT_FILE"
@@ -254,7 +254,7 @@ jobs:
 
             Logs:
             $combined_logs
-            EOF
+          EOF
           }      
           # Process logs in batches
           batch=()
@@ -298,7 +298,7 @@ jobs:
             echo "## 🧠 Analysis Summary"
             total_logs=$(ls logs/*.log 2>/dev/null | wc -l || echo 0)
             echo "- Logs Analyzed: **$total_logs**" 
-            echo "- Model: \`deepseek-coder:6.7b\`"
+            echo "- Model: \`$MODEL\`"
             echo "- Report File: \`analysis_report.md\` (saved as artifact \`salesforce-log-analysis\`)" 
           } >> $GITHUB_STEP_SUMMARY
 
