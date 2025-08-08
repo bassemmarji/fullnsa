@@ -13,10 +13,19 @@ on:
         description: "Number of days back to retrieve logs"
         required: true
         default: 7
+      model_name:
+        type: choice
+        description: "Ollama model to use"
+        options:
+          - deepseek-coder:6.7b
+          - mistral
+          - mistral:instruct
+        default: mistral
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
   DAYS_BACK: ${{ github.event.inputs.days_back }}
+  MODEL_NAME: ${{ github.event.inputs.model_name }}
   NODE_VERSION: "20"
   LOG_DIR: "sf-logs"
 
@@ -190,76 +199,136 @@ jobs:
             sleep 2
           done
 
-      - name: Download DeepSeek Model
+      - name: Download Model
         timeout-minutes: 30
         run: |
-          echo "📦 Downloading DeepSeek 6.7B model..."
-          ollama pull deepseek-coder:6.7b
+          MODEL="${{ inputs.MODEL_NAME }}"
+          echo "Downloading Ollama model: $MODEL"
+          ollama pull "$MODEL"
           
           echo "🔍 Verifying model installation..."
           ollama list
 
 
-      - name: Analyze Logs (Batched)
+name: AI Log Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      ORG_ALIAS:
+        type: string
+        description: "Salesforce org alias"
+        required: true
+      MODEL_NAME:
+        type: choice
+        description: "Ollama model to use"
+        options:
+          - deepseek-coder:6.7b
+          - mistral
+          - mistral:instruct
+        default: mistral
+
+jobs:
+  retrieve-logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Retrieve Apex Logs
+        run: |
+          sf apex log list --target-org ${{ inputs.ORG_ALIAS }} --json > logs.json
+          mkdir -p logs
+          jq -r '.result[].Id' logs.json | while read -r log_id; do
+            sf apex log get --target-org ${{ inputs.ORG_ALIAS }} --log-id "$log_id" --output-dir logs
+          done
+
+  analyze-logs:
+    runs-on: ubuntu-latest
+    needs: retrieve-logs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve & sleep 10
+
+      - name: Download selected model
+        run: |
+          MODEL="${{ inputs.MODEL_NAME }}"
+          echo "Downloading Ollama model: $MODEL"
+          ollama pull "$MODEL"
+
+      - name: Analyze logs in batches
         run: |
           REPORT_FILE="analysis_report.md"
-          echo "# Salesforce Debug Log Analysis" > "$REPORT_FILE"
-          echo "Generated on $(date -u)" >> "$REPORT_FILE"
+          BATCH_SIZE=5
+          MODEL="${{ inputs.MODEL_NAME }}"
+      
+          # Initialize report
+          echo "# AI Log Analysis Report" > "$REPORT_FILE"
+          echo "Model used: $MODEL" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
-
-          BATCH_SIZE=5 # Number of logs per Ollama request
-          batch_files=()
-          batch_count=0
-
+      
+          # Function to generate AI prompt
+          generate_prompt() {
+            local combined_logs="$1"
+            cat <<- EOF
+          	You are a Salesforce Debug Log analyzer. 
+          	Read the following Apex debug logs (multiple) and produce a **short structured report** in markdown.
+          
+          	**Rules:**
+          	- Use ONLY the information present in the logs. Do not speculate.
+          	- NO Java, pseudo-code, or unrelated language examples.
+          	- NO generic Salesforce explanations.
+          	- Output must be under 500 words.
+          
+          	**Output Format (Markdown table):**
+          	| Category | Findings |
+          	|----------|----------|
+          	| Problems & Errors | Bullet points of exceptions, failed DML, missing data, etc. |
+          	| Latency Sources | Bullet points with operation names and durations in ms (if available) |
+          	| Governor Limit Usage | Bullet points showing limit name, used/total, and % |
+          
+          	**Additional:**
+          	  - Sort each section by severity/impact.
+          	  - For governor limits, only list limits above 50% usage or breached.
+          	  - Indicate which log file each finding came from in parentheses.
+          
+          	Logs:
+          	$combined_logs
+          	EOF
+          }      
+          # Process logs in batches
+          batch=()
           for file in logs/*.log; do
-            if [ -s "$file" ]; then
-              batch_files+=("$file")
-              batch_count=$((batch_count + 1))
-            fi
-
-            # If batch is full or last file, process
-            if [ "$batch_count" -eq "$BATCH_SIZE" ] || [ "$file" == "$(ls logs/*.log | tail -n 1)" ]; then
-              echo "📦 Processing batch of $batch_count logs..."
-
-              # Combine logs into one string with clear separators
-              combined_logs=""
-              for f in "${batch_files[@]}"; do
-                combined_logs+="===== LOG FILE: $f =====\n$(cat "$f")\n\n"
-              done
-
-              prompt="You are a Salesforce Debug Log analyzer. 
-              Read the following Apex debug logs (multiple) and produce a **short structured report** in markdown.
-
-              **Rules:**
-              - Use ONLY the information present in the logs. Do not speculate.
-              - NO Java, pseudo-code, or unrelated language examples.
-              - NO generic Salesforce explanations.
-              - Output must be under 500 words.
-
-              **Output Format (Markdown table):**
-              | Category | Findings |
-              |----------|----------|
-              | Problems & Errors | Bullet points of exceptions, failed DML, missing data, etc. |
-              | Latency Sources | Bullet points with operation names and durations in ms (if available) |
-              | Governor Limit Usage | Bullet points showing limit name, used/total, and % |
-
-              **Additional:**
-              - Sort each section by severity/impact.
-              - For governor limits, only list limits above 50% usage or breached.
-              - Indicate which log file each finding came from in parentheses.
-
-              Logs:
-              $combined_logs
-              "
-              
-              ollama run deepseek-coder:6.7b "$prompt" >> "$REPORT_FILE"
+            batch+=("$file")
+      
+            # If batch is full, process it
+            if [[ ${#batch[@]} -eq $BATCH_SIZE ]]; then
+              combined=$(cat "${batch[@]}")
+              echo "## Batch starting with ${batch[0]}" >> "$REPORT_FILE"
+      
+              prompt="$(generate_prompt "$combined")"
+              ollama run "$MODEL" "$prompt" >> "$REPORT_FILE"
               echo -e "\n---\n" >> "$REPORT_FILE"
-
+      
               # Reset batch
-              batch_files=()
-              batch_count=0
+              batch=()
             fi
           done
+      
+          # Process final incomplete batch
+          if [[ ${#batch[@]} -gt 0 ]]; then
+            combined=$(cat "${batch[@]}")
+            echo "## Final Batch starting with ${batch[0]}" >> "$REPORT_FILE"
+      
+            prompt="$(generate_prompt "$combined")"
+            ollama run "$MODEL" "$prompt" >> "$REPORT_FILE"
+            echo -e "\n---\n" >> "$REPORT_FILE"
+          fi
           
       - name: Upload Analysis Report
         uses: actions/upload-artifact@v4
