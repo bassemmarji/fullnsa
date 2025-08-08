@@ -12,7 +12,7 @@ on:
         type: number
         description: "Number of days back to retrieve logs"
         required: true
-        default: 30
+        default: 7
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
@@ -39,14 +39,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Install Salesforce CLI
           npm install --global @salesforce/cli
           sf plugins:update
-          sf --version
-          
           # Install jq for JSON processing
           sudo apt-get update && sudo apt-get install -y jq
-       
       
       - name: 🔐 Authenticate to Salesforce Org
         run: |
@@ -65,7 +61,9 @@ jobs:
           mkdir -p "$LOG_DIR"
           
           # Query logs with proper SOQL syntax
-          QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status FROM ApexLog WHERE StartTime >= ${START_TIME} ORDER BY StartTime DESC LIMIT 1000"
+          QUERY="SELECT Id, Application, DurationMilliseconds, LogLength, LogUserId, Operation, StartTime, Status" 
+          QUERY+=" FROM ApexLog"
+          QUERY+=" WHERE StartTime >= ${START_TIME} ORDER BY StartTime DESC LIMIT 1000"
           
           echo "Executing SOQL query..."
           sf data query \
@@ -73,13 +71,6 @@ jobs:
             --target-org "$ORG_ALIAS" \
             --result-format json > logs_query.json
             
-          # Check if query was successful
-          if [ $? -ne 0 ]; then
-            echo "❌ Failed to execute SOQL query"
-            cat logs_query.json
-            exit 1
-          fi
-          
           # Extract log information
           log_count=$(jq -r '.result.totalSize' logs_query.json)
           
@@ -165,7 +156,7 @@ jobs:
       - name: Upload Log Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: salesforce-debug-logs-${{ env.ORG_ALIAS }}-${{ github.run_number }}
+          name: salesforce-debug-logs
           path: ${{ env.LOG_DIR }}
           retention-days: 7
           if-no-files-found: warn
