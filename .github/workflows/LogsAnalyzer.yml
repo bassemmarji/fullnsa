@@ -17,7 +17,6 @@ on:
         type: choice
         description: "Ollama model to use"
         options:
-          - deepseek-coder:6.7b
           - mistral
           - mistral:instruct
         default: mistral
