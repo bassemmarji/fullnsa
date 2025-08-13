@@ -219,13 +219,13 @@ jobs:
 
       - name: Install Ollama
         run: |
-          echo "🚀 Installing Ollama..."
-          curl -fsSL https://ollama.com/install.sh | sh
+          curl -fsSL https://ollama.com/install.sh -o install.sh
+          chmod +x install.sh && ./install.sh
+          echo "$HOME/.ollama/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.ollama/bin:$PATH"
           ollama serve &
           for i in {1..30}; do
-            if curl -s http://localhost:11434/api/version > /dev/null; then
-              break
-            fi
+            curl -s http://localhost:11434/api/version && break
             sleep 2
           done
 
