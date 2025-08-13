@@ -79,14 +79,14 @@ jobs:
           mkdir -p "$DATA_DIR"
           
           # Query login history with comprehensive fields
-          LOGIN_QUERY="SELECT Id, UserId, LoginTime, LoginType, SourceIp, LoginUrl, NetworkId, 
-                              Browser, Platform, Application, Status, LoginGeoId, TlsProtocol, 
-                              CipherSuite, OptionsIsGet, OptionsIsPost, CountryIso, Subdivision, 
-                              City, PostalCode, ApiType, ApiVersion, ClientVersion, ForwardedForIp
-                       FROM LoginHistory 
-                       WHERE LoginTime >= $START_TIME 
-                       ORDER BY LoginTime DESC 
-                       LIMIT 1000"
+          LOGIN_QUERY="SELECT Id, UserId, LoginTime, LoginType, SourceIp, LoginUrl, NetworkId
+                            , Browser, Platform, Application, Status, LoginGeoId, TlsProtocol
+                            , CipherSuite, OptionsIsGet, OptionsIsPost, CountryIso
+                            , ApiType, ApiVersion, ClientVersion, ForwardedForIp
+                         FROM LoginHistory 
+                        WHERE LoginTime >= $START_TIME 
+                     ORDER BY LoginTime DESC 
+                        LIMIT 1000"
           
           echo "Executing LoginHistory SOQL query..."
           sf data query \
@@ -117,8 +117,8 @@ jobs:
                                Department, Division, Title, CompanyName, City, State, Country,
                                TimeZoneSidKey, LocaleSidKey, LanguageLocaleKey, UserType,
                                LastPasswordChangeDate, NumberOfFailedLogins, MobilePhone
-                        FROM User 
-                        WHERE Id IN ($user_ids_formatted)"
+                          FROM User 
+                         WHERE Id IN ($user_ids_formatted)"
             
             echo "Executing User details SOQL query..."
             sf data query \
