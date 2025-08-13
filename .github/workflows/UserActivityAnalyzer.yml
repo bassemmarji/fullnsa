@@ -350,7 +350,7 @@ jobs:
       
           # Generate analysis
           echo "🤖 Generating comprehensive AI analysis..."
-          generate_analysis_prompt "$login_data" "$user_data" "$audit_data" | ollama run --quiet "$MODEL" >> "$REPORT_FILE"
+          generate_analysis_prompt "$login_data" "$user_data" "$audit_data" | ollama run "$MODEL" >> "$REPORT_FILE"
           
           # Add technical appendix
           echo -e "\n---\n" >> "$REPORT_FILE"
