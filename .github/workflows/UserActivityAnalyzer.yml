@@ -424,5 +424,9 @@ jobs:
             echo "- Login patterns and geographic anomalies"
             echo "- Failed authentication attempts"
             echo "- Unusual timing and access patterns" 
-         } >> $GITHUB_STEP_SUMMARY
+         }
          
+
+
+
+
