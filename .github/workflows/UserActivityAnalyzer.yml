@@ -363,14 +363,5 @@ jobs:
             echo "- **Report:** \`user_activity_analysis.md\`"
             echo "- **Artifact:** \`user-activity-analysis-report\`" 
             echo ""
-            echo "### 🔍 Key Areas Analyzed:"
-            echo "- Login patterns and geographic anomalies"
-            echo "- Failed authentication attempts"
-            echo "- Unusual timing and access patterns" 
-            echo "- User behavior deviations"
-            echo "- Administrative activity review"
           } >> $GITHUB_STEP_SUMMARY
-  
-Editing
-
 
