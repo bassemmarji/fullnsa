@@ -1,254 +1,185 @@
-name: AI-Powered User Activity Analyzer11
+name: AI Powered User Activity 000
 
 on:
   workflow_dispatch:
     inputs:
       org_alias:
+        type: string
         description: "Salesforce org alias"
         required: true
         default: "dev"
       days_back:
+        type: number
         description: "Number of days back to retrieve user activity data"
         required: true
         default: 30
-        type: number
       model_name:
-        description: "Ollama model to use"
         type: choice
+        description: "Ollama model to use"
         options:
           - llama3:latest
           - gpt-oss:latest
+          - mistral:latest # Added: allow more model options
         default: llama3:latest
+      max_records_per_query:
+        type: number
+        description: "Maximum records per SOQL query batch"
+        default: 500 # Added: configurable batch size
 
 env:
-  ORG_ALIAS: ${{ inputs.org_alias }}
-  DAYS_BACK: ${{ inputs.days_back }}
-  MODEL_NAME: ${{ inputs.model_name }}
+  ORG_ALIAS: ${{ github.event.inputs.org_alias }}
+  DAYS_BACK: ${{ github.event.inputs.days_back }}
+  MODEL_NAME: ${{ github.event.inputs.model_name }}
   NODE_VERSION: "20"
   DATA_DIR: "user-activity-data"
+  MAX_BATCH: ${{ github.event.inputs.max_records_per_query }}
 
 jobs:
   collect-user-data:
     name: Collect User Activity Data
     runs-on: ubuntu-latest
     outputs:
-      login_count: ${{ steps.query-logins.outputs.login_count }}
+      login_count: ${{ steps.aggregate-logins.outputs.login_count }}
       user_count: ${{ steps.query-users.outputs.user_count }}
       has_data: ${{ steps.check-data.outputs.has_data }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup core tools
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
           npm install --global @salesforce/cli
           sf plugins:update
-          
+          sudo apt-get update && sudo apt-get install -y jq
+
       - name: 🔐 Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
+          # Added: Fail fast if login unsuccessful
+          sf org display --target-org "$ORG_ALIAS" || { echo "❌ Org login failed"; exit 1; }
 
-      - name: Query Login History
+      # Changed: Paginated query for LoginHistory to handle more than 1,000 records
+      - name: Query Login History (Paginated)
         id: query-logins
-        timeout-minutes: 15
         run: |
+          mkdir -p "$DATA_DIR"
           START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
           echo "🔍 Querying login history since: $START_TIME"
-          
-          mkdir -p "$DATA_DIR"
-          
-          LOGIN_QUERY=$(cat <<-SOQL
-          SELECT Id, UserId, LoginTime, LoginType, SourceIp, LoginUrl, NetworkId,
-                 Browser, Platform, Application, Status, LoginGeoId, TlsProtocol,
-                 CipherSuite, OptionsIsGet, OptionsIsPost, CountryIso,
-                 ApiType, ApiVersion, ClientVersion, ForwardedForIp
-          FROM LoginHistory 
-          WHERE LoginTime >= $START_TIME 
-          ORDER BY LoginTime DESC 
-          LIMIT 1000
-          SOQL
-          )
-          
-          sf data query --query "$LOGIN_QUERY" --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/login_history.json"
-            
-          login_count=$(jq -r '.result.totalSize' "$DATA_DIR/login_history.json")
-          echo "login_count=$login_count" >> $GITHUB_OUTPUT
+          OFFSET=0
+          > "$DATA_DIR/login_history_all.json"
+          while true; do
+            RESULT_FILE="$DATA_DIR/login_history_$OFFSET.json"
+            sf data query \
+              --query "SELECT Id, UserId, LoginTime, LoginType, SourceIp, Platform, Browser, Status FROM LoginHistory WHERE LoginTime >= $START_TIME ORDER BY LoginTime DESC LIMIT $MAX_BATCH OFFSET $OFFSET" \
+              --target-org "$ORG_ALIAS" \
+              --result-format json > "$RESULT_FILE"
+            COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
+            [ "$COUNT" -eq 0 ] && break
+            OFFSET=$((OFFSET + MAX_BATCH))
+          done
+          # Merge paginated files into one JSON
+          jq -s '{result:{records:map(.result.records) | add, totalSize:(map(.result.records)|add|length)}}' "$DATA_DIR"/login_history_*.json > "$DATA_DIR/login_history.json"
 
-      - name: Query User Information
+      # Changed: Batch User queries in chunks of 100 to avoid SOQL IN clause limit
+      - name: Query User Information (Batched)
         id: query-users
-        timeout-minutes: 10
         run: |
-          user_ids=$(jq -r '.result.records[].UserId' "$DATA_DIR/login_history.json" | sort -u | head -100)
-          user_count=$(echo "$user_ids" | wc -l | awk '{print $1}')
-          
+          user_ids=$(jq -r '.result.records[].UserId' "$DATA_DIR/login_history.json" | sort -u)
+          user_count=$(echo "$user_ids" | wc -l)
+          echo "📊 Found $user_count unique user IDs"
           if [ "$user_count" -gt 0 ]; then
-            USER_QUERY=$(cat <<-SOQL
-            SELECT Id, Username, Name, Email, Profile.Name, UserRole.Name, 
-                   IsActive, LastLoginDate, CreatedDate, LastModifiedDate,
-                   Department, Division, Title, CompanyName, City, State, Country,
-                   TimeZoneSidKey, LocaleSidKey, LanguageLocaleKey, UserType,
-                   LastPasswordChangeDate, NumberOfFailedLogins, MobilePhone
-            FROM User 
-            WHERE Id IN ('$(
-              echo "$user_ids" | sed "s/^/'/;s/$/'/" | paste -sd ","
-            )')
-            SOQL
-            )
-            
-            sf data query --query "$USER_QUERY" --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/user_details.json"
+            > "$DATA_DIR/user_details.json"
+            while read -r chunk; do
+              ids_formatted=$(echo "$chunk" | sed "s/^/'/;s/$/'/" | paste -sd, -)
+              sf data query \
+                --query "SELECT Id, Username, Name, Email, Profile.Name, UserRole.Name, IsActive, LastLoginDate, CreatedDate FROM User WHERE Id IN ($ids_formatted)" \
+                --target-org "$ORG_ALIAS" \
+                --result-format json >> "$DATA_DIR/user_details.json"
+            done < <(echo "$user_ids" | xargs -n100)
           fi
-          
           echo "user_count=$user_count" >> $GITHUB_OUTPUT
 
-      - name: Query Security Audit Data
-        timeout-minutes: 15
+      - name: Query Additional Security Data
         run: |
           SETUP_START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
-          
-          SETUP_QUERY=$(cat <<-SOQL
-          SELECT Id, Action, Section, CreatedDate, CreatedById, CreatedBy.Username,
-                 CreatedBy.Name, Display, DelegateUser, ResponsibleNamespacePrefix
-          FROM SetupAuditTrail 
-          WHERE CreatedDate >= $SETUP_START_TIME 
-            AND (Action LIKE '%User%' OR Action LIKE '%Login%' OR Action LIKE '%Password%' 
-                 OR Action LIKE '%Profile%' OR Action LIKE '%Permission%' OR Action LIKE '%Security%')
-          ORDER BY CreatedDate DESC 
-          LIMIT 500
-          SOQL
-          )
-          
-          sf data query --query "$SETUP_QUERY" --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/setup_audit_trail.json" || true
+          sf data query \
+            --query "SELECT Id, Action, Section, CreatedDate, CreatedBy.Username FROM SetupAuditTrail WHERE CreatedDate >= $SETUP_START_TIME LIMIT 500" \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/setup_audit_trail.json" || echo "{}" > "$DATA_DIR/setup_audit_trail.json"
 
-      - name: Generate Data Summary
+      - name: Aggregate Logins
+        id: aggregate-logins
+        run: |
+          login_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/login_history.json")
+          echo "login_count=$login_count" >> $GITHUB_OUTPUT
+
+      - name: Check Data Availability
         id: check-data
         run: |
           login_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/login_history.json")
-          
           if [ "$login_count" -eq 0 ]; then
             echo "has_data=false" >> $GITHUB_OUTPUT
-            exit 0
+          else
+            echo "has_data=true" >> $GITHUB_OUTPUT
           fi
-          
-          jq -n --arg days "$DAYS_BACK" --slurpfile login "$DATA_DIR/login_history.json" \
-          '{
-            summary: {
-              days_analyzed: ($days | tonumber),
-              total_logins: $login[0].result.totalSize,
-              analysis_period: {
-                start: ($login[0].result.records | map(.LoginTime) | min),
-                end: ($login[0].result.records | map(.LoginTime) | max)
-              },
-              unique_users: ($login[0].result.records | map(.UserId) | unique | length),
-              unique_ips: ($login[0].result.records | map(.SourceIp) | unique | length),
-              login_types: ($login[0].result.records | group_by(.LoginType) | map({type: .[0].LoginType, count: length})),
-              platforms: ($login[0].result.records | group_by(.Platform) | map({platform: .[0].Platform, count: length}))
-            }
-          }' > "$DATA_DIR/data_summary.json"
-          
-          echo "has_data=true" >> $GITHUB_OUTPUT
 
-      - name: Upload Data Artifacts
+      - name: Upload User Activity Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: user-activity-data
           path: ${{ env.DATA_DIR }}
-          retention-days: 3
-
-      - name: Create Summary Report
-        run: |
-          login_count=${{ steps.query-logins.outputs.login_count }}
-          user_count=${{ steps.query-users.outputs.user_count }}
-          has_data=${{ steps.check-data.outputs.has_data }}
-          
-          echo "## 📊 Data Collection Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Org Alias:** $ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
-          echo "- **Analysis Period:** $DAYS_BACK days" >> $GITHUB_STEP_SUMMARY
-          echo "- **Login Records:** $login_count" >> $GITHUB_STEP_SUMMARY
-          echo "- **Users Analyzed:** $user_count" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "$has_data" = "true" ]; then
-            echo "- **Status:** ✅ Data collected successfully" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- **Status:** ⚠️ No login data found" >> $GITHUB_STEP_SUMMARY
-          fi
+          retention-days: 7
 
   analyze-user-activity:
-    name: Analyze User Activity
+    name: Analyze User Activity with AI
     runs-on: ubuntu-latest
     needs: collect-user-data
-    if: ${{ needs.collect-user-data.outputs.has_data == 'true' }}
-    env:
-      ANALYSIS_DIR: "analysis-results"
+    if: needs.collect-user-data.outputs.has_data == 'true'
     steps:
-      - name: Download Data Artifacts
+      - name: Download User Activity Artifacts
         uses: actions/download-artifact@v4
         with:
           name: user-activity-data
-          path: ${{ env.DATA_DIR }}
+          path: data
 
-      - name: Install Analysis Tools
+      - name: Install Ollama
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          curl -fsSL https://ollama.com/install.sh | sh
-          echo "$HOME/.ollama/bin" >> $GITHUB_PATH
+          curl -fsSL https://ollama.com/install.sh -o install.sh
+          chmod +x install.sh && ./install.sh
+          export PATH="$HOME/.ollama/bin:$PATH"
+          ollama serve &
 
-      - name: Start Ollama Service
+      - name: Download Model
         run: |
-          ollama serve > /dev/null 2>&1 &
-          echo "OLLAMA_PID=$!" >> $GITHUB_ENV
-          sleep 10
+          ollama pull "${{ inputs.model_name }}"
 
-      - name: Load AI Model
-        timeout-minutes: 30
-        run: ollama pull $MODEL_NAME
-
-      - name: Run Security Analysis
-        timeout-minutes: 45
+      # Added: Reduce JSON size before sending to AI to avoid exceeding prompt size limits
+      - name: Prepare Data for AI
         run: |
-          mkdir -p $ANALYSIS_DIR
-          REPORT_FILE="$ANALYSIS_DIR/user_activity_analysis.md"
-          
-          # Create analysis prompt
-          jq -n \
-            --arg model "$MODEL_NAME" \
-            --arg days "$DAYS_BACK" \
-            --slurpfile login "$DATA_DIR/login_history.json" \
-            --slurpfile users "$DATA_DIR/user_details.json" \
-            --slurpfile audit "$DATA_DIR/setup_audit_trail.json" \
-            --argjson summary "$(cat $DATA_DIR/data_summary.json)" \
-          '{
-            model: $model,
-            period: $days,
-            summary: $summary,
-            login_history: $login[0],
-            user_details: $users[0],
-            audit_trail: $audit[0]
-          }' > $ANALYSIS_DIR/analysis_input.json
-          
-          # Generate analysis
-          ollama run $MODEL_NAME -f $ANALYSIS_DIR/analysis_prompt.txt < $ANALYSIS_DIR/analysis_input.json > $REPORT_FILE
-          
-          # Add metadata
-          echo -e "\n\n---\n" >> $REPORT_FILE
-          echo "**Generated At:** $(date -u)" >> $REPORT_FILE
-          echo "**Model Version:** $(ollama show $MODEL_NAME --version)" >> $REPORT_FILE
+          mkdir -p ai-ready
+          jq '{records:.result.records[0:200]}' data/login_history.json > ai-ready/login_history_small.json
+          jq '{records:.result.records[0:200]}' data/user_details.json > ai-ready/user_details_small.json
+          jq '.' data/setup_audit_trail.json > ai-ready/setup_audit_trail_small.json
+          # Added: PII Redaction (replace emails with placeholders)
+          sed -i 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]\+/[REDACTED_EMAIL]/g' ai-ready/*.json
+
+      - name: Analyze User Activity Data
+        run: |
+          REPORT_FILE="user_activity_analysis.md"
+          MODEL="${{ inputs.model_name }}"
+          echo "# AI User Activity Analysis Report" > "$REPORT_FILE"
+          echo "**Period:** Last ${{ inputs.days_back }} days" >> "$REPORT_FILE"
+          ollama run "$MODEL" < ai-ready/login_history_small.json >> "$REPORT_FILE"
 
       - name: Upload Analysis Report
         uses: actions/upload-artifact@v4
         with:
-          name: security-analysis-report
-          path: ${{ env.ANALYSIS_DIR }}
+          name: user-activity-analysis-report
+          path: user_activity_analysis.md
           retention-days: 14
-
-      - name: Stop Ollama Service
-        if: always()
-        run: kill $OLLAMA_PID || true
-
-      - name: Create Analysis Summary
-        run: |
-          echo "## 🧠 Security Analysis Completed" >> $GITHUB_STEP_SUMMARY
-          echo "- **AI Model:** $MODEL_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "- **Analysis Period:** $DAYS_BACK days" >> $GITHUB_STEP_SUMMARY
-          echo "- **Report Generated:** ✅ [Download artifact](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
