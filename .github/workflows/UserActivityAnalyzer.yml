@@ -55,37 +55,34 @@ jobs:
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
-      - name: Query Login History
+
+      - name: Query Login History (Paginated)
         id: query-logins
-        timeout-minutes: 10
         run: |
-          # Calculate start time (UTC)
+          mkdir -p "$DATA_DIR"
           START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
           echo "🔍 Querying login history since: $START_TIME"
-          
-          # Create data directory
-          mkdir -p "$DATA_DIR"
-          
-          # Query login history with comprehensive fields
-          LOGIN_QUERY="SELECT Id, UserId, LoginTime, LoginType, SourceIp, LoginUrl, NetworkId
-                            , Browser, Platform, Application, Status, LoginGeoId, TlsProtocol
-                            , CipherSuite, OptionsIsGet, OptionsIsPost, CountryIso
-                            , ApiType, ApiVersion, ClientVersion, ForwardedForIp
-                         FROM LoginHistory 
-                        WHERE LoginTime >= $START_TIME 
-                     ORDER BY LoginTime DESC 
-                        LIMIT 1000"
-          
-          echo "Executing LoginHistory SOQL query..."
-          sf data query \
-            --query "$LOGIN_QUERY" \
-            --target-org "$ORG_ALIAS" \
-            --result-format json > "$DATA_DIR/login_history.json"
-            
-          # Extract login count
-          login_count=$(jq -r '.result.totalSize' "$DATA_DIR/login_history.json")
-          echo "📊 Found $login_count login records"
+          OFFSET=0
+          > "$DATA_DIR/login_history_all.json"
+          while true; do
+            RESULT_FILE="$DATA_DIR/login_history_$OFFSET.json"
+            sf data query \
+              --query "SELECT Id, UserId, LoginTime, LoginType, SourceIp, Platform, Browser, Status FROM LoginHistory WHERE LoginTime >= $START_TIME ORDER BY LoginTime DESC LIMIT $MAX_BATCH OFFSET $OFFSET" \
+              --target-org "$ORG_ALIAS" \
+              --result-format json > "$RESULT_FILE"
+            COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
+            [ "$COUNT" -eq 0 ] && break
+            OFFSET=$((OFFSET + MAX_BATCH))
+          done
+          # Merge paginated files into one JSON
+          jq -s '{result:{records:map(.result.records) | add, totalSize:(map(.result.records)|add|length)}}' "$DATA_DIR"/login_history_*.json > "$DATA_DIR/login_history.json"
+
+      - name: Aggregate Logins
+        id: aggregate-logins
+        run: |
+          login_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/login_history.json")
           echo "login_count=$login_count" >> $GITHUB_OUTPUT
+      
       - name: Query User Information
         id: query-users
         timeout-minutes: 5
