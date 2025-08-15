@@ -67,12 +67,12 @@ jobs:
           while true; do
             RESULT_FILE="$DATA_DIR/login_history_$OFFSET.json"
             sf data query \
-              --query "SELECT Id, UserId, LoginTime, LoginType, SourceIp, Platform, Browser, Status FROM LoginHistory WHERE LoginTime >= $START_TIME ORDER BY LoginTime DESC LIMIT $MAX_BATCH OFFSET $OFFSET" \
+              --query "SELECT Id, UserId, LoginTime, LoginType, SourceIp, Platform, Browser, Status FROM LoginHistory WHERE LoginTime >= $START_TIME ORDER BY LoginTime DESC LIMIT 500 OFFSET $OFFSET" \
               --target-org "$ORG_ALIAS" \
               --result-format json > "$RESULT_FILE"
             COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
             [ "$COUNT" -eq 0 ] && break
-            OFFSET=$((OFFSET + MAX_BATCH))
+            OFFSET=$((OFFSET + 500))
           done
           # Merge paginated files into one JSON
           jq -s '{result:{records:map(.result.records) | add, totalSize:(map(.result.records)|add|length)}}' "$DATA_DIR"/login_history_*.json > "$DATA_DIR/login_history.json"
