@@ -114,26 +114,28 @@ jobs:
           fi
           
           echo "user_count=$user_count" >> $GITHUB_OUTPUT
+      
       - name: Query Additional Security Data
         timeout-minutes: 10
         run: |
           # Query SetupAuditTrail for security-related changes
           SETUP_START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
-          
+
           SETUP_QUERY="SELECT Id, Action, Section, CreatedDate, CreatedById, CreatedBy.Username,
                               CreatedBy.Name, Display, DelegateUser, ResponsibleNamespacePrefix
                        FROM SetupAuditTrail 
                        WHERE CreatedDate >= $SETUP_START_TIME 
                        AND (Action LIKE '%User%' OR Action LIKE '%Login%' OR Action LIKE '%Password%' 
                             OR Action LIKE '%Profile%' OR Action LIKE '%Permission%' OR Action LIKE '%Security%')
-                       ORDER BY CreatedDate DESC 
-                       LIMIT 500"
-          
-          echo "Executing SetupAuditTrail SOQL query..."
+                       ORDER BY CreatedDate DESC"
+
+          echo "Executing SetupAuditTrail SOQL query in batched mode..."
           sf data query \
             --query "$SETUP_QUERY" \
             --target-org "$ORG_ALIAS" \
-            --result-format json > "$DATA_DIR/setup_audit_trail.json" || echo "⚠️ SetupAuditTrail query failed (may not have access)"
+            --result-format json \
+            --all > "$DATA_DIR/setup_audit_trail.json" || echo "⚠️ SetupAuditTrail query failed (may not have access)"
+      
       - name: Check Data Availability
         id: check-data
         run: |
