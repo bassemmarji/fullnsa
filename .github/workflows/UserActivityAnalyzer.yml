@@ -56,7 +56,7 @@ jobs:
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
-      - name: Query Login History (Paginated)
+      - name: Query Login History
         id: query-logins
         run: |
           mkdir -p "$DATA_DIR"
