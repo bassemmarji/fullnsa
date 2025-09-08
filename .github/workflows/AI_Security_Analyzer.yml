@@ -390,7 +390,9 @@ jobs:
             echo "- **Permission Sets Analyzed:** $permset_count"
             echo "- **AI Model:** \`$MODEL\`"
             echo "- **Report:** \`security_analysis_report.md\`"
-           } 
+            echo "- **Artifact:** \`security-analysis-report\`" 
+            echo ""
+          } >> $GITHUB_STEP_SUMMARY
             echo "- **Artifact:** \`security-analysis-report\`" 
             echo ""
           } >> $GITHUB_STEP_SUMMARY
