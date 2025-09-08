@@ -44,7 +44,7 @@ jobs:
           npm install --global @salesforce/cli
           sf plugins:update
           sudo apt-get update && sudo apt-get install -y jq
-      
+
       - name: 🔐 Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
@@ -53,112 +53,145 @@ jobs:
       - name: Query Profiles
         id: query-profiles
         run: |
+          set -e
           mkdir -p "$DATA_DIR"
           echo "🔍 Querying profiles..."
-          OFFSET=0
           > "$DATA_DIR/profiles_all.json"
+          LAST_ID=""
           while true; do
-            RESULT_FILE="$DATA_DIR/profiles_$OFFSET.json"
+            WHERE_CLAUSE=""
+            [ -n "$LAST_ID" ] && WHERE_CLAUSE="WHERE Id > '$LAST_ID'"
+            
+            RESULT_FILE="$DATA_DIR/profiles_temp.json"
             sf data query \
-              --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile ORDER BY Name ASC LIMIT 200 OFFSET $OFFSET" \
+              --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile $WHERE_CLAUSE ORDER BY Id ASC LIMIT 200" \
               --target-org "$ORG_ALIAS" \
               --result-format json > "$RESULT_FILE"
+            
             COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
             [ "$COUNT" -eq 0 ] && break
-            OFFSET=$((OFFSET + 200))
+            
+            LAST_ID=$(jq -r '.result.records[-1].Id' "$RESULT_FILE")
+            jq '.result.records[]' "$RESULT_FILE" >> "$DATA_DIR/profiles_all.json"
           done
-          # Merge paginated files into one JSON
-          jq -s '{result:{records:map(.result.records) | add, totalSize:(map(.result.records)|add|length)}}' "$DATA_DIR"/profiles_*.json > "$DATA_DIR/profiles.json"
           
-          # Query Object Permissions for Profiles
+          # Convert to array format
+          jq -s '{result: {records: ., totalSize: length}}' "$DATA_DIR/profiles_all.json" > "$DATA_DIR/profiles.json"
+          
+          # Query Object and Field Permissions for Profiles (parallel)
           if [ -f "$DATA_DIR/profiles.json" ]; then
             profile_ids=$(jq -r '.result.records[].Id' "$DATA_DIR/profiles.json" | tr '\n' ',' | sed 's/,$//')
             if [ -n "$profile_ids" ]; then
-              sf data query \
-                --query "SELECT Id, ParentId, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId IN ($profile_ids)" \
-                --target-org "$ORG_ALIAS" \
-                --result-format json --all > "$DATA_DIR/profile_object_perms.json" || echo "{}" > "$DATA_DIR/profile_object_perms.json"
+              query_in_background() {
+                local query_type=$1
+                local query=$2
+                local output_file=$3
+                
+                sf data query --query "$query" --target-org "$ORG_ALIAS" --result-format json > "$output_file" || echo "{}" > "$output_file"
+              }
+              
+              query_in_background "profile_object" "SELECT Id, ParentId, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId IN ($profile_ids)" "$DATA_DIR/profile_object_perms.json" &
+              query_in_background "profile_field" "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE Parent.ProfileId != null LIMIT 5000" "$DATA_DIR/profile_field_perms.json" &
+              wait
             fi
           fi
           
-          # Query Field Permissions for Profiles (sample for key objects, adjust as needed)
-          sf data query \
-            --query "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE Parent.ProfileId != null LIMIT 5000" \
-            --target-org "$ORG_ALIAS" \
-            --result-format json --all > "$DATA_DIR/profile_field_perms.json" || echo "{}" > "$DATA_DIR/profile_field_perms.json"
-          
           profile_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/profiles.json")
           echo "profile_count=$profile_count" >> $GITHUB_OUTPUT
-      
+
       - name: Query Permission Sets
         id: query-permsets
         timeout-minutes: 10
         run: |
+          set -e
           echo "🔍 Querying permission sets..."
-          OFFSET=0
           > "$DATA_DIR/permsets_all.json"
+          LAST_ID=""
           while true; do
-            RESULT_FILE="$DATA_DIR/permsets_$OFFSET.json"
+            WHERE_CLAUSE=""
+            [ -n "$LAST_ID" ] && WHERE_CLAUSE="WHERE Id > '$LAST_ID'"
+            
+            RESULT_FILE="$DATA_DIR/permsets_temp.json"
             sf data query \
-              --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix, CreatedDate, LastModifiedDate FROM PermissionSet ORDER BY Name ASC LIMIT 200 OFFSET $OFFSET" \
+              --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix, CreatedDate, LastModifiedDate FROM PermissionSet $WHERE_CLAUSE ORDER BY Id ASC LIMIT 200" \
               --target-org "$ORG_ALIAS" \
               --result-format json > "$RESULT_FILE"
+            
             COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
             [ "$COUNT" -eq 0 ] && break
-            OFFSET=$((OFFSET + 200))
+            
+            LAST_ID=$(jq -r '.result.records[-1].Id' "$RESULT_FILE")
+            jq '.result.records[]' "$RESULT_FILE" >> "$DATA_DIR/permsets_all.json"
           done
-          # Merge paginated files into one JSON
-          jq -s '{result:{records:map(.result.records) | add, totalSize:(map(.result.records)|add|length)}}' "$DATA_DIR"/permsets_*.json > "$DATA_DIR/permission_sets.json"
           
-          # Query Object Permissions for Permission Sets
+          # Convert to array format
+          jq -s '{result: {records: ., totalSize: length}}' "$DATA_DIR/permsets_all.json" > "$DATA_DIR/permission_sets.json"
+          
+          # Query Object and Field Permissions for Permission Sets (parallel)
           if [ -f "$DATA_DIR/permission_sets.json" ]; then
             permset_ids=$(jq -r '.result.records[].Id' "$DATA_DIR/permission_sets.json" | tr '\n' ',' | sed 's/,$//')
             if [ -n "$permset_ids" ]; then
+              query_in_background "permset_object" "SELECT Id, ParentId, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.PermissionSetId IN ($permset_ids)" "$DATA_DIR/permset_object_perms.json" &
+              query_in_background "permset_field" "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE Parent.PermissionSetId != null LIMIT 5000" "$DATA_DIR/permset_field_perms.json" &
+              
+              # Query Permission Set Assignments
               sf data query \
-                --query "SELECT Id, ParentId, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.PermissionSetId IN ($permset_ids)" \
+                --query "SELECT Id, AssigneeId, PermissionSetId, Assignee.Name, Assignee.Username FROM PermissionSetAssignment WHERE PermissionSetId IN ($permset_ids)" \
                 --target-org "$ORG_ALIAS" \
-                --result-format json --all > "$DATA_DIR/permset_object_perms.json" || echo "{}" > "$DATA_DIR/permset_object_perms.json"
+                --result-format json --all > "$DATA_DIR/permset_assignments.json" || echo "{}" > "$DATA_DIR/permset_assignments.json"
+              
+              wait
             fi
-          fi
-          
-          # Query Field Permissions for Permission Sets
-          sf data query \
-            --query "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE Parent.PermissionSetId != null LIMIT 5000" \
-            --target-org "$ORG_ALIAS" \
-            --result-format json --all > "$DATA_DIR/permset_field_perms.json" || echo "{}" > "$DATA_DIR/permset_field_perms.json"
-          
-          # Query Permission Set Assignments
-          if [ -n "$permset_ids" ]; then
-            sf data query \
-              --query "SELECT Id, AssigneeId, PermissionSetId, Assignee.Name, Assignee.Username FROM PermissionSetAssignment WHERE PermissionSetId IN ($permset_ids)" \
-              --target-org "$ORG_ALIAS" \
-              --result-format json --all > "$DATA_DIR/permset_assignments.json" || echo "{}" > "$DATA_DIR/permset_assignments.json"
           fi
           
           permset_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/permission_sets.json")
           echo "permset_count=$permset_count" >> $GITHUB_OUTPUT
-      
+
       - name: Query Additional Security Data
         timeout-minutes: 10
         run: |
+          set -e
           # Query SetupAuditTrail for permission-related changes (last 30 days for recency)
           DAYS_BACK=30
           SETUP_START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
+          > "$DATA_DIR/setup_audit_trail_all.json"
+          LAST_ID=""
+          while true; do
+            WHERE_CLAUSE=""
+            [ -n "$LAST_ID" ] && WHERE_CLAUSE="WHERE Id > '$LAST_ID'"
+            
+            RESULT_FILE="$DATA_DIR/setup_audit_temp.json"
+            sf data query \
+              --query "SELECT Id, Action, Section, CreatedDate, CreatedById, CreatedBy.Username, CreatedBy.Name, Display, DelegateUser, ResponsibleNamespacePrefix FROM SetupAuditTrail WHERE CreatedDate >= $SETUP_START_TIME AND (Action LIKE '%Permission%' OR Action LIKE '%Profile%' OR Action LIKE '%Security%' OR Action LIKE '%Object%' OR Action LIKE '%Field%') $WHERE_CLAUSE ORDER BY Id ASC LIMIT 200" \
+              --target-org "$ORG_ALIAS" \
+              --result-format json > "$RESULT_FILE"
+            
+            COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
+            [ "$COUNT" -eq 0 ] && break
+            
+            LAST_ID=$(jq -r '.result.records[-1].Id' "$RESULT_FILE")
+            jq '.result.records[]' "$RESULT_FILE" >> "$DATA_DIR/setup_audit_trail_all.json"
+          done
+          
+          jq -s '{result: {records: ., totalSize: length}}' "$DATA_DIR/setup_audit_trail_all.json" > "$DATA_DIR/setup_audit_trail.json" || echo "⚠️ SetupAuditTrail query failed (may not have access)"
 
-          SETUP_QUERY="SELECT Id, Action, Section, CreatedDate, CreatedById, CreatedBy.Username,
-                              CreatedBy.Name, Display, DelegateUser, ResponsibleNamespacePrefix
-                       FROM SetupAuditTrail 
-                       WHERE CreatedDate >= $SETUP_START_TIME 
-                       AND (Action LIKE '%Permission%' OR Action LIKE '%Profile%' OR Action LIKE '%Security%' OR Action LIKE '%Object%' OR Action LIKE '%Field%')
-                       ORDER BY CreatedDate DESC"
+      - name: Validate Collected Data
+        run: |
+          # Check if essential files exist and contain valid JSON
+          for file in profiles.json permission_sets.json; do
+            if [ ! -f "$DATA_DIR/$file" ] || ! jq '.' "$DATA_DIR/$file" >/dev/null 2>&1; then
+              echo "❌ Invalid or missing $file"
+              exit 1
+            fi
+          done
+          
+          # Check minimum data requirements
+          profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json")
+          if [ "$profile_count" -lt 1 ]; then
+            echo "❌ No profiles found for analysis"
+            exit 1
+          fi
 
-          echo "Executing SetupAuditTrail SOQL query..."
-          sf data query \
-            --query "$SETUP_QUERY" \
-            --target-org "$ORG_ALIAS" \
-            --result-format json \
-            --all > "$DATA_DIR/setup_audit_trail.json" || echo "⚠️ SetupAuditTrail query failed (may not have access)"
-      
       - name: Check Data Availability
         id: check-data
         run: |
@@ -184,7 +217,7 @@ jobs:
               }
             }' "$DATA_DIR/setup_audit_trail.json" > "$DATA_DIR/data_summary.json"
           fi
-      
+
       - name: Upload Security Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -207,7 +240,7 @@ jobs:
               echo "- Data Available: ❌ **No data found**"
             fi
           } >> $GITHUB_STEP_SUMMARY
-         
+
   analyze-security-config:
     name: Analyze Profiles and Permission Sets with AI
     runs-on: ubuntu-latest
@@ -246,7 +279,7 @@ jobs:
         run: |
           REPORT_FILE="security_analysis_report.md"
           MODEL="${{ inputs.model_name }}"
-      
+          
           # Initialize report
           echo "# AI Profiles and Permission Sets Security Analysis Report" > "$REPORT_FILE"
           echo "**Analysis Date:** $(date)" >> "$REPORT_FILE"
@@ -261,7 +294,7 @@ jobs:
             echo '```' >> "$REPORT_FILE"
             echo "" >> "$REPORT_FILE"
           fi
-      
+          
           # Generate comprehensive analysis prompt
           generate_analysis_prompt() {
             local profiles="$1"
@@ -273,8 +306,31 @@ jobs:
             local assignments="$7"
             local audit_data="$8"
             
-            cat << EOF
-You are a Salesforce Security Analyst specializing in profiles, permission sets, and access control analysis. Your goal is to produce a comprehensive, actionable, and well-structured security assessment report based on the provided Salesforce security configuration data. The report must identify risks, prioritize findings, and align with Salesforce security best practices and compliance requirements (e.g., GDPR, SOX, ISO 27001).
+            cat << 'EOF'
+ROLE: You are a senior Salesforce security architect with 10+ years of experience.
+
+TASK: Analyze the provided Salesforce security configuration data and identify security risks, compliance issues, and optimization opportunities.
+
+ANALYSIS FRAMEWORK:
+1. CRITICAL RISKS: Identify configurations that could lead to data breaches or privilege escalation
+2. COMPLIANCE CHECK: Flag configurations violating common compliance standards (SOX, GDPR, HIPAA, PCI DSS)
+3. BEST PRACTICES: Identify deviations from Salesforce security best practices
+4. OPTIMIZATION: Find redundant permissions and over-provisioned users
+
+COMPLIANCE FRAMEWORKS TO CONSIDER:
+- SOX: Focus on segregation of duties and financial data access
+- GDPR: Check for personal data access controls
+- HIPAA: Healthcare data protection requirements
+- PCI DSS: Payment card information security
+
+SPECIFIC CHECKS TO PERFORM:
+- Profiles with "Modify All Data" on sensitive objects (User, Account, Opportunity)
+- Permission sets granting object permissions without corresponding field-level security
+- Users assigned both high-privilege profiles and additional permission sets
+- Recently changed permissions (last 30 days) that increase access
+- Custom profiles that clone system administrator permissions
+- Object permissions that bypass sharing rules (View All/Modify All)
+- Field-level access to sensitive fields (SSN, salary, financial data)
 
 **Data Provided:**
 1. Profiles: Metadata including Id, Name, UserLicense, Description, CreatedDate, LastModifiedDate
@@ -339,23 +395,25 @@ You are a Salesforce Security Analyst specializing in profiles, permission sets,
 
 **Analysis Rules:**
 - **Risk Rating Criteria:**
-  - **HIGH**: Immediate risk (e.g., Modify All Data on sensitive objects like User, Account; inactive users with active assignments; recent unauthorized changes)
+  - **HIGH**: Immediate risk (e.g., Modify All Data on sensitive objects like User, Account; recent unauthorized changes)
   - **MEDIUM**: Potential risk requiring review (e.g., broad View All access, custom object over-permissions, redundant permissions)
   - **LOW**: Minor issues or best practice improvements (e.g., missing descriptions, non-standard namespaces)
 - Flag profiles/permission sets granting Modify All Data, View All Records, or Delete on sensitive objects (e.g., User, Account, Opportunity, Contact, Custom Objects with sensitive data)
 - Identify over-assigned admin permissions (e.g., System Administrator, Customize Application)
-- Detect permission sets assigned to inactive users or inappropriate roles
+- Detect permission sets assigned to inappropriate roles
 - Highlight custom objects with excessive permissions (e.g., Modify All Data)
 - Check for overlapping permissions between profiles and permission sets that could lead to unintended access
 - Identify sensitive fields (e.g., SSN, Credit Card, Email) with inappropriate Read/Edit access
 - Review SetupAuditTrail for recent changes to profiles, permission sets, or objects; flag unauthorized or risky modifications
 - Validate namespace prefixes for potential third-party or unmanaged package risks
-- Ensure compliance with GDPR (data access restrictions), SOX (audit trails), and Salesforce best practices (least privilege, segregation of duties)
+- Ensure compliance with GDPR (data access restrictions), SOX (audit trails), HIPAA (healthcare data), PCI DSS (payment card data), and Salesforce best practices (least privilege, segregation of duties)
 - Flag permission sets with no assignments or profiles with no users
 - Be specific with IDs, names, objects, fields, and timestamps
 - Provide actionable recommendations with priority (Urgent/High/Medium) and suggested owners (e.g., Salesforce Admin, Security Team)
+- Reference Salesforce best practices and documentation links (e.g., https://help.salesforce.com/s/articleView?id=sf.security_best_practices.htm&type=5)
 - Handle missing data gracefully (e.g., note if audit trail or assignments are unavailable)
 - Base conclusions ONLY on provided data; do not assume or infer beyond the data
+- If data is incomplete, note the limitations
 
 **Data:**
 PROFILES:
@@ -383,7 +441,7 @@ AUDIT TRAIL:
 $audit_data
 EOF
           }
-      
+          
           # Prepare data for analysis
           profiles=$(cat data/profiles.json 2>/dev/null || echo "{}")
           profile_obj_perms=$(cat data/profile_object_perms.json 2>/dev/null || echo "{}")
