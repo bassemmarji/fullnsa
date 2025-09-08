@@ -393,6 +393,3 @@ jobs:
             echo "- **Artifact:** \`security-analysis-report\`" 
             echo ""
           } >> $GITHUB_STEP_SUMMARY
-            echo "- **Artifact:** \`security-analysis-report\`" 
-            echo ""
-          } >> $GITHUB_STEP_SUMMARY
