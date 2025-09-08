@@ -276,7 +276,7 @@ jobs:
           ollama list
       
       - name: Analyze Security Configuration Data
-        run: |
+        run: |-
           REPORT_FILE="security_analysis_report.md"
           MODEL="${{ inputs.model_name }}"
           
@@ -307,139 +307,139 @@ jobs:
             local audit_data="$8"
             
             cat << EOF
-ROLE: You are a senior Salesforce security architect with 10+ years of experience.
-
-TASK: Analyze the provided Salesforce security configuration data and identify security risks, compliance issues, and optimization opportunities.
-
-ANALYSIS FRAMEWORK:
-1. CRITICAL RISKS: Identify configurations that could lead to data breaches or privilege escalation
-2. COMPLIANCE CHECK: Flag configurations violating common compliance standards (SOX, GDPR, HIPAA, PCI DSS)
-3. BEST PRACTICES: Identify deviations from Salesforce security best practices
-4. OPTIMIZATION: Find redundant permissions and over-provisioned users
-
-COMPLIANCE FRAMEWORKS TO CONSIDER:
-- SOX: Focus on segregation of duties and financial data access
-- GDPR: Check for personal data access controls
-- HIPAA: Healthcare data protection requirements
-- PCI DSS: Payment card information security
-
-SPECIFIC CHECKS TO PERFORM:
-- Profiles with "Modify All Data" on sensitive objects (User, Account, Opportunity)
-- Permission sets granting object permissions without corresponding field-level security
-- Users assigned both high-privilege profiles and additional permission sets
-- Recently changed permissions (last 30 days) that increase access
-- Custom profiles that clone system administrator permissions
-- Object permissions that bypass sharing rules (View All/Modify All)
-- Field-level access to sensitive fields (SSN, salary, financial data)
-
-**Data Provided:**
-1. Profiles: Metadata including Id, Name, UserLicense, Description, CreatedDate, LastModifiedDate
-2. Profile Object Permissions: Object-level access (Read, Create, Edit, Delete, View All, Modify All)
-3. Profile Field Permissions: Field-level access (Read, Edit) for profiles
-4. Permission Sets: Metadata including Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix
-5. Permission Set Object Permissions: Object-level access for permission sets
-6. Permission Set Field Permissions: Field-level access for permission sets
-7. Permission Set Assignments: User assignments to permission sets
-8. SetupAuditTrail: Recent changes to permissions, profiles, or objects
-
-**Required Output Format (Markdown):**
-
-## 🚨 Critical Security Findings
-| Severity | Finding | Evidence | Recommendation | Priority | Owner |
-|----------|---------|----------|----------------|----------|-------|
-| HIGH/MEDIUM/LOW | Detailed description of issue | Specific Profile/PermSet ID, Object, Field, or User | Actionable steps with timeline | Urgent/High/Medium | Role or team responsible |
-
-## 👥 Profile Analysis
-| Profile Name | Key Permissions | Objects Affected | Risk Level | Notes |
-|--------------|-----------------|------------------|------------|-------|
-| [Name] | List risky perms (e.g., Modify All Data on Account) | Objects impacted | HIGH/MEDIUM/LOW | Reasoning and context |
-
-## 🔑 Permission Sets Analysis
-| Permission Set Name | Key Permissions | Assigned Users | Objects Affected | Risk Level | Notes |
-|---------------------|-----------------|---------------|------------------|------------|-------|
-| [Name] | List risky perms | Number of users or specific users | Objects impacted | HIGH/MEDIUM/LOW | Reasoning and context |
-
-## 🔄 Permission Overlaps and Redundancies
-| Profile/PermSet Pair | Overlapping Permissions | Objects/Fields | Risk Level | Recommendation |
-|----------------------|-------------------------|---------------|------------|----------------|
-| [Profile/PermSet Names] | Permissions granted by both | Affected objects/fields | HIGH/MEDIUM/LOW | Steps to consolidate or remove redundancy |
-
-## 👤 User Assignment Analysis
-| Issue | Affected Users | Permission Sets | Risk Level | Recommendation |
-|-------|----------------|-----------------|------------|----------------|
-| [e.g., Inactive User Assigned] | User IDs/Names | PermSet Names | HIGH/MEDIUM/LOW | Action to resolve |
-
-## 📊 Over-Permissions and Least Privilege Violations
-- **Admin-like Profiles:** Profiles with System Administrator or excessive permissions
-- **Broad Object Access:** Objects with View All/Modify All enabled unnecessarily
-- **Sensitive Field Access:** Fields (e.g., SSN, Credit Card) editable by non-privileged users
-- **Custom Object Risks:** Excessive access to custom objects
-- **Namespace Issues:** Custom or non-standard namespace permissions
-
-## 🔐 Compliance and Best Practices
-| Compliance Area | Issue | Evidence | Recommendation |
-|-----------------|-------|----------|----------------|
-| [e.g., GDPR, SOX] | Description of non-compliance | Specific permissions or assignments | Steps to align with compliance |
-
-## 🔄 Recent Changes Review
-| Date | Action | Changed By | Impact | Risk Level | Recommendation |
-|------|--------|------------|--------|------------|----------------|
-| [Timestamp] | [Action, e.g., Permission Modified] | User ID/Name | Affected Profile/PermSet | HIGH/MEDIUM/LOW | Action to validate or revert |
-
-## 📋 Summary of Findings
-- **Total Profiles Analyzed:** [Number]
-- **Total Permission Sets Analyzed:** [Number]
-- **Total Assignments Reviewed:** [Number]
-- **Key Risks Identified:** [Summary of high-priority issues]
-- **Next Steps:** [High-level recommendations and follow-up actions]
-
-**Analysis Rules:**
-- **Risk Rating Criteria:**
-  - **HIGH**: Immediate risk (e.g., Modify All Data on sensitive objects like User, Account; recent unauthorized changes)
-  - **MEDIUM**: Potential risk requiring review (e.g., broad View All access, custom object over-permissions, redundant permissions)
-  - **LOW**: Minor issues or best practice improvements (e.g., missing descriptions, non-standard namespaces)
-- Flag profiles/permission sets granting Modify All Data, View All Records, or Delete on sensitive objects (e.g., User, Account, Opportunity, Contact, Custom Objects with sensitive data)
-- Identify over-assigned admin permissions (e.g., System Administrator, Customize Application)
-- Detect permission sets assigned to inappropriate roles
-- Highlight custom objects with excessive permissions (e.g., Modify All Data)
-- Check for overlapping permissions between profiles and permission sets that could lead to unintended access
-- Identify sensitive fields (e.g., SSN, Credit Card, Email) with inappropriate Read/Edit access
-- Review SetupAuditTrail for recent changes to profiles, permission sets, or objects; flag unauthorized or risky modifications
-- Validate namespace prefixes for potential third-party or unmanaged package risks
-- Ensure compliance with GDPR (data access restrictions), SOX (audit trails), HIPAA (healthcare data), PCI DSS (payment card data), and Salesforce best practices (least privilege, segregation of duties)
-- Flag permission sets with no assignments or profiles with no users
-- Be specific with IDs, names, objects, fields, and timestamps
-- Provide actionable recommendations with priority (Urgent/High/Medium) and suggested owners (e.g., Salesforce Admin, Security Team)
-- Reference Salesforce best practices and documentation links (e.g., https://help.salesforce.com/s/articleView?id=sf.security_best_practices.htm&type=5)
-- Handle missing data gracefully (e.g., note if audit trail or assignments are unavailable)
-- Base conclusions ONLY on provided data; do not assume or infer beyond the data
-- If data is incomplete, note the limitations
-
-**Data:**
-PROFILES:
-$profiles
-
-PROFILE OBJECT PERMS:
-$profile_obj_perms
-
-PROFILE FIELD PERMS:
-$profile_field_perms
-
-PERMISSION SETS:
-$permsets
-
-PERMSET OBJECT PERMS:
-$permset_obj_perms
-
-PERMSET FIELD PERMS:
-$permset_field_perms
-
-ASSIGNMENTS:
-$assignments
-
-AUDIT TRAIL:
-$audit_data
-EOF
+            ROLE: You are a senior Salesforce security architect with 10+ years of experience.
+            
+            TASK: Analyze the provided Salesforce security configuration data and identify security risks, compliance issues, and optimization opportunities.
+            
+            ANALYSIS FRAMEWORK:
+            1. CRITICAL RISKS: Identify configurations that could lead to data breaches or privilege escalation
+            2. COMPLIANCE CHECK: Flag configurations violating common compliance standards (SOX, GDPR, HIPAA, PCI DSS)
+            3. BEST PRACTICES: Identify deviations from Salesforce security best practices
+            4. OPTIMIZATION: Find redundant permissions and over-provisioned users
+            
+            COMPLIANCE FRAMEWORKS TO CONSIDER:
+            - SOX: Focus on segregation of duties and financial data access
+            - GDPR: Check for personal data access controls
+            - HIPAA: Healthcare data protection requirements
+            - PCI DSS: Payment card information security
+            
+            SPECIFIC CHECKS TO PERFORM:
+            - Profiles with "Modify All Data" on sensitive objects (User, Account, Opportunity)
+            - Permission sets granting object permissions without corresponding field-level security
+            - Users assigned both high-privilege profiles and additional permission sets
+            - Recently changed permissions (last 30 days) that increase access
+            - Custom profiles that clone system administrator permissions
+            - Object permissions that bypass sharing rules (View All/Modify All)
+            - Field-level access to sensitive fields (SSN, salary, financial data)
+            
+            **Data Provided:**
+            1. Profiles: Metadata including Id, Name, UserLicense, Description, CreatedDate, LastModifiedDate
+            2. Profile Object Permissions: Object-level access (Read, Create, Edit, Delete, View All, Modify All)
+            3. Profile Field Permissions: Field-level access (Read, Edit) for profiles
+            4. Permission Sets: Metadata including Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix
+            5. Permission Set Object Permissions: Object-level access for permission sets
+            6. Permission Set Field Permissions: Field-level access for permission sets
+            7. Permission Set Assignments: User assignments to permission sets
+            8. SetupAuditTrail: Recent changes to permissions, profiles, or objects
+            
+            **Required Output Format (Markdown):**
+            
+            ## 🚨 Critical Security Findings
+            | Severity | Finding | Evidence | Recommendation | Priority | Owner |
+            |----------|---------|----------|----------------|----------|-------|
+            | HIGH/MEDIUM/LOW | Detailed description of issue | Specific Profile/PermSet ID, Object, Field, or User | Actionable steps with timeline | Urgent/High/Medium | Role or team responsible |
+            
+            ## 👥 Profile Analysis
+            | Profile Name | Key Permissions | Objects Affected | Risk Level | Notes |
+            |--------------|-----------------|------------------|------------|-------|
+            | [Name] | List risky perms (e.g., Modify All Data on Account) | Objects impacted | HIGH/MEDIUM/LOW | Reasoning and context |
+            
+            ## 🔑 Permission Sets Analysis
+            | Permission Set Name | Key Permissions | Assigned Users | Objects Affected | Risk Level | Notes |
+            |---------------------|-----------------|---------------|------------------|------------|-------|
+            | [Name] | List risky perms | Number of users or specific users | Objects impacted | HIGH/MEDIUM/LOW | Reasoning and context |
+            
+            ## 🔄 Permission Overlaps and Redundancies
+            | Profile/PermSet Pair | Overlapping Permissions | Objects/Fields | Risk Level | Recommendation |
+            |----------------------|-------------------------|---------------|------------|----------------|
+            | [Profile/PermSet Names] | Permissions granted by both | Affected objects/fields | HIGH/MEDIUM/LOW | Steps to consolidate or remove redundancy |
+            
+            ## 👤 User Assignment Analysis
+            | Issue | Affected Users | Permission Sets | Risk Level | Recommendation |
+            |-------|----------------|-----------------|------------|----------------|
+            | [e.g., Inactive User Assigned] | User IDs/Names | PermSet Names | HIGH/MEDIUM/LOW | Action to resolve |
+            
+            ## 📊 Over-Permissions and Least Privilege Violations
+            - **Admin-like Profiles:** Profiles with System Administrator or excessive permissions
+            - **Broad Object Access:** Objects with View All/Modify All enabled unnecessarily
+            - **Sensitive Field Access:** Fields (e.g., SSN, Credit Card) editable by non-privileged users
+            - **Custom Object Risks:** Excessive access to custom objects
+            - **Namespace Issues:** Custom or non-standard namespace permissions
+            
+            ## 🔐 Compliance and Best Practices
+            | Compliance Area | Issue | Evidence | Recommendation |
+            |-----------------|-------|----------|----------------|
+            | [e.g., GDPR, SOX] | Description of non-compliance | Specific permissions or assignments | Steps to align with compliance |
+            
+            ## 🔄 Recent Changes Review
+            | Date | Action | Changed By | Impact | Risk Level | Recommendation |
+            |------|--------|------------|--------|------------|----------------|
+            | [Timestamp] | [Action, e.g., Permission Modified] | User ID/Name | Affected Profile/PermSet | HIGH/MEDIUM/LOW | Action to validate or revert |
+            
+            ## 📋 Summary of Findings
+            - **Total Profiles Analyzed:** [Number]
+            - **Total Permission Sets Analyzed:** [Number]
+            - **Total Assignments Reviewed:** [Number]
+            - **Key Risks Identified:** [Summary of high-priority issues]
+            - **Next Steps:** [High-level recommendations and follow-up actions]
+            
+            **Analysis Rules:**
+            - **Risk Rating Criteria:**
+              - **HIGH**: Immediate risk (e.g., Modify All Data on sensitive objects like User, Account; recent unauthorized changes)
+              - **MEDIUM**: Potential risk requiring review (e.g., broad View All access, custom object over-permissions, redundant permissions)
+              - **LOW**: Minor issues or best practice improvements (e.g., missing descriptions, non-standard namespaces)
+            - Flag profiles/permission sets granting Modify All Data, View All Records, or Delete on sensitive objects (e.g., User, Account, Opportunity, Contact, Custom Objects with sensitive data)
+            - Identify over-assigned admin permissions (e.g., System Administrator, Customize Application)
+            - Detect permission sets assigned to inappropriate roles
+            - Highlight custom objects with excessive permissions (e.g., Modify All Data)
+            - Check for overlapping permissions between profiles and permission sets that could lead to unintended access
+            - Identify sensitive fields (e.g., SSN, Credit Card, Email) with inappropriate Read/Edit access
+            - Review SetupAuditTrail for recent changes to profiles, permission sets, or objects; flag unauthorized or risky modifications
+            - Validate namespace prefixes for potential third-party or unmanaged package risks
+            - Ensure compliance with GDPR (data access restrictions), SOX (audit trails), HIPAA (healthcare data), PCI DSS (payment card data), and Salesforce best practices (least privilege, segregation of duties)
+            - Flag permission sets with no assignments or profiles with no users
+            - Be specific with IDs, names, objects, fields, and timestamps
+            - Provide actionable recommendations with priority (Urgent/High/Medium) and suggested owners (e.g., Salesforce Admin, Security Team)
+            - Reference Salesforce best practices and documentation links (e.g., https://help.salesforce.com/s/articleView?id=sf.security_best_practices.htm&type=5)
+            - Handle missing data gracefully (e.g., note if audit trail or assignments are unavailable)
+            - Base conclusions ONLY on provided data; do not assume or infer beyond the data
+            - If data is incomplete, note the limitations
+            
+            **Data:**
+            PROFILES:
+            $profiles
+            
+            PROFILE OBJECT PERMS:
+            $profile_obj_perms
+            
+            PROFILE FIELD PERMS:
+            $profile_field_perms
+            
+            PERMISSION SETS:
+            $permsets
+            
+            PERMSET OBJECT PERMS:
+            $permset_obj_perms
+            
+            PERMSET FIELD PERMS:
+            $permset_field_perms
+            
+            ASSIGNMENTS:
+            $assignments
+            
+            AUDIT TRAIL:
+            $audit_data
+            EOF
           }
           
           # Prepare data for analysis
