@@ -229,9 +229,9 @@ jobs:
       - name: 📄 Summary of Collected Data
         run: |
           {
-            echo "## 📊 Data Collection Summary" 
-            echo "- Org Alias: **$ORG_ALIAS**" 
-            echo "- Profiles Found: **${{ steps.query-profiles.outputs.profile_count }}**" 
+            echo "## 📊 Data Collection Summary"
+            echo "- Org Alias: **$ORG_ALIAS**"
+            echo "- Profiles Found: **${{ steps.query-profiles.outputs.profile_count }}**"
             echo "- Permission Sets: **${{ steps.query-permsets.outputs.permset_count }}**"
             if [ "${{ steps.check-data.outputs.has_data }}" = "true" ]; then
               echo "- Data Available: ✅ **Yes**"
@@ -306,7 +306,7 @@ jobs:
             local assignments="$7"
             local audit_data="$8"
             
-            cat << 'EOF'
+            cat << EOF
 ROLE: You are a senior Salesforce security architect with 10+ years of experience.
 
 TASK: Analyze the provided Salesforce security configuration data and identify security risks, compliance issues, and optimization opportunities.
@@ -478,10 +478,10 @@ EOF
             echo "## 🧠 Security Configuration Analysis Summary"
             profile_count=$(jq -r '.result.totalSize // 0' data/profiles.json 2>/dev/null || echo '0')
             permset_count=$(jq -r '.result.totalSize // 0' data/permission_sets.json 2>/dev/null || echo '0')
-            echo "- **Profiles Analyzed:** $profile_count" 
+            echo "- **Profiles Analyzed:** $profile_count"
             echo "- **Permission Sets Analyzed:** $permset_count"
             echo "- **AI Model:** \`$MODEL\`"
             echo "- **Report:** \`security_analysis_report.md\`"
-            echo "- **Artifact:** \`security-analysis-report\`" 
+            echo "- **Artifact:** \`security-analysis-report\`"
             echo ""
           } >> $GITHUB_STEP_SUMMARY
