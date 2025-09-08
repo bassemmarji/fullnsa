@@ -158,7 +158,7 @@ jobs:
           LAST_ID=""
           while true; do
             WHERE_CLAUSE=""
-            [ -n "$LAST_ID" ] && WHERE_CLAUSE="WHERE Id > '$LAST_ID'"
+            [ -n "$LAST_ID" ] && WHERE_CLAUSE="AND Id > '$LAST_ID'"
             
             RESULT_FILE="$DATA_DIR/setup_audit_temp.json"
             sf data query \
