@@ -71,7 +71,6 @@ jobs:
       - name: 🔐 Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
-          echo "Logged in as: $(sf org display --json | jq -r '.result.username')"
 
       - name: 🧾 Log Workflow Invoker
         run: |
