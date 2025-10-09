@@ -71,11 +71,12 @@ jobs:
       - name: 🔐 Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
-            --alias $ORG_ALIAS --set-default --sfdx-url-stdin > /dev/null
+            --alias "$ORG_ALIAS" --set-default --sfdx-url-stdin > /dev/null
           echo "Logged in as: $(sf org display --json | jq -r '.result.username')"
 
       - name: 🧾 Log Workflow Invoker
-        run: echo "Triggered by: ${{ github.actor }} on $(date -u)" > audit.log
+        run: |
+          echo "Triggered by: ${{ github.actor }} on $(date -u)" > audit.log
 
       - name: Query Profiles (using --all)
         run: |
@@ -83,7 +84,7 @@ jobs:
           sf data query \
             --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile" \
             --target-org "$ORG_ALIAS" --result-format json --all > "$DATA_DIR/profiles.json"
-          jq -r '.result.totalSize // 0' "$DATA_DIR/profiles.json" > "$DATA_DIR/profile_count.txt"
+          jq -r '.result.totalSize // 0' "$DATA_DIR/profiles.json" | tee "$DATA_DIR/profile_count.txt"
 
       - name: Upload Profiles Artifact
         uses: actions/upload-artifact@v4
@@ -101,7 +102,7 @@ jobs:
       - name: 🔐 Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
-            --alias $ORG_ALIAS --set-default --sfdx-url-stdin > /dev/null
+            --alias "$ORG_ALIAS" --set-default --sfdx-url-stdin > /dev/null
 
       - name: Query Permission Sets (using --all)
         run: |
@@ -109,7 +110,7 @@ jobs:
           sf data query \
             --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix, CreatedDate, LastModifiedDate FROM PermissionSet" \
             --target-org "$ORG_ALIAS" --result-format json --all > "$DATA_DIR/permission_sets.json"
-          jq -r '.result.totalSize // 0' "$DATA_DIR/permission_set_count.txt"
+          jq -r '.result.totalSize // 0' "$DATA_DIR/permission_sets.json" | tee "$DATA_DIR/permission_set_count.txt"
 
       - name: Upload Permission Sets Artifact
         uses: actions/upload-artifact@v4
@@ -139,7 +140,10 @@ jobs:
           export PATH="$HOME/.ollama/bin:$PATH"
           ollama serve &
           for i in {1..30}; do
-            curl -s http://localhost:11434/api/version && break
+            if curl -s http://localhost:11434/api/version >/dev/null; then
+              echo "Ollama server is ready"
+              break
+            fi
             sleep 2
           done
 
@@ -153,34 +157,36 @@ jobs:
       - name: Summarize JSON for Analysis
         run: |
           mkdir -p summaries
-          jq '[.result.records[] | {Id, Name, UserLicense: .UserLicense.Name}]' data/profiles.json > summaries/profiles_summary.json
-          jq '[.result.records[] | {Id, Name, IsOwnedByProfile, Profile: .Profile.Name}]' data/permission_sets.json > summaries/permsets_summary.json
+          jq '[.result.records[] | {Id, Name, UserLicense: .UserLicense.Name}]' data/profiles-data/profiles.json > summaries/profiles_summary.json
+          jq '[.result.records[] | {Id, Name, IsOwnedByProfile, Profile: .Profile.Name}]' data/permset-data/permission_sets.json > summaries/permsets_summary.json
 
       - name: Generate AI Analysis Report
         run: |
           REPORT_FILE="security_analysis_report.md"
           MODEL="${{ inputs.model_name }}"
-          echo "# AI Security Analysis Report" > "$REPORT_FILE"
-          echo "**Analysis Date:** $(date)" >> "$REPORT_FILE"
-          echo "**Model Used:** $MODEL" >> "$REPORT_FILE"
-          echo "**Run ID:** ${{ github.run_id }}" >> "$REPORT_FILE"
-          echo "**Triggered by:** ${{ github.actor }}" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
-          
-          echo "## 📊 Data Summary" >> "$REPORT_FILE"
-          echo "- Profiles: $(jq -r '. | length' summaries/profiles_summary.json)" >> "$REPORT_FILE"
-          echo "- Permission Sets: $(jq -r '. | length' summaries/permsets_summary.json)" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
+          {
+            echo "# AI Security Analysis Report"
+            echo "**Analysis Date:** $(date)"
+            echo "**Model Used:** $MODEL"
+            echo "**Run ID:** ${{ github.run_id }}"
+            echo "**Triggered by:** ${{ github.actor }}"
+            echo ""
+            echo "## 📊 Data Summary"
+            echo "- Profiles: $(jq -r '. | length' summaries/profiles_summary.json)"
+            echo "- Permission Sets: $(jq -r '. | length' summaries/permsets_summary.json)"
+            echo ""
+            echo "## 🤖 AI Analysis Output"
+          } > "$REPORT_FILE"
 
-          echo "🤖 Generating AI analysis..."
-          (cat summaries/profiles_summary.json summaries/permsets_summary.json | ollama run "$MODEL" >> "$REPORT_FILE") \
-            || echo "⚠️ AI analysis failed or model unavailable." >> "$REPORT_FILE"
+          if ! (cat summaries/profiles_summary.json summaries/permsets_summary.json | ollama run "$MODEL" >> "$REPORT_FILE"); then
+            echo "⚠️ AI analysis failed or model unavailable." >> "$REPORT_FILE"
+          fi
 
       - name: End Timing and Record Duration
         run: |
           end_time=$(date +%s)
-          duration=$((end_time - $start_time))
-          echo "Total Duration: ${duration}s" >> metrics.log
+          duration=$((end_time - start_time))
+          echo "Total Duration: ${duration}s" | tee metrics.log
           echo "duration=${duration}" >> $GITHUB_ENV
 
       - name: Upload Analysis Report
