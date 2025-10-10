@@ -303,10 +303,10 @@ jobs:
           TASK: Analyze the provided Salesforce security configuration data and identify security risks, compliance issues, and optimization opportunities.
           
           ANALYSIS FRAMEWORK:
-          1. CRITICAL RISKS: Identify configurations that could lead to data breaches or privilege escalation
-          2. COMPLIANCE CHECK: Flag configurations violating common compliance standards (SOX, GDPR, HIPAA, PCI DSS)
-          3. BEST PRACTICES: Identify deviations from Salesforce security best practices
-          4. OPTIMIZATION: Find redundant permissions and over-provisioned users
+          1. CRITICAL RISKS: Identify configurations that could lead to data breaches or privilege escalation.
+          2. COMPLIANCE CHECK: Flag configurations violating common compliance standards (SOX, GDPR, HIPAA, PCI DSS).
+          3. BEST PRACTICES: Identify deviations from Salesforce security best practices, enforcing least privilege, role-based access, regular audits, and field-level security for sensitive data.
+          4. OPTIMIZATION: Find redundant permissions and over-provisioned users.
           
           COMPLIANCE FRAMEWORKS TO CONSIDER:
           - SOX: Focus on segregation of duties and financial data access
