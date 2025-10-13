@@ -1,0 +1,413 @@
+name: AI-Powered Data Model Analyzer
+
+on:
+  workflow_dispatch:
+    inputs:
+      org_alias:
+        type: string
+        description: "Salesforce org alias"
+        required: true
+        default: "dev"
+      model_name:
+        type: choice
+        description: "Ollama model to use"
+        options:
+          - llama3:latest
+          - gpt-oss:latest
+        default: llama3:latest
+
+env:
+  ORG_ALIAS: ${{ github.event.inputs.org_alias }}
+  MODEL_NAME: ${{ github.event.inputs.model_name }}
+  NODE_VERSION: "20"
+  DATA_DIR: "data-model-data"
+
+jobs:
+  collect-data-model:
+    name: Collect Data Model Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      object_count: ${{ steps.query-objects.outputs.object_count }}
+      field_count: ${{ steps.query-fields.outputs.field_count }}
+      has_data: ${{ steps.check-data.outputs.has_data }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          npm install --global @salesforce/cli
+          sf plugins:update
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 🔐 Authenticate to Salesforce Org
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+          sf org list
+
+      - name: Query Object Definitions
+        id: query-objects
+        run: |
+          mkdir -p "$DATA_DIR"
+          echo "🔍 Querying object definitions..."
+          
+          # Query standard and custom objects
+          sf data query \
+            --query "SELECT Id, DeveloperName, NamespacePrefix, Description, 
+                            SharingModel, ExternalSharingModel, InternalSharingModel,
+                            CreatedDate, LastModifiedDate
+                     FROM EntityDefinition 
+                     WHERE IsCustomizable = true 
+                     ORDER BY DeveloperName" \
+            --use-tooling-api \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/objects.json"
+
+          object_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/objects.json")
+          echo "object_count=$object_count" >> $GITHUB_OUTPUT
+
+      - name: Query Field Definitions
+        id: query-fields
+        run: |
+          echo "🔍 Querying field definitions..."
+          
+          # Get field metadata for all objects
+          sf data query \
+            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
+                            DataType, IsCustom, IsIndexed, IsUnique, IsExternalId,
+                            IsCompound, IsCalculated, IsNillable, IsEncrypted,
+                            Length, Precision, Scale, Description,
+                            RelationshipName, RelationshipOrder, ReferenceTo,
+                            CreatedDate, LastModifiedDate
+                     FROM FieldDefinition 
+                     ORDER BY EntityDefinition.DeveloperName, QualifiedApiName" \
+            --use-tooling-api \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/fields.json"
+
+          field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
+          echo "field_count=$field_count" >> $GITHUB_OUTPUT
+
+      - name: Query Relationships
+        timeout-minutes: 5
+        run: |
+          echo "🔗 Querying relationship metadata..."
+          
+          # Query for relationship fields specifically
+          sf data query \
+            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName,
+                            RelationshipName, ReferenceTo, RelationshipOrder
+                     FROM FieldDefinition 
+                     WHERE DataType = 'Lookup' OR DataType = 'MasterDetail'
+                     ORDER BY EntityDefinition.DeveloperName" \
+            --use-tooling-api \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/relationships.json"
+
+      - name: Query Validation Rules
+        timeout-minutes: 5
+        run: |
+          echo "⚡ Querying validation rules..."
+          
+          sf data query \
+            --query "SELECT Id, EntityDefinition.DeveloperName, ValidationName,
+                            Active, ErrorConditionFormula, ErrorDisplayField,
+                            ErrorMessage, Description, CreatedDate, LastModifiedDate
+                     FROM ValidationRule 
+                     ORDER BY EntityDefinition.DeveloperName" \
+            --use-tooling-api \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/validation_rules.json"
+
+      - name: Query Triggers and Automation
+        timeout-minutes: 10
+        run: |
+          echo "🤖 Querying triggers and automation..."
+          
+          # Query Apex Triggers
+          sf data query \
+            --query "SELECT Id, Name, TableEnumOrId, UsageBefore, UsageAfter,
+                            UsageIsBulk, Status, CreatedDate, LastModifiedDate
+                     FROM ApexTrigger 
+                     ORDER BY TableEnumOrId" \
+            --use-tooling-api \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/triggers.json"
+
+          # Query Flows (simplified metadata)
+          sf data query \
+            --query "SELECT Id, DeveloperName, Description, Status, 
+                            ProcessType, CreatedDate, LastModifiedDate
+                     FROM FlowDefinition 
+                     ORDER BY DeveloperName" \
+            --use-tooling-api \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/flows.json"
+
+      - name: Query Record Type and Page Layout Info
+        run: |
+          echo "📋 Querying record types and layouts..."
+          
+          # Query Record Types
+          sf data query \
+            --query "SELECT Id, DeveloperName, SobjectType, Name, Description,
+                            IsActive, CreatedDate, LastModifiedDate
+                     FROM RecordType 
+                     ORDER BY SobjectType" \
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/record_types.json"
+
+      - name: Check Data Availability
+        id: check-data
+        run: |
+          object_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/objects.json" 2>/dev/null || echo "0")
+          field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json" 2>/dev/null || echo "0")
+          
+          if [ "$object_count" -eq 0 ]; then
+            echo "⚠️ No object metadata found"
+            echo "has_data=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found data model metadata to analyze"
+            echo "has_data=true" >> $GITHUB_OUTPUT
+            
+            # Create data model summary
+            jq -r --arg objects "$object_count" --arg fields "$field_count" '{
+              summary: {
+                total_objects: ($objects | tonumber),
+                total_fields: ($fields | tonumber),
+                analysis_timestamp: (now | todate),
+                data_points: [
+                  "Object Definitions",
+                  "Field Definitions", 
+                  "Relationships",
+                  "Validation Rules",
+                  "Triggers & Automation"
+                ]
+              }
+            }' <<< '{}' > "$DATA_DIR/data_summary.json"
+          fi
+
+      - name: Upload Data Model Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-model-metadata
+          path: ${{ env.DATA_DIR }}
+          retention-days: 7
+
+      - name: 📊 Data Model Collection Summary
+        run: |
+          {
+            echo "## 📊 Data Model Collection Summary"
+            echo "- Org Alias: **$ORG_ALIAS**"
+            echo "- Objects Found: **${{ steps.query-objects.outputs.object_count }}**"
+            echo "- Fields Found: **${{ steps.query-fields.outputs.field_count }}**"
+            if [ "${{ steps.check-data.outputs.has_data }}" = "true" ]; then
+              echo "- Data Available: ✅ **Yes**"
+              echo "- Artifact: \`data-model-metadata\`"
+            else
+              echo "- Data Available: ❌ **No data found**"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+  analyze-data-architecture:
+    name: Analyze Data Architecture with AI
+    runs-on: ubuntu-latest
+    needs: collect-data-model
+    if: needs.collect-data-model.outputs.has_data == 'true'
+    steps:
+      - name: Download Data Model Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: data-model-metadata
+          path: data
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh -o install.sh
+          chmod +x install.sh && ./install.sh
+          echo "$HOME/.ollama/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.ollama/bin:$PATH"
+          ollama serve &
+          for i in {1..30}; do
+            curl -s http://localhost:11434/api/version && break
+            sleep 2
+          done
+
+      - name: Download Model
+        timeout-minutes: 30
+        run: |
+          MODEL="$MODEL_NAME"
+          echo "📥 Downloading Ollama model: $MODEL"
+          ollama pull "$MODEL"
+          ollama list
+
+      - name: Analyze Data Architecture
+        run: |
+          REPORT_FILE="data_architecture_analysis.md"
+          MODEL="$MODEL_NAME"
+          
+          echo "# AI Data Model Architecture Analysis Report" > "$REPORT_FILE"
+          echo "**Analysis Date:** $(date)" >> "$REPORT_FILE"
+          echo "**Model Used:** $MODEL" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+
+          # Generate comprehensive analysis prompt
+          generate_analysis_prompt() {
+            local objects="$1"
+            local fields="$2"
+            local relationships="$3"
+            local validations="$4"
+            local triggers="$5"
+            local flows="$6"
+            local record_types="$7"
+            
+            cat <<'EOF'
+ROLE: You are a senior Salesforce data architect with 15+ years of experience designing enterprise-scale data models.
+
+TASK: Analyze the provided Salesforce data model metadata and provide comprehensive architecture recommendations.
+
+ANALYSIS FRAMEWORK:
+1. DATA MODEL HEALTH: Normalization, naming conventions, relationship integrity
+2. PERFORMANCE: Indexing, data volume considerations, query patterns
+3. MAINTAINABILITY: Complexity, documentation, technical debt
+4. SCALABILITY: Architecture for growth, governor limit considerations
+
+SPECIFIC CHECKS TO PERFORM:
+- Identify denormalized data that should be normalized
+- Find missing relationships between related objects
+- Flag objects without proper indexing strategies
+- Detect redundant or unused fields
+- Analyze relationship types (Lookup vs Master-Detail) for appropriateness
+- Review validation rule complexity and performance impact
+- Assess trigger and automation complexity on objects
+- Identify business process gaps in record type structure
+
+**Required Output Format (Markdown):**
+
+## 🏗️ Data Architecture Health Assessment
+| Category | Score (1-10) | Key Findings | Recommendations |
+|----------|--------------|--------------|-----------------|
+| Normalization | | Denormalized structures found | Specific normalization steps |
+| Relationship Design | | Missing/inappropriate relationships | Relationship improvements |
+| Performance | | Indexing, volume issues | Performance optimizations |
+| Maintainability | | Complexity, naming issues | Simplification strategies |
+
+## 🔗 Relationship Analysis
+| Object Pair | Current Relationship | Issue | Recommended Relationship | Business Impact |
+|-------------|---------------------|-------|-------------------------|----------------|
+| [Object A] → [Object B] | Lookup | Missing cascade delete | Master-Detail | Data integrity risk |
+
+## 📊 Object Complexity Analysis
+| Object Name | Field Count | Triggers | Validation Rules | Complexity Score | Notes |
+|-------------|-------------|----------|------------------|------------------|-------|
+| [Object] | [Count] | [Trigger count] | [Rule count] | High/Medium/Low | Architecture notes |
+
+## 🗑️ Redundancy & Cleanup Opportunities
+| Object/Field | Type | Redundancy Reason | Cleanup Recommendation | Effort |
+|-------------|------|-------------------|------------------------|--------|
+| [Field Name] | Field | Duplicate of X | Remove field | Low/Med/High |
+
+## ⚡ Performance Recommendations
+| Object | Issue | Impact | Recommendation | Priority |
+|--------|-------|--------|----------------|----------|
+| [Object] | No indexed fields | High query cost | Add index on FieldX | High |
+
+## 🔄 Business Process Mapping
+| Business Process | Supporting Objects | Gaps | Data Flow Efficiency | Improvement Ideas |
+|------------------|-------------------|------|---------------------|------------------|
+| [Process] | [Objects] | Missing validation | Inefficient | Streamlining steps |
+
+## 📝 Data Governance Findings
+| Area | Current State | Recommended State | Compliance Risk |
+|------|---------------|-------------------|-----------------|
+| Field Naming | Inconsistent | Standardized | Low/Med/High |
+| Documentation | 40% documented | 90% documented | Medium |
+
+**Analysis Rules:**
+- Focus on practical, actionable recommendations
+- Consider Salesforce platform limitations and best practices
+- Prioritize recommendations by business impact and implementation effort
+- Suggest specific field deletions, relationship changes, index additions
+- Identify opportunities for external objects vs standard/custom objects
+- Highlight governor limit concerns in complex automations
+- Base all conclusions ONLY on provided metadata
+
+**Data:**
+OBJECT DEFINITIONS:
+EOF
+            echo "$objects"
+            cat <<'EOF'
+
+FIELD DEFINITIONS:
+EOF
+            echo "$fields"
+            cat <<'EOF'
+
+RELATIONSHIPS:
+EOF
+            echo "$relationships"
+            cat <<'EOF'
+
+VALIDATION RULES:
+EOF
+            echo "$validations"
+            cat <<'EOF'
+
+TRIGGERS:
+EOF
+            echo "$triggers"
+            cat <<'EOF'
+
+FLOWS:
+EOF
+            echo "$flows"
+            cat <<'EOF'
+
+RECORD TYPES:
+EOF
+            echo "$record_types"
+          }
+
+          # Prepare data for analysis
+          objects=$(cat data/objects.json 2>/dev/null || echo "{}")
+          fields=$(cat data/fields.json 2>/dev/null || echo "{}")
+          relationships=$(cat data/relationships.json 2>/dev/null || echo "{}")
+          validations=$(cat data/validation_rules.json 2>/dev/null || echo "{}")
+          triggers=$(cat data/triggers.json 2>/dev/null || echo "{}")
+          flows=$(cat data/flows.json 2>/dev/null || echo "{}")
+          record_types=$(cat data/record_types.json 2>/dev/null || echo "{}")
+
+          echo "🤖 Generating comprehensive data architecture analysis..."
+          generate_analysis_prompt "$objects" "$fields" "$relationships" "$validations" "$triggers" "$flows" "$record_types" | ollama run "$MODEL" >> "$REPORT_FILE"
+
+          # Add technical appendix
+          echo -e "\n---\n" >> "$REPORT_FILE"
+          echo "## 📋 Technical Metadata Summary" >> "$REPORT_FILE"
+          echo "- **Total Objects Analyzed:** $(jq -r '.result.totalSize // 0' data/objects.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
+          echo "- **Total Fields Analyzed:** $(jq -r '.result.totalSize // 0' data/fields.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
+          echo "- **Analysis Timestamp:** $(date)" >> "$REPORT_FILE"
+
+      - name: Upload Architecture Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-architecture-report
+          path: data_architecture_analysis.md
+          retention-days: 14
+
+      - name: 📄 Data Architecture Summary
+        run: |
+          {
+            echo "## 🏗️ Data Architecture Analysis Summary"
+            object_count=$(jq -r '.result.totalSize // 0' data/objects.json 2>/dev/null || echo '0')
+            field_count=$(jq -r '.result.totalSize // 0' data/fields.json 2>/dev/null || echo '0')
+            echo "- **Objects Analyzed:** $object_count"
+            echo "- **Fields Analyzed:** $field_count"
+            echo "- **AI Model:** \`$MODEL_NAME\`"
+            echo "- **Report:** \`data_architecture_analysis.md\`"
+            echo "- **Artifact:** \`data-architecture-report\`"
+          } >> $GITHUB_STEP_SUMMARY
