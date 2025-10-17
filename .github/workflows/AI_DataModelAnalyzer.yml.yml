@@ -78,7 +78,7 @@ jobs:
           # Get field metadata for all objects
           sf data query \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
-                            DataType, IsIndexed, IsUnique, IsExternalId,
+                            DataType, IsIndexed, 
                             IsCompound, IsCalculated, IsNillable,
                             Length, Precision, Scale, Description,
                             RelationshipName, RelationshipOrder, ReferenceTo
@@ -87,9 +87,9 @@ jobs:
             --use-tooling-api \
             --target-org "$ORG_ALIAS" \
             --result-format json > "$DATA_DIR/fields.json"
-
-          field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
-          echo "field_count=$field_count" >> $GITHUB_OUTPUT
+            
+            field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
+            echo "field_count=$field_count" >> $GITHUB_OUTPUT
 
       - name: Query Relationships
         timeout-minutes: 5
