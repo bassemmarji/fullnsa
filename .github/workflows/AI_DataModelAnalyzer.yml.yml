@@ -59,7 +59,7 @@ jobs:
           # Query standard and custom objects
           sf data query \
             --query "SELECT Id, DeveloperName, NamespacePrefix, Description, 
-                            SharingModel, ExternalSharingModel, InternalSharingModel,
+                            ExternalSharingModel, InternalSharingModel,
                             CreatedDate, LastModifiedDate
                      FROM EntityDefinition 
                      WHERE IsCustomizable = true 
@@ -67,7 +67,7 @@ jobs:
             --use-tooling-api \
             --target-org "$ORG_ALIAS" \
             --result-format json > "$DATA_DIR/objects.json"
-
+  
           object_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/objects.json")
           echo "object_count=$object_count" >> $GITHUB_OUTPUT
 
