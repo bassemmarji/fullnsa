@@ -267,109 +267,109 @@ jobs:
             local record_types="$7"
             
             cat <<'EOF'
-ROLE: You are a senior Salesforce data architect with 15+ years of experience designing enterprise-scale data models.
-
-TASK: Analyze the provided Salesforce data model metadata and provide comprehensive architecture recommendations.
-
-ANALYSIS FRAMEWORK:
-1. DATA MODEL HEALTH: Normalization, naming conventions, relationship integrity
-2. PERFORMANCE: Indexing, data volume considerations, query patterns
-3. MAINTAINABILITY: Complexity, documentation, technical debt
-4. SCALABILITY: Architecture for growth, governor limit considerations
-
-SPECIFIC CHECKS TO PERFORM:
-- Identify denormalized data that should be normalized
-- Find missing relationships between related objects
-- Flag objects without proper indexing strategies
-- Detect redundant or unused fields
-- Analyze relationship types (Lookup vs Master-Detail) for appropriateness
-- Review validation rule complexity and performance impact
-- Assess trigger and automation complexity on objects
-- Identify business process gaps in record type structure
-
-**Required Output Format (Markdown):**
-
-## 🏗️ Data Architecture Health Assessment
-| Category | Score (1-10) | Key Findings | Recommendations |
-|----------|--------------|--------------|-----------------|
-| Normalization | | Denormalized structures found | Specific normalization steps |
-| Relationship Design | | Missing/inappropriate relationships | Relationship improvements |
-| Performance | | Indexing, volume issues | Performance optimizations |
-| Maintainability | | Complexity, naming issues | Simplification strategies |
-
-## 🔗 Relationship Analysis
-| Object Pair | Current Relationship | Issue | Recommended Relationship | Business Impact |
-|-------------|---------------------|-------|-------------------------|----------------|
-| [Object A] → [Object B] | Lookup | Missing cascade delete | Master-Detail | Data integrity risk |
-
-## 📊 Object Complexity Analysis
-| Object Name | Field Count | Triggers | Validation Rules | Complexity Score | Notes |
-|-------------|-------------|----------|------------------|------------------|-------|
-| [Object] | [Count] | [Trigger count] | [Rule count] | High/Medium/Low | Architecture notes |
-
-## 🗑️ Redundancy & Cleanup Opportunities
-| Object/Field | Type | Redundancy Reason | Cleanup Recommendation | Effort |
-|-------------|------|-------------------|------------------------|--------|
-| [Field Name] | Field | Duplicate of X | Remove field | Low/Med/High |
-
-## ⚡ Performance Recommendations
-| Object | Issue | Impact | Recommendation | Priority |
-|--------|-------|--------|----------------|----------|
-| [Object] | No indexed fields | High query cost | Add index on FieldX | High |
-
-## 🔄 Business Process Mapping
-| Business Process | Supporting Objects | Gaps | Data Flow Efficiency | Improvement Ideas |
-|------------------|-------------------|------|---------------------|------------------|
-| [Process] | [Objects] | Missing validation | Inefficient | Streamlining steps |
-
-## 📝 Data Governance Findings
-| Area | Current State | Recommended State | Compliance Risk |
-|------|---------------|-------------------|-----------------|
-| Field Naming | Inconsistent | Standardized | Low/Med/High |
-| Documentation | 40% documented | 90% documented | Medium |
-
-**Analysis Rules:**
-- Focus on practical, actionable recommendations
-- Consider Salesforce platform limitations and best practices
-- Prioritize recommendations by business impact and implementation effort
-- Suggest specific field deletions, relationship changes, index additions
-- Identify opportunities for external objects vs standard/custom objects
-- Highlight governor limit concerns in complex automations
-- Base all conclusions ONLY on provided metadata
-
-**Data:**
-OBJECT DEFINITIONS:
-EOF
+            ROLE: You are a senior Salesforce data architect with 15+ years of experience designing enterprise-scale data models.
+            
+            TASK: Analyze the provided Salesforce data model metadata and provide comprehensive architecture recommendations.
+            
+            ANALYSIS FRAMEWORK:
+            1. DATA MODEL HEALTH: Normalization, naming conventions, relationship integrity
+            2. PERFORMANCE: Indexing, data volume considerations, query patterns
+            3. MAINTAINABILITY: Complexity, documentation, technical debt
+            4. SCALABILITY: Architecture for growth, governor limit considerations
+            
+            SPECIFIC CHECKS TO PERFORM:
+            - Identify denormalized data that should be normalized
+            - Find missing relationships between related objects
+            - Flag objects without proper indexing strategies
+            - Detect redundant or unused fields
+            - Analyze relationship types (Lookup vs Master-Detail) for appropriateness
+            - Review validation rule complexity and performance impact
+            - Assess trigger and automation complexity on objects
+            - Identify business process gaps in record type structure
+            
+            **Required Output Format (Markdown):**
+            
+            ## 🏗️ Data Architecture Health Assessment
+            | Category | Score (1-10) | Key Findings | Recommendations |
+            |----------|--------------|--------------|-----------------|
+            | Normalization | | Denormalized structures found | Specific normalization steps |
+            | Relationship Design | | Missing/inappropriate relationships | Relationship improvements |
+            | Performance | | Indexing, volume issues | Performance optimizations |
+            | Maintainability | | Complexity, naming issues | Simplification strategies |
+            
+            ## 🔗 Relationship Analysis
+            | Object Pair | Current Relationship | Issue | Recommended Relationship | Business Impact |
+            |-------------|---------------------|-------|-------------------------|----------------|
+            | [Object A] → [Object B] | Lookup | Missing cascade delete | Master-Detail | Data integrity risk |
+            
+            ## 📊 Object Complexity Analysis
+            | Object Name | Field Count | Triggers | Validation Rules | Complexity Score | Notes |
+            |-------------|-------------|----------|------------------|------------------|-------|
+            | [Object] | [Count] | [Trigger count] | [Rule count] | High/Medium/Low | Architecture notes |
+            
+            ## 🗑️ Redundancy & Cleanup Opportunities
+            | Object/Field | Type | Redundancy Reason | Cleanup Recommendation | Effort |
+            |-------------|------|-------------------|------------------------|--------|
+            | [Field Name] | Field | Duplicate of X | Remove field | Low/Med/High |
+            
+            ## ⚡ Performance Recommendations
+            | Object | Issue | Impact | Recommendation | Priority |
+            |--------|-------|--------|----------------|----------|
+            | [Object] | No indexed fields | High query cost | Add index on FieldX | High |
+            
+            ## 🔄 Business Process Mapping
+            | Business Process | Supporting Objects | Gaps | Data Flow Efficiency | Improvement Ideas |
+            |------------------|-------------------|------|---------------------|------------------|
+            | [Process] | [Objects] | Missing validation | Inefficient | Streamlining steps |
+            
+            ## 📝 Data Governance Findings
+            | Area | Current State | Recommended State | Compliance Risk |
+            |------|---------------|-------------------|-----------------|
+            | Field Naming | Inconsistent | Standardized | Low/Med/High |
+            | Documentation | 40% documented | 90% documented | Medium |
+            
+            **Analysis Rules:**
+            - Focus on practical, actionable recommendations
+            - Consider Salesforce platform limitations and best practices
+            - Prioritize recommendations by business impact and implementation effort
+            - Suggest specific field deletions, relationship changes, index additions
+            - Identify opportunities for external objects vs standard/custom objects
+            - Highlight governor limit concerns in complex automations
+            - Base all conclusions ONLY on provided metadata
+            
+            **Data:**
+            OBJECT DEFINITIONS:
+            EOF
             echo "$objects"
             cat <<'EOF'
 
-FIELD DEFINITIONS:
-EOF
+            FIELD DEFINITIONS:
+            EOF
             echo "$fields"
             cat <<'EOF'
 
-RELATIONSHIPS:
-EOF
+            RELATIONSHIPS:
+            EOF
             echo "$relationships"
             cat <<'EOF'
 
-VALIDATION RULES:
-EOF
+            VALIDATION RULES:
+            EOF
             echo "$validations"
             cat <<'EOF'
 
-TRIGGERS:
-EOF
+            TRIGGERS:
+            EOF
             echo "$triggers"
             cat <<'EOF'
 
-FLOWS:
-EOF
+            FLOWS:
+            EOF
             echo "$flows"
             cat <<'EOF'
 
-RECORD TYPES:
-EOF
+            RECORD TYPES:
+            EOF
             echo "$record_types"
           }
 
