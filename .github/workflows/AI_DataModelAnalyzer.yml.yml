@@ -78,11 +78,10 @@ jobs:
           # Get field metadata for all objects
           sf data query \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
-                            DataType, IsCustom, IsIndexed, IsUnique, IsExternalId,
-                            IsCompound, IsCalculated, IsNillable, IsEncrypted,
+                            DataType, IsIndexed, IsUnique, IsExternalId,
+                            IsCompound, IsCalculated, IsNillable,
                             Length, Precision, Scale, Description,
-                            RelationshipName, RelationshipOrder, ReferenceTo,
-                            CreatedDate, LastModifiedDate
+                            RelationshipName, RelationshipOrder, ReferenceTo
                      FROM FieldDefinition 
                      ORDER BY EntityDefinition.DeveloperName, QualifiedApiName" \
             --use-tooling-api \
