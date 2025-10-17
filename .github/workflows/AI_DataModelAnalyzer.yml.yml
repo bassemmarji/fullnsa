@@ -81,31 +81,30 @@ jobs:
                             DataType, IsIndexed, 
                             IsCompound, IsCalculated, IsNillable,
                             Length, Precision, Scale, Description,
-                            RelationshipName, RelationshipOrder, ReferenceTo
+                            RelationshipName, ReferenceTo
                      FROM FieldDefinition 
                      ORDER BY EntityDefinition.DeveloperName, QualifiedApiName" \
             --use-tooling-api \
-            --target-org "$ORG_ALIAS" \
-            --result-format json > "$DATA_DIR/fields.json"
+            --target-org \"$ORG_ALIAS\" \
+            --result-format json > \"$DATA_DIR/fields.json\"
             
-            field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
-            echo "field_count=$field_count" >> $GITHUB_OUTPUT
-
+          field_count=$(jq -r '.result.totalSize // 0' \"$DATA_DIR/fields.json\")
+          echo \"field_count=$field_count\" >> $GITHUB_OUTPUT
+    
       - name: Query Relationships
         timeout-minutes: 5
         run: |
           echo "🔗 Querying relationship metadata..."
           
-          # Query for relationship fields specifically
           sf data query \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName,
-                            RelationshipName, ReferenceTo, RelationshipOrder
+                            RelationshipName, ReferenceTo
                      FROM FieldDefinition 
                      WHERE DataType = 'Lookup' OR DataType = 'MasterDetail'
                      ORDER BY EntityDefinition.DeveloperName" \
             --use-tooling-api \
-            --target-org "$ORG_ALIAS" \
-            --result-format json > "$DATA_DIR/relationships.json"
+            --target-org \"$ORG_ALIAS\" \
+            --result-format json > \"$DATA_DIR/relationships.json\"
 
       - name: Query Validation Rules
         timeout-minutes: 5
