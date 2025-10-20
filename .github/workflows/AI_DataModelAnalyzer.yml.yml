@@ -45,7 +45,7 @@ jobs:
           sf plugins:update
           sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 🔐 Authenticate to Salesforce Org
+      - name: Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
@@ -72,18 +72,25 @@ jobs:
 
       - name: Query Field Definitions
         id: query-fields
-        timeout-minutes: 10
+        timeout-minutes: 20  # Covers around 300+ objects
         run: |
-          echo "🔍 Querying field definitions..."
+          echo "🔍 Querying field definitions (292 objects expected)..."
+          
+          # Get total objects for progress
+          total_objects=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
+          echo "Processing $total_objects objects..."
           
           # Initialize empty result JSON
           echo '{"result":{"totalSize":0,"records":[]}}' > "$DATA_DIR/fields.json"
           total_fields=0
+          processed=0
           
-          # Loop over each customizable object
+          # Loop over each customizable object with progress
           while IFS= read -r obj_name; do
             if [ -n "$obj_name" ]; then
-              echo "  - Querying fields for $obj_name..."
+              processed=$((processed + 1))
+              echo "  [$processed/$total_objects] Querying fields for $obj_name..."
+              
               sf data query \
                 --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
                                 DataType, IsIndexed, 
@@ -96,22 +103,27 @@ jobs:
                 --target-org "$ORG_ALIAS" \
                 --result-format json > temp_fields.json
               
-              if [ $? -eq 0 ] && [ -s temp_fields.json ]; then
-                # Merge: Append records and update totalSize
+              if [ $? -eq 0 ] && [ -s temp_fields.json ] && [ "$(jq -r '.result.totalSize' temp_fields.json)" -gt 0 ]; then
                 obj_fields=$(jq -r '.result.records | length' temp_fields.json)
-                jq --argjson new_records "$(cat temp_fields.json | jq '.result.records')" \
-                   '.result.records += $new_records | .result.totalSize += ($new_records | length)' \
+                # Optimized merge: Use slurp/add for efficiency
+                jq --slurpfile new temp_fields.json \
+                   '.result.records += ($new[0].result.records) | .result.totalSize += ($new[0].result.totalSize)' \
                    "$DATA_DIR/fields.json" > temp_merge.json && mv temp_merge.json "$DATA_DIR/fields.json"
                 total_fields=$((total_fields + obj_fields))
-                rm temp_fields.json
               else
-                echo "  ⚠️ No fields found for $obj_name or query failed"
+                echo "    ⚠️ Skipped $obj_name (no fields or query failed)"
+              fi
+              rm -f temp_fields.json
+              
+              # Early exit if timeout risk (optional: for very large orgs)
+              if [ $processed -ge $((total_objects * 90 / 100)) ]; then
+                echo "  ⏱️ Progress: $processed/$total_objects - Continuing..."
               fi
             fi
           done < <(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json")
           
           echo "field_count=$total_fields" >> $GITHUB_OUTPUT
-          echo "Total fields collected: $total_fields"
+          echo "✅ Total fields collected: $total_fields across $processed objects"
           
       - name: Query Relationships
         timeout-minutes: 5
