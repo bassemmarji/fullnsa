@@ -218,14 +218,14 @@ jobs:
           echo "✅ Total validation rules collected: $total_rules across $processed objects"
           
       - name: Query Triggers and Automation
-        timeout-minutes: 10
+        timeout-minutes: 10  # Retained; covers both queries
         run: |
           echo "🤖 Querying triggers and automation..."
           
-          # Query Apex Triggers
+          # Query Apex Triggers (valid Tooling API fields only)
           sf data query \
-            --query "SELECT Id, Name, TableEnumOrId, UsageBefore, UsageAfter,
-                            UsageIsBulk, Status, CreatedDate, LastModifiedDate
+            --query "SELECT Id, Name, TableEnumOrId, Status, 
+                            CreatedDate, LastModifiedDate
                      FROM ApexTrigger 
                      ORDER BY TableEnumOrId" \
             --use-tooling-api \
@@ -241,7 +241,7 @@ jobs:
             --use-tooling-api \
             --target-org "$ORG_ALIAS" \
             --result-format json > "$DATA_DIR/flows.json"
-
+            
       - name: Query Record Type and Page Layout Info
         run: |
           echo "📋 Querying record types and layouts..."
