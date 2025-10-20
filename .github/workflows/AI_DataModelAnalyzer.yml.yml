@@ -72,33 +72,46 @@ jobs:
 
       - name: Query Field Definitions
         id: query-fields
+        timeout-minutes: 10
         run: |
-          echo "Querying field definitions..."
+          echo "🔍 Querying field definitions..."
           
-          # Extract customizable object names for filter
-          object_names=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/^/'/;s/$/'/" | paste -sd, -)
+          # Initialize empty result JSON
+          echo '{"result":{"totalSize":0,"records":[]}}' > "$DATA_DIR/fields.json"
+          total_fields=0
           
-          if [ -z "$object_names" ]; then
-            echo "⚠️ No objects found for filtering"
-            echo '{"result":{"totalSize":0,"records":[]}}' > "$DATA_DIR/fields.json"
-            field_count=0
-          else
-            # Query fields for customizable objects only
-            sf data query \
-              --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
-                              DataType, IsIndexed, 
-                              IsCompound, IsCalculated, IsNillable,
-                              Length, Precision, Scale, Description,
-                              RelationshipName, ReferenceTo
-                       FROM FieldDefinition 
-                       WHERE EntityDefinition.QualifiedApiName IN ($object_names)" \
-              --use-tooling-api \
-              --target-org "$ORG_ALIAS" \
-              --result-format json > "$DATA_DIR/fields.json"
-            
-            field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
-          fi
-          echo "field_count=$field_count" >> $GITHUB_OUTPUT
+          # Loop over each customizable object
+          while IFS= read -r obj_name; do
+            if [ -n "$obj_name" ]; then
+              echo "  - Querying fields for $obj_name..."
+              sf data query \
+                --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
+                                DataType, IsIndexed, 
+                                IsCompound, IsCalculated, IsNillable,
+                                Length, Precision, Scale, Description,
+                                RelationshipName, ReferenceTo
+                         FROM FieldDefinition 
+                         WHERE EntityDefinition.DeveloperName = '$obj_name'" \
+                --use-tooling-api \
+                --target-org "$ORG_ALIAS" \
+                --result-format json > temp_fields.json
+              
+              if [ $? -eq 0 ] && [ -s temp_fields.json ]; then
+                # Merge: Append records and update totalSize
+                obj_fields=$(jq -r '.result.records | length' temp_fields.json)
+                jq --argjson new_records "$(cat temp_fields.json | jq '.result.records')" \
+                   '.result.records += $new_records | .result.totalSize += ($new_records | length)' \
+                   "$DATA_DIR/fields.json" > temp_merge.json && mv temp_merge.json "$DATA_DIR/fields.json"
+                total_fields=$((total_fields + obj_fields))
+                rm temp_fields.json
+              else
+                echo "  ⚠️ No fields found for $obj_name or query failed"
+              fi
+            fi
+          done < <(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json")
+          
+          echo "field_count=$total_fields" >> $GITHUB_OUTPUT
+          echo "Total fields collected: $total_fields"
           
       - name: Query Relationships
         timeout-minutes: 5
