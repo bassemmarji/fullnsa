@@ -114,42 +114,19 @@ jobs:
           ollama pull "$MODEL"
           ollama list
 
-      - name: Summarize Data Before AI Analysis
+      - name: 🔄 Split Large Files into Batches
         run: |
-          echo "🧩 Summarizing data for efficient AI input..."
-          mkdir -p summaries
+          mkdir -p batches
+          jq -c '.result.records[]' data/profiles.json | split -l 25 - batches/profile_
+          jq -c '.result.records[]' data/permission_sets.json | split -l 25 - batches/permset_
+          echo "✅ Split profiles and permission sets into batches for multi-pass AI analysis."
 
-          jq '{profiles_summary: [.result.records[] | {Id, Name, UserLicense: .UserLicense.Name, Description}][0:25]}' data/profiles.json > summaries/profiles_summary.json
-          jq '{permsets_summary: [.result.records[] | {Id, Name, IsOwnedByProfile, Profile: .Profile.Name}][0:25]}' data/permission_sets.json > summaries/permsets_summary.json
-
-          jq -s '{summary: {profiles: (.[0].profiles_summary|length), permsets: (.[1].permsets_summary|length)}}' summaries/profiles_summary.json summaries/permsets_summary.json > summaries/data_summary.json
-
-          echo "✅ Summarization complete."
-          jq '.' summaries/data_summary.json
-
-      - name: Analyze Security Configuration Data
+      - name: Create AI Prompt Template
         run: |
-          REPORT_FILE="security_analysis_report.md"
-          MODEL="${{ inputs.model_name }}"
-
-          profiles=$(cat summaries/profiles_summary.json)
-          permsets=$(cat summaries/permsets_summary.json)
-          summary=$(cat summaries/data_summary.json)
-
-          prompt_file="prompt.txt"
-          cat <<EOF > "$prompt_file"
+          cat <<EOF > prompt_template.txt
           ROLE: You are a senior Salesforce security architect.
           
-          TASK: Analyze the summarized Salesforce Profiles and Permission Sets data. Identify risks, compliance issues, and optimization opportunities.
-          
-          DATA SUMMARY:
-          $summary
-          
-          PROFILES (sample):
-          $profiles
-          
-          PERMISSION SETS (sample):
-          $permsets
+          TASK: Analyze Salesforce Profiles and Permission Sets data. Identify risks, compliance issues, and optimization opportunities.
           
           FOLLOW THE STRUCTURED OUTPUT BELOW:
           ## 🚨 Critical Security Findings
@@ -161,19 +138,40 @@ jobs:
           ## 🔑 Permission Sets Analysis
           | Permission Set Name | Key Permissions | Assigned Users | Risk Level | Notes |
           
+          ## 🧾 Profiles and Permission Sets Summary
+          ### Profiles List
+          (List all profile names analyzed here)
+          ### Permission Sets List
+          (List all permission set names analyzed here)
+          
           ## 📋 Compliance & Best Practices
           | Framework | Issue | Evidence | Recommendation |
           
           ## 🧾 Summary
-          - Total Profiles Analyzed: $(jq -r '.summary.profiles' summaries/data_summary.json)
-          - Total Permission Sets Analyzed: $(jq -r '.summary.permsets' summaries/data_summary.json)
+          - Total Profiles in This Batch: <to fill>
+          - Total Permission Sets in This Batch: <to fill>
           - Model Used: $MODEL
           EOF
 
-          echo "🤖 Running AI model with summarized context..."
-          cat "$prompt_file" | ollama run "$MODEL" > "$REPORT_FILE"
-          
-          echo "✅ AI analysis completed. Report saved to $REPORT_FILE"
+      - name: 🤖 Run AI Analysis per Batch
+        run: |
+          REPORT_FILE="security_analysis_report.md"
+          MODEL="${{ inputs.model_name }}"
+          > "$REPORT_FILE"
+
+          echo "# Salesforce Security Analysis Report" >> "$REPORT_FILE"
+          echo "_Generated on $(date)_ using model: $MODEL" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+
+          for batch in batches/profile_* batches/permset_*; do
+            echo "🧠 Analyzing batch: $batch"
+            batch_data=$(cat "$batch")
+            batch_size=$(echo "$batch_data" | wc -l)
+            cat prompt_template.txt <(echo "\n\nBATCH DATA ($batch_size records):\n$batch_data") | ollama run "$MODEL" >> "$REPORT_FILE"
+            echo "\n---\n" >> "$REPORT_FILE"
+          done
+
+          echo "✅ AI analysis completed. Full report saved to $REPORT_FILE"
 
       - name: Upload Analysis Report
         uses: actions/upload-artifact@v4
@@ -182,12 +180,13 @@ jobs:
           path: security_analysis_report.md
           retention-days: 14
 
-      - name: 📄 Analysis Summary
+      - name: 📄 Report Preview
         run: |
-          echo "## 🧠 Security Configuration Analysis Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Profiles (sampled):** $(jq -r '.summary.profiles' summaries/data_summary.json)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Permission Sets (sampled):** $(jq -r '.summary.permsets' summaries/data_summary.json)" >> $GITHUB_STEP_SUMMARY
-          echo "- **AI Model:** \`${{ inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Report:** \`security_analysis_report.md\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact:** \`security-analysis-report\`" >> $GITHUB_STEP_SUMMARY
-
+          echo "## 🧠 Salesforce Security Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Model Used: \`${{ inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Generated on: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 First 20 lines of the AI Report:" >> $GITHUB_STEP_SUMMARY
+          echo '```markdown' >> $GITHUB_STEP_SUMMARY
+          head -n 20 security_analysis_report.md >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
