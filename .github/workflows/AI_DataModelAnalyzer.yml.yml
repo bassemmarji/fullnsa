@@ -75,37 +75,35 @@ jobs:
         run: |
           echo "Querying field definitions..."
           
-          # Get field metadata for all objects
+          # Get field metadata for all objects (removed ORDER BY to avoid relationship sort error)
           sf data query \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, 
                             DataType, IsIndexed, 
                             IsCompound, IsCalculated, IsNillable,
                             Length, Precision, Scale, Description,
                             RelationshipName, ReferenceTo
-                     FROM FieldDefinition 
-                     ORDER BY EntityDefinition.DeveloperName, QualifiedApiName" \
+                     FROM FieldDefinition" \
             --use-tooling-api \
             --target-org "$ORG_ALIAS" \
             --result-format json > "$DATA_DIR/fields.json"
             
           field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
-          echo "field_count=$field_count" >> $GITHUB_OUTPUT           
-    
+          echo "field_count=$field_count" >> $GITHUB_OUTPUT            
+
       - name: Query Relationships
         timeout-minutes: 5
         run: |
-          echo "🔗 Querying relationship metadata..."
+          echo "Querying relationship metadata..."
           
           sf data query \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName,
                             RelationshipName, ReferenceTo
                      FROM FieldDefinition 
-                     WHERE DataType = 'Lookup' OR DataType = 'MasterDetail'
-                     ORDER BY EntityDefinition.DeveloperName" \
+                     WHERE DataType = 'Lookup' OR DataType = 'MasterDetail'" \
             --use-tooling-api \
-            --target-org \"$ORG_ALIAS\" \
-            --result-format json > \"$DATA_DIR/relationships.json\"
-
+            --target-org "$ORG_ALIAS" \
+            --result-format json > "$DATA_DIR/relationships.json"
+    
       - name: Query Validation Rules
         timeout-minutes: 5
         run: |
@@ -115,8 +113,7 @@ jobs:
             --query "SELECT Id, EntityDefinition.DeveloperName, ValidationName,
                             Active, ErrorConditionFormula, ErrorDisplayField,
                             ErrorMessage, Description, CreatedDate, LastModifiedDate
-                     FROM ValidationRule 
-                     ORDER BY EntityDefinition.DeveloperName" \
+                     FROM ValidationRule" \
             --use-tooling-api \
             --target-org "$ORG_ALIAS" \
             --result-format json > "$DATA_DIR/validation_rules.json"
