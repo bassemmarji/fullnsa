@@ -126,33 +126,97 @@ jobs:
           echo "✅ Total fields collected: $total_fields across $processed objects"
           
       - name: Query Relationships
-        timeout-minutes: 5
+        timeout-minutes: 20  # Matches fields; covers ~300 objects
         run: |
-          echo "Querying relationship metadata..."
+          echo "🔗 Querying relationship metadata (292 objects expected)..."
           
-          sf data query \
-            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName,
-                            RelationshipName, ReferenceTo
-                     FROM FieldDefinition 
-                     WHERE DataType = 'Lookup' OR DataType = 'MasterDetail'" \
-            --use-tooling-api \
-            --target-org "$ORG_ALIAS" \
-            --result-format json > "$DATA_DIR/relationships.json"
-    
+          # Get total objects for progress
+          total_objects=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
+          echo "Processing $total_objects objects..."
+          
+          # Initialize empty result JSON
+          echo '{"result":{"totalSize":0,"records":[]}}' > "$DATA_DIR/relationships.json"
+          total_rels=0
+          processed=0
+          
+          # Loop over each customizable object with progress
+          while IFS= read -r obj_name; do
+            if [ -n "$obj_name" ]; then
+              processed=$((processed + 1))
+              echo "  [$processed/$total_objects] Querying relationships for $obj_name..."
+              
+              sf data query \
+                --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName,
+                                RelationshipName, ReferenceTo
+                         FROM FieldDefinition 
+                         WHERE EntityDefinition.DeveloperName = '$obj_name'
+                         AND (DataType = 'Lookup' OR DataType = 'MasterDetail')" \
+                --use-tooling-api \
+                --target-org "$ORG_ALIAS" \
+                --result-format json > temp_rels.json
+              
+              if [ $? -eq 0 ] && [ -s temp_rels.json ] && [ "$(jq -r '.result.totalSize' temp_rels.json)" -gt 0 ]; then
+                obj_rels=$(jq -r '.result.records | length' temp_rels.json)
+                # Optimized merge
+                jq --slurpfile new temp_rels.json \
+                   '.result.records += ($new[0].result.records) | .result.totalSize += ($new[0].result.totalSize)' \
+                   "$DATA_DIR/relationships.json" > temp_merge.json && mv temp_merge.json "$DATA_DIR/relationships.json"
+                total_rels=$((total_rels + obj_rels))
+              else
+                echo "    ⚠️ Skipped $obj_name (no relationships or query failed)"
+              fi
+              rm -f temp_rels.json
+            fi
+          done < <(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json")
+          
+          echo "✅ Total relationships collected: $total_rels across $processed objects"
+          
       - name: Query Validation Rules
-        timeout-minutes: 5
+        timeout-minutes: 20  # Matches other looped steps; buffer for ~300 objects
         run: |
-          echo "⚡ Querying validation rules..."
+          echo "⚡ Querying validation rules (292 objects expected)..."
           
-          sf data query \
-            --query "SELECT Id, EntityDefinition.DeveloperName, ValidationName,
-                            Active, ErrorConditionFormula, ErrorDisplayField,
-                            ErrorMessage, Description, CreatedDate, LastModifiedDate
-                     FROM ValidationRule" \
-            --use-tooling-api \
-            --target-org "$ORG_ALIAS" \
-            --result-format json > "$DATA_DIR/validation_rules.json"
-
+          # Get total objects for progress
+          total_objects=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
+          echo "Processing $total_objects objects..."
+          
+          # Initialize empty result JSON
+          echo '{"result":{"totalSize":0,"records":[]}}' > "$DATA_DIR/validation_rules.json"
+          total_rules=0
+          processed=0
+          
+          # Loop over each customizable object with progress
+          while IFS= read -r obj_name; do
+            if [ -n "$obj_name" ]; then
+              processed=$((processed + 1))
+              echo "  [$processed/$total_objects] Querying validation rules for $obj_name..."
+              
+              sf data query \
+                --query "SELECT Id, EntityDefinition.DeveloperName, ValidationName,
+                                Active, ErrorConditionFormula, ErrorDisplayField,
+                                ErrorMessage, Description, CreatedDate, LastModifiedDate
+                         FROM ValidationRule 
+                         WHERE EntityDefinition.DeveloperName = '$obj_name'" \
+                --use-tooling-api \
+                --target-org "$ORG_ALIAS" \
+                --result-format json > temp_rules.json
+              
+              if [ $? -eq 0 ] && [ -s temp_rules.json ] && [ "$(jq -r '.result.totalSize' temp_rules.json)" -gt 0 ]; then
+                obj_rules=$(jq -r '.result.records | length' temp_rules.json)
+                # Optimized merge
+                jq --slurpfile new temp_rules.json \
+                   '.result.records += ($new[0].result.records) | .result.totalSize += ($new[0].result.totalSize)' \
+                   "$DATA_DIR/validation_rules.json" > temp_merge.json && mv temp_merge.json "$DATA_DIR/validation_rules.json"
+                total_rules=$((total_rules + obj_rules))
+              else
+                echo "    ⚠️ Skipped $obj_name (no validation rules or query failed)"
+              fi
+              rm -f temp_rules.json
+            fi
+          done < <(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json")
+          
+          echo "✅ Total validation rules collected: $total_rules across $processed objects"
+          
       - name: Query Triggers and Automation
         timeout-minutes: 10
         run: |
