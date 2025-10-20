@@ -172,11 +172,11 @@ jobs:
           echo "✅ Total relationships collected: $total_rels across $processed objects"
           
       - name: Query Validation Rules
-        timeout-minutes: 20  # Matches other looped steps; buffer for ~300 objects
+        timeout-minutes: 20  # Retained for consistency
         run: |
-          echo "⚡ Querying validation rules (292 objects expected)..."
+          echo "⚡ Querying validation rules (279 objects expected)..."
           
-          # Get total objects for progress
+          # Get total objects for progress (updated to match your log)
           total_objects=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
           echo "Processing $total_objects objects..."
           
@@ -193,7 +193,7 @@ jobs:
               
               sf data query \
                 --query "SELECT Id, EntityDefinition.DeveloperName, ValidationName,
-                                Active, ErrorConditionFormula, ErrorDisplayField,
+                                Active, ErrorDisplayField,
                                 ErrorMessage, Description, CreatedDate, LastModifiedDate
                          FROM ValidationRule 
                          WHERE EntityDefinition.DeveloperName = '$obj_name'" \
