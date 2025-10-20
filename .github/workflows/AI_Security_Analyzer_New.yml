@@ -171,8 +171,8 @@ jobs:
           EOF
 
           echo "🤖 Running AI model with summarized context..."
-          ollama run "$MODEL" -p "$(cat "$prompt_file")" > "$REPORT_FILE"
-
+          cat "$prompt_file" | ollama run "$MODEL" > "$REPORT_FILE"
+          
           echo "✅ AI analysis completed. Report saved to $REPORT_FILE"
 
       - name: Upload Analysis Report
