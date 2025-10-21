@@ -1,4 +1,4 @@
-name: AI Powered Profiles and Permission Sets Analyzer
+name: AI-Powered Profiles and Permission Sets Analyzer
 
 on:
   workflow_dispatch:
