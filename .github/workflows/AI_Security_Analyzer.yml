@@ -1,4 +1,4 @@
-name: AI Powered Profiles and Permission Sets Analyzer
+name: AI New Powered Profiles and Permission Sets Analyzer
 
 on:
   workflow_dispatch:
@@ -13,7 +13,8 @@ on:
         description: "Ollama model to use"
         options:
           - llama3:latest
-          - gpt-oss:latest
+          - gemma2:27b
+          - mistral-large
         default: llama3:latest
 
 env:
@@ -27,8 +28,6 @@ jobs:
     name: Collect Profiles and Permission Sets Data
     runs-on: ubuntu-latest
     outputs:
-      profile_count: ${{ steps.query-profiles.outputs.profile_count }}
-      permset_count: ${{ steps.query-permsets.outputs.permset_count }}
       has_data: ${{ steps.check-data.outputs.has_data }}
     steps:
       - name: Checkout repository
@@ -44,195 +43,41 @@ jobs:
           npm install --global @salesforce/cli
           sf plugins:update
           sudo apt-get update && sudo apt-get install -y jq
-      - name: 🔐 Authenticate to Salesforce Org
+      - name: Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
-      - name: Query Profiles
-        id: query-profiles
+      - name: Query Profiles and Permission Sets
         run: |
-          set -e
           mkdir -p "$DATA_DIR"
-          echo "🔍 Querying profiles..."
-          > "$DATA_DIR/profiles_all.json"
-          LAST_ID=""
-          while true; do
-            WHERE_CLAUSE=""
-            [ -n "$LAST_ID" ] && WHERE_CLAUSE="WHERE Id > '$LAST_ID'"
-            
-            RESULT_FILE="$DATA_DIR/profiles_temp.json"
-            sf data query \
-              --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile $WHERE_CLAUSE ORDER BY Id ASC LIMIT 200" \
-              --target-org "$ORG_ALIAS" \
-              --result-format json > "$RESULT_FILE"
-            
-            COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
-            [ "$COUNT" -eq 0 ] && break
-            
-            LAST_ID=$(jq -r '.result.records[-1].Id' "$RESULT_FILE")
-            jq '.result.records[]' "$RESULT_FILE" >> "$DATA_DIR/profiles_all.json"
-          done
-          
-          # Convert to array format
-          jq -s '{result: {records: ., totalSize: length}}' "$DATA_DIR/profiles_all.json" > "$DATA_DIR/profiles.json"
-          
-          # Query Object and Field Permissions for Profiles (parallel)
-          if [ -f "$DATA_DIR/profiles.json" ]; then
-            profile_ids=$(jq -r '.result.records[].Id' "$DATA_DIR/profiles.json" | tr '\n' ',' | sed 's/,$//')
-            if [ -n "$profile_ids" ]; then
-              query_in_background() {
-                local query_type=$1
-                local query=$2
-                local output_file=$3
-                
-                sf data query --query "$query" --target-org "$ORG_ALIAS" --result-format json > "$output_file" || echo "{}" > "$output_file"
-              }
-              
-              query_in_background "profile_object" "SELECT Id, ParentId, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId IN ($profile_ids)" "$DATA_DIR/profile_object_perms.json" &
-              query_in_background "profile_field" "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE Parent.ProfileId != null LIMIT 5000" "$DATA_DIR/profile_field_perms.json" &
-              wait
-            fi
-          fi
-          
-          profile_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/profiles.json")
-          echo "profile_count=$profile_count" >> $GITHUB_OUTPUT
-      - name: Query Permission Sets
-        id: query-permsets
-        timeout-minutes: 10
-        run: |
-          set -e
-          echo "🔍 Querying permission sets..."
-          > "$DATA_DIR/permsets_all.json"
-          LAST_ID=""
-          while true; do
-            WHERE_CLAUSE=""
-            [ -n "$LAST_ID" ] && WHERE_CLAUSE="WHERE Id > '$LAST_ID'"
-            
-            RESULT_FILE="$DATA_DIR/permsets_temp.json"
-            sf data query \
-              --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix, CreatedDate, LastModifiedDate FROM PermissionSet $WHERE_CLAUSE ORDER BY Id ASC LIMIT 200" \
-              --target-org "$ORG_ALIAS" \
-              --result-format json > "$RESULT_FILE"
-            
-            COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
-            [ "$COUNT" -eq 0 ] && break
-            
-            LAST_ID=$(jq -r '.result.records[-1].Id' "$RESULT_FILE")
-            jq '.result.records[]' "$RESULT_FILE" >> "$DATA_DIR/permsets_all.json"
-          done
-          
-          # Convert to array format
-          jq -s '{result: {records: ., totalSize: length}}' "$DATA_DIR/permsets_all.json" > "$DATA_DIR/permission_sets.json"
-          
-          # Query Object and Field Permissions for Permission Sets (parallel)
-          if [ -f "$DATA_DIR/permission_sets.json" ]; then
-            permset_ids=$(jq -r '.result.records[].Id' "$DATA_DIR/permission_sets.json" | tr '\n' ',' | sed 's/,$//')
-            if [ -n "$permset_ids" ]; then
-              query_in_background "permset_object" "SELECT Id, ParentId, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.PermissionSetId IN ($permset_ids)" "$DATA_DIR/permset_object_perms.json" &
-              query_in_background "permset_field" "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE Parent.PermissionSetId != null LIMIT 5000" "$DATA_DIR/permset_field_perms.json" &
-              
-              # Query Permission Set Assignments
-              sf data query \
-                --query "SELECT Id, AssigneeId, PermissionSetId, Assignee.Name, Assignee.Username FROM PermissionSetAssignment WHERE PermissionSetId IN ($permset_ids)" \
-                --target-org "$ORG_ALIAS" \
-                --result-format json --all > "$DATA_DIR/permset_assignments.json" || echo "{}" > "$DATA_DIR/permset_assignments.json"
-              
-              wait
-            fi
-          fi
-          
-          permset_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/permission_sets.json")
-          echo "permset_count=$permset_count" >> $GITHUB_OUTPUT
-      - name: Query Additional Security Data
-        timeout-minutes: 10
-        run: |
-          set -e
-          # Query SetupAuditTrail for permission-related changes (last 30 days for recency)
-          DAYS_BACK=30
-          SETUP_START_TIME=$(date -u -d "$DAYS_BACK days ago" '+%Y-%m-%dT%H:%M:%S.000Z')
-          > "$DATA_DIR/setup_audit_trail_all.json"
-          LAST_ID=""
-          while true; do
-            WHERE_CLAUSE=""
-            [ -n "$LAST_ID" ] && WHERE_CLAUSE="AND Id > '$LAST_ID'"
-            
-            RESULT_FILE="$DATA_DIR/setup_audit_temp.json"
-            sf data query \
-              --query "SELECT Id, Action, Section, CreatedDate, CreatedById, CreatedBy.Username, CreatedBy.Name, Display, DelegateUser, ResponsibleNamespacePrefix FROM SetupAuditTrail WHERE CreatedDate >= $SETUP_START_TIME AND (Action LIKE '%Permission%' OR Action LIKE '%Profile%' OR Action LIKE '%Security%' OR Action LIKE '%Object%' OR Action LIKE '%Field%') $WHERE_CLAUSE ORDER BY Id ASC LIMIT 200" \
-              --target-org "$ORG_ALIAS" \
-              --result-format json > "$RESULT_FILE"
-            
-            COUNT=$(jq -r '.result.records | length' "$RESULT_FILE")
-            [ "$COUNT" -eq 0 ] && break
-            
-            LAST_ID=$(jq -r '.result.records[-1].Id' "$RESULT_FILE")
-            jq '.result.records[]' "$RESULT_FILE" >> "$DATA_DIR/setup_audit_trail_all.json"
-          done
-          
-          jq -s '{result: {records: ., totalSize: length}}' "$DATA_DIR/setup_audit_trail_all.json" > "$DATA_DIR/setup_audit_trail.json" || echo "⚠️ SetupAuditTrail query failed (may not have access)"
+          echo " Querying profiles and permission sets..."
+          sf data query --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile LIMIT 2000" \
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/profiles.json" || echo "{}" > "$DATA_DIR/profiles.json"
+          sf data query --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, CreatedDate, LastModifiedDate FROM PermissionSet LIMIT 2000" \
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/permission_sets.json" || echo "{}" > "$DATA_DIR/permission_sets.json"
+      
       - name: Validate Collected Data
-        run: |
-          # Check if essential files exist and contain valid JSON
-          for file in profiles.json permission_sets.json; do
-            if [ ! -f "$DATA_DIR/$file" ] || ! jq '.' "$DATA_DIR/$file" >/dev/null 2>&1; then
-              echo "❌ Invalid or missing $file"
-              exit 1
-            fi
-          done
-          
-          # Check minimum data requirements
-          profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json")
-          if [ "$profile_count" -lt 1 ]; then
-            echo "❌ No profiles found for analysis"
-            exit 1
-          fi
-      - name: Check Data Availability
         id: check-data
         run: |
-          profile_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/profiles.json" 2>/dev/null || echo "0")
-          permset_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo "0")
-          total_entities=$((profile_count + permset_count))
-          
-          if [ "$total_entities" -eq 0 ]; then
-            echo "⚠️ No profiles or permission sets found"
-            echo "has_data=false" >> $GITHUB_OUTPUT
-            echo "No security configuration data found" > "$DATA_DIR/no-data-found.txt"
-          else
-            echo "✅ Found security configuration data to analyze"
+          profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo 0)
+          permset_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo 0)
+          total=$((profile_count + permset_count))
+          echo "Profiles: $profile_count, Permission Sets: $permset_count"
+          if [ "$total" -gt 0 ]; then
+            echo " Found security configuration data"
             echo "has_data=true" >> $GITHUB_OUTPUT
-            
-            # Create summary statistics
-            jq -r --arg profiles "$profile_count" --arg permsets "$permset_count" '{
-              summary: {
-                total_profiles: ($profiles | tonumber),
-                total_permission_sets: ($permsets | tonumber),
-                total_entities: (($profiles | tonumber) + ($permsets | tonumber)),
-                audit_changes: (.result.totalSize // 0)
-              }
-            }' "$DATA_DIR/setup_audit_trail.json" > "$DATA_DIR/data_summary.json"
+          else
+            echo " No profiles or permission sets found"
+            echo "has_data=false" >> $GITHUB_OUTPUT
           fi
-      - name: Upload Security Artifacts
+          
+      - name: Upload Security Data
         uses: actions/upload-artifact@v4
         with:
           name: security-profiles-data
           path: ${{ env.DATA_DIR }}
           retention-days: 7
-          if-no-files-found: warn
 
-      - name: 📄 Summary of Collected Data
-        run: |
-          {
-            echo "## 📊 Data Collection Summary"
-            echo "- Org Alias: **$ORG_ALIAS**"
-            echo "- Profiles Found: **${{ steps.query-profiles.outputs.profile_count }}**"
-            echo "- Permission Sets: **${{ steps.query-permsets.outputs.permset_count }}**"
-            if [ "${{ steps.check-data.outputs.has_data }}" = "true" ]; then
-              echo "- Data Available: ✅ **Yes**"
-              echo "- Artifact: \`security-profiles-data\`"
-            else
-              echo "- Data Available: ❌ **No data found**"
-            fi
-          } >> $GITHUB_STEP_SUMMARY
   analyze-security-config:
     name: Analyze Profiles and Permission Sets with AI
     runs-on: ubuntu-latest
@@ -256,218 +101,68 @@ jobs:
             curl -s http://localhost:11434/api/version && break
             sleep 2
           done
-      
+          
       - name: Download Model
-        timeout-minutes: 30
         run: |
           MODEL="${{ inputs.model_name }}"
-          echo "📥 Downloading Ollama model: $MODEL"
+          echo " Downloading Ollama model: $MODEL"
           ollama pull "$MODEL"
-          
-          echo "🔍 Verifying model installation..."
           ollama list
-      
+          
+      - name: Summarize Data Before AI Analysis
+        run: |
+          echo " Summarizing data for efficient AI input..."
+          mkdir -p summaries
+          jq '{profiles_summary: [.result.records[] | {Id, Name, UserLicense: .UserLicense.Name, Description}][0:25]}' data/profiles.json > summaries/profiles_summary.json
+          jq '{permsets_summary: [.result.records[] | {Id, Name, IsOwnedByProfile, Profile: .Profile.Name}][0:25]}' data/permission_sets.json > summaries/permsets_summary.json
+          jq -s '{summary: {profiles: (.[0].profiles_summary|length), permsets: (.[1].permsets_summary|length)}}' summaries/profiles_summary.json summaries/permsets_summary.json > summaries/data_summary.json
+          echo " Summarization complete."
+          jq '.' summaries/data_summary.json
+          
       - name: Analyze Security Configuration Data
-        run: |-
+        run: |
           REPORT_FILE="security_analysis_report.md"
           MODEL="${{ inputs.model_name }}"
+          profiles=$(cat summaries/profiles_summary.json)
+          permsets=$(cat summaries/permsets_summary.json)
+          summary=$(cat summaries/data_summary.json)
+          prompt_file="prompt.txt"
+          cat <<EOF > "$prompt_file"
+          ROLE: You are a senior Salesforce security architect.
           
-          # Initialize report
-          echo "# AI Profiles and Permission Sets Security Analysis Report" > "$REPORT_FILE"
-          echo "**Analysis Date:** $(date)" >> "$REPORT_FILE"
-          echo "**Model Used:** $MODEL" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
+          TASK: Analyze the summarized Salesforce Profiles and Permission Sets data. Identify risks, compliance issues, and optimization opportunities.
           
-          # Add data summary if available
-          if [ -f "data/data_summary.json" ]; then
-            echo "## 📊 Data Overview" >> "$REPORT_FILE"
-            echo '```json' >> "$REPORT_FILE"
-            jq '.' data/data_summary.json >> "$REPORT_FILE"
-            echo '```' >> "$REPORT_FILE"
-            echo "" >> "$REPORT_FILE"
-          fi
-          # Generate comprehensive analysis prompt
-          generate_analysis_prompt() {
-            local profiles="$1"
-            local profile_obj_perms="$2"
-            local profile_field_perms="$3"
-            local permsets="$4"
-            local permset_obj_perms="$5"
-            local permset_field_perms="$6"
-            local assignments="$7"
-            local audit_data="$8"
-            
-            cat <<'EOF'
-          ROLE: You are a senior Salesforce security architect with 10+ years of experience.
+          DATA SUMMARY:
+          $summary
           
-          TASK: Analyze the provided Salesforce security configuration data and identify security risks, compliance issues, and optimization opportunities.
+          PROFILES (sample):
+          $profiles
           
-          ANALYSIS FRAMEWORK:
-          1. CRITICAL RISKS: Identify configurations that could lead to data breaches or privilege escalation.
-          2. COMPLIANCE CHECK: Flag configurations violating common compliance standards (SOX, GDPR, HIPAA, PCI DSS).
-          3. BEST PRACTICES: Identify deviations from Salesforce security best practices, enforcing least privilege, role-based access, regular audits, and field-level security for sensitive data.
-          4. OPTIMIZATION: Find redundant permissions and over-provisioned users.
+          PERMISSION SETS (sample):
+          $permsets
           
-          COMPLIANCE FRAMEWORKS TO CONSIDER:
-          - SOX: Focus on segregation of duties and financial data access
-          - GDPR: Check for personal data access controls
-          - HIPAA: Healthcare data protection requirements
-          - PCI DSS: Payment card information security
-          
-          SPECIFIC CHECKS TO PERFORM:
-          - Profiles with "Modify All Data" on sensitive objects (User, Account, Opportunity)
-          - Permission sets granting object permissions without corresponding field-level security
-          - Users assigned both high-privilege profiles and additional permission sets
-          - Recently changed permissions (last 30 days) that increase access
-          - Custom profiles that clone system administrator permissions
-          - Object permissions that bypass sharing rules (View All/Modify All)
-          - Field-level access to sensitive fields (SSN, salary, financial data)
-          
-          **Data Provided:**
-          1. Profiles: Metadata including Id, Name, UserLicense, Description, CreatedDate, LastModifiedDate
-          2. Profile Object Permissions: Object-level access (Read, Create, Edit, Delete, View All, Modify All)
-          3. Profile Field Permissions: Field-level access (Read, Edit) for profiles
-          4. Permission Sets: Metadata including Id, Name, Description, IsOwnedByProfile, Profile.Name, NamespacePrefix
-          5. Permission Set Object Permissions: Object-level access for permission sets
-          6. Permission Set Field Permissions: Field-level access for permission sets
-          7. Permission Set Assignments: User assignments to permission sets
-          8. SetupAuditTrail: Recent changes to permissions, profiles, or objects
-          
-          **Required Output Format (Markdown):**
-          
-          ## 🚨 Critical Security Findings
+          FOLLOW THE STRUCTURED OUTPUT BELOW:
+          ##  Critical Security Findings
           | Severity | Finding | Evidence | Recommendation | Priority | Owner |
-          |----------|---------|----------|----------------|----------|-------|
-          | HIGH/MEDIUM/LOW | Detailed description of issue | Specific Profile/PermSet ID, Object, Field, or User | Actionable steps with timeline | Urgent/High/Medium | Role or team responsible |
           
           ## 👥 Profile Analysis
-          | Profile Name | Key Permissions | Objects Affected | Risk Level | Notes |
-          |--------------|-----------------|------------------|------------|-------|
-          | [Name] | List risky perms (e.g., Modify All Data on Account) | Objects impacted | HIGH/MEDIUM/LOW | Reasoning and context |
+          | Profile Name | Key Permissions | Risk Level | Notes |
           
-          ## 🔑 Permission Sets Analysis
-          | Permission Set Name | Key Permissions | Assigned Users | Objects Affected | Risk Level | Notes |
-          |---------------------|-----------------|---------------|------------------|------------|-------|
-          | [Name] | List risky perms | Number of users or specific users | Objects impacted | HIGH/MEDIUM/LOW | Reasoning and context |
+          ##  Permission Sets Analysis
+          | Permission Set Name | Key Permissions | Assigned Users | Risk Level | Notes |
           
-          ## 🔄 Permission Overlaps and Redundancies
-          | Profile/PermSet Pair | Overlapping Permissions | Objects/Fields | Risk Level | Recommendation |
-          |----------------------|-------------------------|---------------|------------|----------------|
-          | [Profile/PermSet Names] | Permissions granted by both | Affected objects/fields | HIGH/MEDIUM/LOW | Steps to consolidate or remove redundancy |
+          ##  Compliance & Best Practices
+          | Framework | Issue | Evidence | Recommendation |
           
-          ## 👤 User Assignment Analysis
-          | Issue | Affected Users | Permission Sets | Risk Level | Recommendation |
-          |-------|----------------|-----------------|------------|----------------|
-          | [e.g., Inactive User Assigned] | User IDs/Names | PermSet Names | HIGH/MEDIUM/LOW | Action to resolve |
-          
-          ## 📊 Over-Permissions and Least Privilege Violations
-          - **Admin-like Profiles:** Profiles with System Administrator or excessive permissions
-          - **Broad Object Access:** Objects with View All/Modify All enabled unnecessarily
-          - **Sensitive Field Access:** Fields (e.g., SSN, Credit Card) editable by non-privileged users
-          - **Custom Object Risks:** Excessive access to custom objects
-          - **Namespace Issues:** Custom or non-standard namespace permissions
-          
-          ## 🔐 Compliance and Best Practices
-          | Compliance Area | Issue | Evidence | Recommendation |
-          |-----------------|-------|----------|----------------|
-          | [e.g., GDPR, SOX] | Description of non-compliance | Specific permissions or assignments | Steps to align with compliance |
-          
-          ## 🔄 Recent Changes Review
-          | Date | Action | Changed By | Impact | Risk Level | Recommendation |
-          |------|--------|------------|--------|------------|----------------|
-          | [Timestamp] | [Action, e.g., Permission Modified] | User ID/Name | Affected Profile/PermSet | HIGH/MEDIUM/LOW | Action to validate or revert |
-          
-          ## 📋 Summary of Findings
-          - **Total Profiles Analyzed:** [Number]
-          - **Total Permission Sets Analyzed:** [Number]
-          - **Total Assignments Reviewed:** [Number]
-          - **Key Risks Identified:** [Summary of high-priority issues]
-          - **Next Steps:** [High-level recommendations and follow-up actions]
-          
-          **Analysis Rules:**
-          - **Risk Rating Criteria:**
-            - **HIGH**: Immediate risk (e.g., Modify All Data on sensitive objects like User, Account; recent unauthorized changes)
-            - **MEDIUM**: Potential risk requiring review (e.g., broad View All access, custom object over-permissions, redundant permissions)
-            - **LOW**: Minor issues or best practice improvements (e.g., missing descriptions, non-standard namespaces)
-          - Flag profiles/permission sets granting Modify All Data, View All Records, or Delete on sensitive objects (e.g., User, Account, Opportunity, Contact, Custom Objects with sensitive data)
-          - Identify over-assigned admin permissions (e.g., System Administrator, Customize Application)
-          - Detect permission sets assigned to inappropriate roles
-          - Highlight custom objects with excessive permissions (e.g., Modify All Data)
-          - Check for overlapping permissions between profiles and permission sets that could lead to unintended access
-          - Identify sensitive fields (e.g., SSN, Credit Card, Email) with inappropriate Read/Edit access
-          - Review SetupAuditTrail for recent changes to profiles, permission sets, or objects; flag unauthorized or risky modifications
-          - Validate namespace prefixes for potential third-party or unmanaged package risks
-          - Ensure compliance with GDPR (data access restrictions), SOX (audit trails), HIPAA (healthcare data), PCI DSS (payment card data), and Salesforce best practices (least privilege, segregation of duties)
-          - Flag permission sets with no assignments or profiles with no users
-          - Be specific with IDs, names, objects, fields, and timestamps
-          - Provide actionable recommendations with priority (Urgent/High/Medium) and suggested owners (e.g., Salesforce Admin, Security Team)
-          - Reference Salesforce best practices and documentation links (e.g., https://help.salesforce.com/s/articleView?id=sf.security_best_practices.htm&type=5)
-          - Handle missing data gracefully (e.g., note if audit trail or assignments are unavailable)
-          - Base conclusions ONLY on provided data; do not assume or infer beyond the data
-          - If data is incomplete, note the limitations
-          
-          **Data:**
-          PROFILES:
+          ##  Summary
+          - Total Profiles Analyzed: $(jq -r '.summary.profiles' summaries/data_summary.json)
+          - Total Permission Sets Analyzed: $(jq -r '.summary.permsets' summaries/data_summary.json)
+          - Model Used: $MODEL
           EOF
-            echo "$profiles"
-            cat <<'EOF'
+          echo " Running AI model with summarized context..."
+          cat "$prompt_file" | ollama run "$MODEL" > "$REPORT_FILE"
+          echo " AI analysis completed. Report saved to $REPORT_FILE"
           
-          PROFILE OBJECT PERMS:
-          EOF
-            echo "$profile_obj_perms"
-            cat <<'EOF'
-          
-          PROFILE FIELD PERMS:
-          EOF
-            echo "$profile_field_perms"
-            cat <<'EOF'
-          
-          PERMISSION SETS:
-          EOF
-            echo "$permsets"
-            cat <<'EOF'
-          
-          PERMSET OBJECT PERMS:
-          EOF
-            echo "$permset_obj_perms"
-            cat <<'EOF'
-          
-          PERMSET FIELD PERMS:
-          EOF
-            echo "$permset_field_perms"
-            cat <<'EOF'
-          
-          ASSIGNMENTS:
-          EOF
-            echo "$assignments"
-            cat <<'EOF'
-          
-          AUDIT TRAIL:
-          EOF
-            echo "$audit_data"
-          }
-          
-          # Prepare data for analysis
-          profiles=$(cat data/profiles.json 2>/dev/null || echo "{}")
-          profile_obj_perms=$(cat data/profile_object_perms.json 2>/dev/null || echo "{}")
-          profile_field_perms=$(cat data/profile_field_perms.json 2>/dev/null || echo "{}")
-          permsets=$(cat data/permission_sets.json 2>/dev/null || echo "{}")
-          permset_obj_perms=$(cat data/permset_object_perms.json 2>/dev/null || echo "{}")
-          permset_field_perms=$(cat data/permset_field_perms.json 2>/dev/null || echo "{}")
-          assignments=$(cat data/permset_assignments.json 2>/dev/null || echo "{}")
-          audit_data=$(cat data/setup_audit_trail.json 2>/dev/null || echo "{}")
-      
-          # Generate analysis
-          echo "🤖 Generating comprehensive AI analysis..."
-          generate_analysis_prompt "$profiles" "$profile_obj_perms" "$profile_field_perms" "$permsets" "$permset_obj_perms" "$permset_field_perms" "$assignments" "$audit_data" | ollama run "$MODEL" >> "$REPORT_FILE"
-          
-          # Add technical appendix
-          echo -e "\n---\n" >> "$REPORT_FILE"
-          echo "## 📋 Technical Data Summary" >> "$REPORT_FILE"
-          echo "- **Total Profiles:** $(jq -r '.result.totalSize // 0' data/profiles.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
-          echo "- **Total Permission Sets:** $(jq -r '.result.totalSize // 0' data/permission_sets.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
-          echo "- **Report Generated:** $(date)" >> "$REPORT_FILE"
-      
       - name: Upload Analysis Report
         uses: actions/upload-artifact@v4
         with:
@@ -475,18 +170,11 @@ jobs:
           path: security_analysis_report.md
           retention-days: 14
 
-      - name: 📄 Analysis Summary
-        env:
-          MODEL: ${{ inputs.model_name }}
+      - name:  Analysis Summary
         run: |
-          {
-            echo "## 🧠 Security Configuration Analysis Summary"
-            profile_count=$(jq -r '.result.totalSize // 0' data/profiles.json 2>/dev/null || echo '0')
-            permset_count=$(jq -r '.result.totalSize // 0' data/permission_sets.json 2>/dev/null || echo '0')
-            echo "- **Profiles Analyzed:** $profile_count"
-            echo "- **Permission Sets Analyzed:** $permset_count"
-            echo "- **AI Model:** \`$MODEL\`"
-            echo "- **Report:** \`security_analysis_report.md\`"
-            echo "- **Artifact:** \`security-analysis-report\`"
-            echo ""
-          } >> $GITHUB_STEP_SUMMARY
+          echo "##  Security Configuration Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Profiles (sampled):** $(jq -r '.summary.profiles' summaries/data_summary.json)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Permission Sets (sampled):** $(jq -r '.summary.permsets' summaries/data_summary.json)" >> $GITHUB_STEP_SUMMARY
+          echo "- **AI Model:** \`${{ inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Report:** \`security_analysis_report.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** \`security-analysis-report\`" >> $GITHUB_STEP_SUMMARY
