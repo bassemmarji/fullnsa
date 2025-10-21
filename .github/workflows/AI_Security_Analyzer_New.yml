@@ -1,4 +1,4 @@
-name: AI-Powered Profiles and Permission Sets Analyzer
+name: AI-Powered New Profiles and Permission Sets Analyzer
 
 on:
   workflow_dispatch:
@@ -58,38 +58,38 @@ jobs:
       - name: Setup data directory
         run: mkdir -p "$DATA_DIR"
 
-      - name:  Authenticate to Salesforce Org
+      - name: 🔐 Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
-      - name:  Query Profiles Metadata
+      - name: 🧩 Query Profiles Metadata
         run: |
           echo "🔍 Querying profiles metadata..."
           sf data query --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile LIMIT 2000" \
             --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/profiles.json" || echo '{"records": []}' > "$DATA_DIR/profiles.json"
 
-      - name:  Query Permission Sets Metadata
+      - name: 🧩 Query Permission Sets Metadata
         run: |
           echo "🔍 Querying permission sets metadata..."
           sf data query --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, CreatedDate, LastModifiedDate FROM PermissionSet LIMIT 2000" \
             --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/permission_sets.json" || echo '{"records": []}' > "$DATA_DIR/permission_sets.json"
 
-      - name:  Query Object Permissions
+      - name: 🧩 Query Object Permissions
         run: |
           echo "🔍 Querying object permissions..."
           sf data query --query "SELECT Id, Parent.Name, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions LIMIT 5000" \
             --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/object_permissions.json" || echo '{"records": []}' > "$DATA_DIR/object_permissions.json"
 
-      - name:  Query Field Permissions
+      - name: 🧩 Query Field Permissions
         run: |
           echo "🔍 Querying field permissions..."
           sf data query --query "SELECT Id, Parent.Name, SobjectType, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions LIMIT 5000" \
             --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/field_permissions.json" || echo '{"records": []}' > "$DATA_DIR/field_permissions.json"
 
-      - name:  Query User License Information
+      - name: 🧩 Query User License Information
         run: |
-          echo " Querying user license information..."
+          echo "🔍 Querying user license information..."
           sf data query --query "SELECT Id, Name, LicenseDefinitionKey, Status, UsedLicenses, TotalLicenses FROM UserLicense" \
             --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/user_licenses.json" || echo '{"records": []}' > "$DATA_DIR/user_licenses.json"
 
@@ -105,10 +105,10 @@ jobs:
           echo "permset_count=$permset_count" >> $GITHUB_OUTPUT
           
           total=$((profile_count + permset_count))
-          echo " Collected: $profile_count profiles, $permset_count permission sets, $object_perm_count object permissions, $field_perm_count field permissions"
+          echo "📊 Collected: $profile_count profiles, $permset_count permission sets, $object_perm_count object permissions, $field_perm_count field permissions"
           
           if [ "$total" -gt 0 ]; then
-            echo " Found security configuration data"
+            echo "✅ Found security configuration data"
             echo "has_data=true" >> $GITHUB_OUTPUT
             
             # Create data summary
@@ -128,7 +128,7 @@ jobs:
               }
             }' > "$DATA_DIR/data_summary.json"
           else
-            echo " No profiles or permission sets found"
+            echo "⚠️ No profiles or permission sets found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
@@ -147,10 +147,10 @@ jobs:
             echo "- **Profiles Found:** ${{ steps.validate-data.outputs.profile_count }}"
             echo "- **Permission Sets Found:** ${{ steps.validate-data.outputs.permset_count }}"
             if [ "${{ steps.validate-data.outputs.has_data }}" = "true" ]; then
-              echo "- **Data Available:**  **Yes**"
+              echo "- **Data Available:** ✅ **Yes**"
               echo "- **Artifact:** \`security-profiles-data\`"
             else
-              echo "- **Data Available:**  **No data found**"
+              echo "- **Data Available:** ❌ **No data found**"
             fi
           } >> $GITHUB_STEP_SUMMARY
 
@@ -181,14 +181,14 @@ jobs:
       - name: Download AI Model
         timeout-minutes: 30
         run: |
-          echo " Downloading Ollama model: $MODEL_NAME"
+          echo "📥 Downloading Ollama model: $MODEL_NAME"
           ollama pull "$MODEL_NAME"
           ollama list
 
       - name: Prepare Data for Analysis
         id: prepare-data
         run: |
-          echo " Preparing data for AI analysis..."
+          echo "🧩 Preparing data for AI analysis..."
           mkdir -p summaries
           
           # Create comprehensive summaries based on analysis depth
@@ -238,13 +238,13 @@ jobs:
             }
           }' summaries/profiles_summary.json summaries/permsets_summary.json summaries/object_perms_summary.json summaries/field_perms_summary.json > summaries/data_summary.json
           
-          echo " Data preparation complete"
+          echo "✅ Data preparation complete"
 
       - name: Analyze Security Configuration
         timeout-minutes: 15
         run: |
           REPORT_FILE="security_analysis_report.md"
-          echo "# Salesforce Security Configuration Analysis" > "$REPORT_FILE"
+          echo "# 🛡️ Salesforce Security Configuration Analysis" > "$REPORT_FILE"
           echo "**Analysis Date:** $(date)" >> "$REPORT_FILE"
           echo "**Org Alias:** $ORG_ALIAS" >> "$REPORT_FILE"
           echo "**AI Model:** $MODEL_NAME" >> "$REPORT_FILE"
@@ -260,75 +260,75 @@ jobs:
             local field_perms="$5"
             
             cat <<EOF
-            ROLE: You are a senior Salesforce security architect with expertise in identity and access management, compliance frameworks, and security best practices.
-            
-            TASK: Analyze the provided Salesforce security configuration data and identify risks, optimization opportunities, and compliance issues.
-            
-            ANALYSIS CONTEXT:
-            - Analysis Depth: $ANALYSIS_DEPTH
-            - Focus: Practical, actionable security recommendations
-            - Consider: Principle of Least Privilege, compliance requirements, maintainability
-            
-            DATA SUMMARY:
-            $summary
-            
-            PROFILES SAMPLE:
-            $profiles
-            
-            PERMISSION SETS SAMPLE:
-            $permsets
-            
-            OBJECT PERMISSIONS SAMPLE:
-            $object_perms
-            
-            FIELD PERMISSIONS SAMPLE:
-            $field_perms
-            
-            REQUIRED OUTPUT FORMAT:
-            
-            ## Critical Security Findings
-            | Severity | Finding | Evidence | Impact | Recommendation | Priority |
-            |----------|---------|----------|--------|----------------|----------|
-            | Critical/High/Medium/Low | Specific finding | Data evidence | Business impact | Actionable steps | High/Medium/Low |
-            
-            ## Profile Architecture Analysis
-            | Profile Name | User License | Risk Level | Key Issues | Optimization Suggestions |
-            |-------------|--------------|------------|------------|-------------------------|
-            
-            ## Permission Set Strategy
-            | Permission Set | Type | Assignment Risk | Efficiency | Consolidation Opportunities |
-            |---------------|------|-----------------|------------|----------------------------|
-            
-            ## Permission Analysis
-            | Object/Field | Access Level | Risk | Compliance Issue | Best Practice Violation |
-            |-------------|--------------|------|------------------|------------------------|
-            
-            ## Compliance Assessment
-            | Framework | Requirement | Status | Gap | Remediation |
-            |-----------|-------------|--------|-----|-------------|
-            
-            ## Optimization Recommendations
-            | Category | Current State | Target State | Effort | Impact | Priority |
-            |----------|---------------|--------------|--------|--------|----------|
-            
-            ## Executive Summary
-            - **Overall Security Posture:** [Rating]
-            - **Key Risks:** [Bulleted list]
-            - **Immediate Actions:** [Bulleted list]
-            - **Strategic Improvements:** [Bulleted list]
-            
-            ANALYSIS RULES:
-            - Focus on practical, implementable recommendations
-            - Consider Salesforce platform limitations
-            - Prioritize by business impact and risk level
-            - Suggest specific permission removals, profile consolidations
-            - Identify over-privileged configurations
-            - Flag compliance violations (SOX, GDPR, etc.)
-            - Base conclusions ONLY on provided metadata
-            EOF
+          ROLE: You are a senior Salesforce security architect with expertise in identity and access management, compliance frameworks, and security best practices.
+          
+          TASK: Analyze the provided Salesforce security configuration data and identify risks, optimization opportunities, and compliance issues.
+          
+          ANALYSIS CONTEXT:
+          - Analysis Depth: $ANALYSIS_DEPTH
+          - Focus: Practical, actionable security recommendations
+          - Consider: Principle of Least Privilege, compliance requirements, maintainability
+          
+          DATA SUMMARY:
+          $summary
+          
+          PROFILES SAMPLE:
+          $profiles
+          
+          PERMISSION SETS SAMPLE:
+          $permsets
+          
+          OBJECT PERMISSIONS SAMPLE:
+          $object_perms
+          
+          FIELD PERMISSIONS SAMPLE:
+          $field_perms
+          
+          REQUIRED OUTPUT FORMAT:
+          
+          ## 🚨 Critical Security Findings
+          | Severity | Finding | Evidence | Impact | Recommendation | Priority |
+          |----------|---------|----------|--------|----------------|----------|
+          | Critical/High/Medium/Low | Specific finding | Data evidence | Business impact | Actionable steps | High/Medium/Low |
+          
+          ## 👥 Profile Architecture Analysis
+          | Profile Name | User License | Risk Level | Key Issues | Optimization Suggestions |
+          |-------------|--------------|------------|------------|-------------------------|
+          
+          ## 🔑 Permission Set Strategy
+          | Permission Set | Type | Assignment Risk | Efficiency | Consolidation Opportunities |
+          |---------------|------|-----------------|------------|----------------------------|
+          
+          ## 📊 Permission Analysis
+          | Object/Field | Access Level | Risk | Compliance Issue | Best Practice Violation |
+          |-------------|--------------|------|------------------|------------------------|
+          
+          ## 🔍 Compliance Assessment
+          | Framework | Requirement | Status | Gap | Remediation |
+          |-----------|-------------|--------|-----|-------------|
+          
+          ## 🎯 Optimization Recommendations
+          | Category | Current State | Target State | Effort | Impact | Priority |
+          |----------|---------------|--------------|--------|--------|----------|
+          
+          ## 📝 Executive Summary
+          - **Overall Security Posture:** [Rating]
+          - **Key Risks:** [Bulleted list]
+          - **Immediate Actions:** [Bulleted list]
+          - **Strategic Improvements:** [Bulleted list]
+          
+          ANALYSIS RULES:
+          - Focus on practical, implementable recommendations
+          - Consider Salesforce platform limitations
+          - Prioritize by business impact and risk level
+          - Suggest specific permission removals, profile consolidations
+          - Identify over-privileged configurations
+          - Flag compliance violations (SOX, GDPR, etc.)
+          - Base conclusions ONLY on provided metadata
+          EOF
           }
 
-          echo "Running AI security analysis..."
+          echo "🤖 Running AI security analysis..."
           summary=$(cat summaries/data_summary.json)
           profiles=$(cat summaries/profiles_summary.json)
           permsets=$(cat summaries/permsets_summary.json)
@@ -340,14 +340,14 @@ jobs:
 
           # Add technical appendix
           echo -e "\n---\n" >> "$REPORT_FILE"
-          echo "## Technical Appendix" >> "$REPORT_FILE"
+          echo "## 📋 Technical Appendix" >> "$REPORT_FILE"
           echo "- **Total Profiles Analyzed:** $(jq -r '.records | length' data/profiles.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
           echo "- **Total Permission Sets Analyzed:** $(jq -r '.records | length' data/permission_sets.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
           echo "- **Object Permissions:** $(jq -r '.records | length' data/object_permissions.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
           echo "- **Field Permissions:** $(jq -r '.records | length' data/field_permissions.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
           echo "- **Analysis Timestamp:** $(date)" >> "$REPORT_FILE"
 
-          echo "Security analysis completed"
+          echo "✅ Security analysis completed"
 
       - name: Upload Security Analysis Report
         uses: actions/upload-artifact@v4
@@ -358,7 +358,7 @@ jobs:
             summaries/
           retention-days: 14
 
-      - name: Security Analysis Summary
+      - name: 📄 Security Analysis Summary
         run: |
           {
             echo "## 🛡️ Security Configuration Analysis Summary"
