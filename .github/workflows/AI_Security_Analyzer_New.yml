@@ -151,22 +151,15 @@ jobs:
           echo "" >> "$REPORT_FILE"
 
           prompt="You are a senior Salesforce Data Architect.
-          Analyze the provided metadata (objects, fields, relationships, validation rules, triggers, flows, and record types).
-          Focus on:
-          - Normalization and relationship quality
-          - Field redundancy or excessive denormalization
-          - Missing relationships or inconsistent lookups
-          - Indexing and performance improvements
-          - Validation rule complexity
-          - Trigger/automation overlap
-          Summarize in Markdown tables with practical recommendations."
-
-          # ✅ Use correct flag --prompt
-          ollama run "$MODEL" \
-            --prompt "$prompt" \
-            --file data/objects.json \
-            --file data/fields.json \
-            --file data/relationships.json >> "$REPORT_FILE"
+          Analyze the provided metadata (objects, fields, relationships, etc).
+          Focus on normalization, relationships, indexing, performance, etc."
+          
+          # Combine all JSON into a single input file (optional)
+          jq -s '{objects: .[0], fields: .[1], relationships: .[2]}' \
+              data/objects.json data/fields.json data/relationships.json > data/combined.json
+          
+          # Run Ollama with a prompt and feed JSON via stdin
+          ollama run "$MODEL" "$prompt" < data/combined.json >> "$REPORT_FILE"
 
           echo "" >> "$REPORT_FILE"
           echo "---" >> "$REPORT_FILE"
