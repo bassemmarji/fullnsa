@@ -29,7 +29,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - run: npm install -g @salesforce/cli jq
+
+      - name: Install Salesforce CLI + jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @salesforce/cli
 
       - name: Authenticate to Salesforce
         run: |
