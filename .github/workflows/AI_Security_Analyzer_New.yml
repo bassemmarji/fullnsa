@@ -161,9 +161,12 @@ jobs:
           - Trigger/automation overlap
           Summarize in Markdown tables with practical recommendations."
 
-          # Feed only the most essential JSON chunks to avoid long context
-          ollama run "$MODEL" -p "$prompt" \
-            -f data/objects.json -f data/fields.json -f data/relationships.json >> "$REPORT_FILE"
+          # ✅ Use correct flag --prompt
+          ollama run "$MODEL" \
+            --prompt "$prompt" \
+            --file data/objects.json \
+            --file data/fields.json \
+            --file data/relationships.json >> "$REPORT_FILE"
 
           echo "" >> "$REPORT_FILE"
           echo "---" >> "$REPORT_FILE"
@@ -171,7 +174,7 @@ jobs:
           echo "- Objects: $(jq -r '.result.totalSize // 0' data/objects.json)" >> "$REPORT_FILE"
           echo "- Fields: $(jq -r '.result.totalSize // 0' data/fields.json)" >> "$REPORT_FILE"
           echo "- Generated: $(date)" >> "$REPORT_FILE"
-
+          
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
