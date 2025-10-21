@@ -1,4 +1,4 @@
-name: AI-Powered New Data Model Analyzer
+name: AI-Powered New Data Model Analyzer (Lite-Safe)
 
 on:
   workflow_dispatch:
@@ -29,51 +29,70 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-        # Lighter install (no update)
       - run: npm install -g @salesforce/cli jq
 
-      - name: Auth to Salesforce
-        run: echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias "${{ github.event.inputs.org_alias }}" --sfdx-url-stdin
-
-      - name: Query Metadata in Bulk
+      - name: Authenticate to Salesforce
         run: |
-          mkdir -p $DATA_DIR
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias "${{ github.event.inputs.org_alias }}" \
+            --sfdx-url-stdin
+
+      - name: Query Salesforce Metadata (Safe Mode)
+        run: |
+          mkdir -p "$DATA_DIR"
 
           echo "🔍 Querying EntityDefinition..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel 
                      FROM EntityDefinition 
-                     WHERE IsCustomizable = true" > "$DATA_DIR/objects.json"
+                     WHERE IsCustomizable = true 
+                     LIMIT 2000" > "$DATA_DIR/objects.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/objects.json"
 
           echo "🔍 Querying FieldDefinition..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale 
                      FROM FieldDefinition 
-                     WHERE EntityDefinition.IsCustomizable = true LIMIT 50000" > "$DATA_DIR/fields.json"
+                     WHERE EntityDefinition.IsCustomizable = true 
+                     LIMIT 2000" > "$DATA_DIR/fields.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/fields.json"
 
           echo "🔍 Querying Relationships..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo 
                      FROM FieldDefinition 
-                     WHERE DataType IN ('Lookup','MasterDetail')" > "$DATA_DIR/relationships.json"
+                     WHERE DataType IN ('Lookup','MasterDetail') 
+                     LIMIT 2000" > "$DATA_DIR/relationships.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/relationships.json"
 
           echo "🔍 Querying Validation Rules..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage 
-                     FROM ValidationRule WHERE Active = true" > "$DATA_DIR/validation_rules.json"
+            --query "SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description 
+                     FROM ValidationRule 
+                     WHERE Active = true 
+                     LIMIT 2000" > "$DATA_DIR/validation_rules.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/validation_rules.json"
 
-          echo "🔍 Querying Apex Triggers + Flows..."
+          echo "🤖 Querying Apex Triggers..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Name, TableEnumOrId, Status FROM ApexTrigger" > "$DATA_DIR/triggers.json"
+            --query "SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate 
+                     FROM ApexTrigger 
+                     LIMIT 2000" > "$DATA_DIR/triggers.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/triggers.json"
 
+          echo "⚙️ Querying Flow Definitions..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT DeveloperName, Status, ProcessType FROM FlowDefinition" > "$DATA_DIR/flows.json"
+            --query "SELECT DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate 
+                     FROM FlowDefinition 
+                     LIMIT 2000" > "$DATA_DIR/flows.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/flows.json"
+
+          echo "📋 Querying Record Types..."
+          sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT DeveloperName, SobjectType, Name, Description, IsActive 
+                     FROM RecordType 
+                     LIMIT 2000" > "$DATA_DIR/record_types.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/record_types.json"
 
       - name: Validate Data Availability
         id: check
@@ -83,14 +102,16 @@ jobs:
           echo "Objects: $object_count, Fields: $field_count"
 
           if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
+            echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
+            echo "⚠️ No metadata found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: data-model-lite
+          name: data-model-metadata-lite
           path: ${{ env.DATA_DIR }}
           retention-days: 7
 
@@ -102,33 +123,59 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: data-model-lite
+          name: data-model-metadata-lite
           path: data
 
-      - name: Setup Ollama (cached)
+      - name: Setup Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
-          for i in {1..20}; do curl -s http://localhost:11434/api/version && break; sleep 2; done
+          for i in {1..20}; do
+            curl -s http://localhost:11434/api/version && break
+            sleep 2
+          done
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: Run Analysis
+      - name: Analyze Data Model with AI
         run: |
-          echo "# AI Data Model Report" > report.md
-          echo "**Model:** ${{ github.event.inputs.model_name }}" >> report.md
-          echo "**Generated:** $(date)" >> report.md
-          echo "" >> report.md
+          REPORT_FILE="data_model_analysis.md"
+          MODEL="${{ github.event.inputs.model_name }}"
+          echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
+          echo "**Model:** $MODEL" >> "$REPORT_FILE"
+          echo "**Generated:** $(date)" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
 
-          prompt="Analyze the Salesforce data model for structure, relationships, and best practices.
-          Provide findings in Markdown tables with recommendations and improvement ideas.
-          Focus on normalization, indexing, and automation complexity.
-          Use the provided JSON metadata."
+          prompt="You are a senior Salesforce Data Architect.
+          Analyze the provided metadata (objects, fields, relationships, validation rules, triggers, flows, and record types).
+          Focus on:
+          - Normalization and relationship quality
+          - Field redundancy or excessive denormalization
+          - Missing relationships or inconsistent lookups
+          - Indexing and performance improvements
+          - Validation rule complexity
+          - Trigger/automation overlap
+          Summarize in Markdown tables with practical recommendations."
 
-          ollama run "${{ github.event.inputs.model_name }}" -p "$prompt" \
-            -f data/objects.json -f data/fields.json -f data/relationships.json >> report.md
+          # Feed only the most essential JSON chunks to avoid long context
+          ollama run "$MODEL" -p "$prompt" \
+            -f data/objects.json -f data/fields.json -f data/relationships.json >> "$REPORT_FILE"
+
+          echo "" >> "$REPORT_FILE"
+          echo "---" >> "$REPORT_FILE"
+          echo "## Technical Summary" >> "$REPORT_FILE"
+          echo "- Objects: $(jq -r '.result.totalSize // 0' data/objects.json)" >> "$REPORT_FILE"
+          echo "- Fields: $(jq -r '.result.totalSize // 0' data/fields.json)" >> "$REPORT_FILE"
+          echo "- Generated: $(date)" >> "$REPORT_FILE"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ai-analysis-report
-          path: report.md
+          name: ai-data-model-report
+          path: data_model_analysis.md
           retention-days: 14
+
+      - name: 📄 AI Summary
+        run: |
+          echo "## 🧠 AI Data Model Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Model: \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Report: \`data_model_analysis.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Artifact: \`ai-data-model-report\`" >> $GITHUB_STEP_SUMMARY
