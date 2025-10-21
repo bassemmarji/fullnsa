@@ -1,4 +1,4 @@
-name: AI New Powered Profiles and Permission Sets Analyzer
+name: AI-Powered Profiles and Permission Sets Analyzer
 
 on:
   workflow_dispatch:
@@ -14,21 +14,32 @@ on:
         options:
           - llama3:latest
           - gemma2:27b
-          - mistral-large
+          - mistral:latest
         default: llama3:latest
+      analysis_depth:
+        type: choice
+        description: "Analysis depth level"
+        options:
+          - basic
+          - comprehensive
+          - deep
+        default: comprehensive
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
   MODEL_NAME: ${{ github.event.inputs.model_name }}
+  ANALYSIS_DEPTH: ${{ github.event.inputs.analysis_depth }}
   NODE_VERSION: "20"
   DATA_DIR: "security-profiles-data"
 
 jobs:
   collect-security-data:
-    name: Collect Profiles and Permission Sets Data
+    name: Collect Security Configuration Data
     runs-on: ubuntu-latest
     outputs:
-      has_data: ${{ steps.check-data.outputs.has_data }}
+      profile_count: ${{ steps.validate-data.outputs.profile_count }}
+      permset_count: ${{ steps.validate-data.outputs.permset_count }}
+      has_data: ${{ steps.validate-data.outputs.has_data }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,47 +55,107 @@ jobs:
           sf plugins:update
           sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 🔐 Authenticate to Salesforce Org
+      - name: Setup data directory
+        run: mkdir -p "$DATA_DIR"
+
+      - name:  Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
-      - name: 🧩 Query Profiles and Permission Sets
+      - name:  Query Profiles Metadata
         run: |
-          mkdir -p "$DATA_DIR"
-          echo "🔍 Querying profiles and permission sets..."
+          echo "🔍 Querying profiles metadata..."
           sf data query --query "SELECT Id, Name, UserLicense.Name, Description, CreatedDate, LastModifiedDate FROM Profile LIMIT 2000" \
-            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/profiles.json" || echo "{}" > "$DATA_DIR/profiles.json"
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/profiles.json" || echo '{"records": []}' > "$DATA_DIR/profiles.json"
 
+      - name:  Query Permission Sets Metadata
+        run: |
+          echo "🔍 Querying permission sets metadata..."
           sf data query --query "SELECT Id, Name, Description, IsOwnedByProfile, Profile.Name, CreatedDate, LastModifiedDate FROM PermissionSet LIMIT 2000" \
-            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/permission_sets.json" || echo "{}" > "$DATA_DIR/permission_sets.json"
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/permission_sets.json" || echo '{"records": []}' > "$DATA_DIR/permission_sets.json"
+
+      - name:  Query Object Permissions
+        run: |
+          echo "🔍 Querying object permissions..."
+          sf data query --query "SELECT Id, Parent.Name, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions LIMIT 5000" \
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/object_permissions.json" || echo '{"records": []}' > "$DATA_DIR/object_permissions.json"
+
+      - name:  Query Field Permissions
+        run: |
+          echo "🔍 Querying field permissions..."
+          sf data query --query "SELECT Id, Parent.Name, SobjectType, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions LIMIT 5000" \
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/field_permissions.json" || echo '{"records": []}' > "$DATA_DIR/field_permissions.json"
+
+      - name:  Query User License Information
+        run: |
+          echo " Querying user license information..."
+          sf data query --query "SELECT Id, Name, LicenseDefinitionKey, Status, UsedLicenses, TotalLicenses FROM UserLicense" \
+            --target-org "$ORG_ALIAS" --result-format json > "$DATA_DIR/user_licenses.json" || echo '{"records": []}' > "$DATA_DIR/user_licenses.json"
 
       - name: Validate Collected Data
-        id: check-data
+        id: validate-data
         run: |
-          profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo 0)
-          permset_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo 0)
+          profile_count=$(jq -r '.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo "0")
+          permset_count=$(jq -r '.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo "0")
+          object_perm_count=$(jq -r '.records | length' "$DATA_DIR/object_permissions.json" 2>/dev/null || echo "0")
+          field_perm_count=$(jq -r '.records | length' "$DATA_DIR/field_permissions.json" 2>/dev/null || echo "0")
+          
+          echo "profile_count=$profile_count" >> $GITHUB_OUTPUT
+          echo "permset_count=$permset_count" >> $GITHUB_OUTPUT
+          
           total=$((profile_count + permset_count))
-
-          echo "Profiles: $profile_count, Permission Sets: $permset_count"
-
+          echo " Collected: $profile_count profiles, $permset_count permission sets, $object_perm_count object permissions, $field_perm_count field permissions"
+          
           if [ "$total" -gt 0 ]; then
-            echo "✅ Found security configuration data"
+            echo " Found security configuration data"
             echo "has_data=true" >> $GITHUB_OUTPUT
+            
+            # Create data summary
+            jq -n --arg profiles "$profile_count" \
+                  --arg permsets "$permset_count" \
+                  --arg object_perms "$object_perm_count" \
+                  --arg field_perms "$field_perm_count" \
+                  --arg org "$ORG_ALIAS" \
+            '{
+              summary: {
+                profiles: ($profiles | tonumber),
+                permission_sets: ($permsets | tonumber),
+                object_permissions: ($object_perms | tonumber),
+                field_permissions: ($field_perms | tonumber),
+                org_alias: $org,
+                collected_at: (now | todate)
+              }
+            }' > "$DATA_DIR/data_summary.json"
           else
-            echo "⚠️ No profiles or permission sets found"
+            echo " No profiles or permission sets found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Upload Security Data
+      - name: Upload Security Data Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: security-profiles-data
           path: ${{ env.DATA_DIR }}
           retention-days: 7
 
+      - name: 📊 Security Data Collection Summary
+        run: |
+          {
+            echo "## 📊 Security Data Collection Summary"
+            echo "- **Org Alias:** $ORG_ALIAS"
+            echo "- **Profiles Found:** ${{ steps.validate-data.outputs.profile_count }}"
+            echo "- **Permission Sets Found:** ${{ steps.validate-data.outputs.permset_count }}"
+            if [ "${{ steps.validate-data.outputs.has_data }}" = "true" ]; then
+              echo "- **Data Available:**  **Yes**"
+              echo "- **Artifact:** \`security-profiles-data\`"
+            else
+              echo "- **Data Available:**  **No data found**"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
   analyze-security-config:
-    name: Analyze Profiles and Permission Sets with AI
+    name: Analyze Security Configuration with AI
     runs-on: ubuntu-latest
     needs: collect-security-data
     if: needs.collect-security-data.outputs.has_data == 'true'
@@ -107,86 +178,194 @@ jobs:
             sleep 2
           done
 
-      - name: Download Model
+      - name: Download AI Model
+        timeout-minutes: 30
         run: |
-          MODEL="${{ inputs.model_name }}"
-          echo "📥 Downloading Ollama model: $MODEL"
-          ollama pull "$MODEL"
+          echo " Downloading Ollama model: $MODEL_NAME"
+          ollama pull "$MODEL_NAME"
           ollama list
 
-      - name: 🔄 Split Large Files into Batches
+      - name: Prepare Data for Analysis
+        id: prepare-data
         run: |
-          mkdir -p batches
-          jq -c '.result.records[]' data/profiles.json | split -l 25 - batches/profile_
-          jq -c '.result.records[]' data/permission_sets.json | split -l 25 - batches/permset_
-          echo "✅ Split profiles and permission sets into batches for multi-pass AI analysis."
+          echo " Preparing data for AI analysis..."
+          mkdir -p summaries
+          
+          # Create comprehensive summaries based on analysis depth
+          case "$ANALYSIS_DEPTH" in
+            "basic")
+              sample_size=10
+              ;;
+            "comprehensive")
+              sample_size=25
+              ;;
+            "deep")
+              sample_size=50
+              ;;
+            *)
+              sample_size=25
+              ;;
+          esac
+          
+          echo "Using sample size: $sample_size for analysis depth: $ANALYSIS_DEPTH"
+          
+          # Create summarized data samples
+          jq --arg size "$sample_size" \
+            '{profiles_summary: [.records[] | {Id, Name, UserLicense: .UserLicense.Name, Description}][0:($size | tonumber)]}' \
+            data/profiles.json > summaries/profiles_summary.json
+            
+          jq --arg size "$sample_size" \
+            '{permsets_summary: [.records[] | {Id, Name, IsOwnedByProfile, Profile: .Profile.Name, Description}][0:($size | tonumber)]}' \
+            data/permission_sets.json > summaries/permsets_summary.json
+            
+          jq --arg size "$sample_size" \
+            '{object_perms_summary: [.records[] | {Parent: .Parent.Name, SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords}][0:($size | tonumber)]}' \
+            data/object_permissions.json > summaries/object_perms_summary.json
+            
+          jq --arg size "$sample_size" \
+            '{field_perms_summary: [.records[] | {Parent: .Parent.Name, SobjectType, Field, PermissionsRead, PermissionsEdit}][0:($size | tonumber)]}' \
+            data/field_permissions.json > summaries/field_perms_summary.json
+          
+          # Create combined summary
+          jq -s '{
+            summary: {
+              profiles: (.[0].profiles_summary | length),
+              permsets: (.[1].permsets_summary | length),
+              object_permissions: (.[2].object_perms_summary | length),
+              field_permissions: (.[3].field_perms_summary | length),
+              analysis_depth: "'"$ANALYSIS_DEPTH"'",
+              model: "'"$MODEL_NAME"'"
+            }
+          }' summaries/profiles_summary.json summaries/permsets_summary.json summaries/object_perms_summary.json summaries/field_perms_summary.json > summaries/data_summary.json
+          
+          echo " Data preparation complete"
 
-      - name: Create AI Prompt Template
-        run: |
-          cat <<EOF > prompt_template.txt
-          ROLE: You are a senior Salesforce security architect.
-          
-          TASK: Analyze Salesforce Profiles and Permission Sets data. Identify risks, compliance issues, and optimization opportunities.
-          
-          FOLLOW THE STRUCTURED OUTPUT BELOW:
-          ## 🚨 Critical Security Findings
-          | Severity | Finding | Evidence | Recommendation | Priority | Owner |
-          
-          ## 👥 Profile Analysis
-          | Profile Name | Key Permissions | Risk Level | Notes |
-          
-          ## 🔑 Permission Sets Analysis
-          | Permission Set Name | Key Permissions | Assigned Users | Risk Level | Notes |
-          
-          ## 🧾 Profiles and Permission Sets Summary
-          ### Profiles List
-          (List all profile names analyzed here)
-          ### Permission Sets List
-          (List all permission set names analyzed here)
-          
-          ## 📋 Compliance & Best Practices
-          | Framework | Issue | Evidence | Recommendation |
-          
-          ## 🧾 Summary
-          - Total Profiles in This Batch: <to fill>
-          - Total Permission Sets in This Batch: <to fill>
-          - Model Used: $MODEL
-          EOF
-
-      - name: 🤖 Run AI Analysis per Batch
+      - name: Analyze Security Configuration
+        timeout-minutes: 15
         run: |
           REPORT_FILE="security_analysis_report.md"
-          MODEL="${{ inputs.model_name }}"
-          > "$REPORT_FILE"
-
-          echo "# Salesforce Security Analysis Report" >> "$REPORT_FILE"
-          echo "_Generated on $(date)_ using model: $MODEL" >> "$REPORT_FILE"
+          echo "# Salesforce Security Configuration Analysis" > "$REPORT_FILE"
+          echo "**Analysis Date:** $(date)" >> "$REPORT_FILE"
+          echo "**Org Alias:** $ORG_ALIAS" >> "$REPORT_FILE"
+          echo "**AI Model:** $MODEL_NAME" >> "$REPORT_FILE"
+          echo "**Analysis Depth:** $ANALYSIS_DEPTH" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
 
-          for batch in batches/profile_* batches/permset_*; do
-            echo "🧠 Analyzing batch: $batch"
-            batch_data=$(cat "$batch")
-            batch_size=$(echo "$batch_data" | wc -l)
-            cat prompt_template.txt <(echo "\n\nBATCH DATA ($batch_size records):\n$batch_data") | ollama run "$MODEL" >> "$REPORT_FILE"
-            echo "\n---\n" >> "$REPORT_FILE"
-          done
+          # Generate comprehensive analysis prompt
+          generate_analysis_prompt() {
+            local summary="$1"
+            local profiles="$2"
+            local permsets="$3"
+            local object_perms="$4"
+            local field_perms="$5"
+            
+            cat <<EOF
+            ROLE: You are a senior Salesforce security architect with expertise in identity and access management, compliance frameworks, and security best practices.
+            
+            TASK: Analyze the provided Salesforce security configuration data and identify risks, optimization opportunities, and compliance issues.
+            
+            ANALYSIS CONTEXT:
+            - Analysis Depth: $ANALYSIS_DEPTH
+            - Focus: Practical, actionable security recommendations
+            - Consider: Principle of Least Privilege, compliance requirements, maintainability
+            
+            DATA SUMMARY:
+            $summary
+            
+            PROFILES SAMPLE:
+            $profiles
+            
+            PERMISSION SETS SAMPLE:
+            $permsets
+            
+            OBJECT PERMISSIONS SAMPLE:
+            $object_perms
+            
+            FIELD PERMISSIONS SAMPLE:
+            $field_perms
+            
+            REQUIRED OUTPUT FORMAT:
+            
+            ## Critical Security Findings
+            | Severity | Finding | Evidence | Impact | Recommendation | Priority |
+            |----------|---------|----------|--------|----------------|----------|
+            | Critical/High/Medium/Low | Specific finding | Data evidence | Business impact | Actionable steps | High/Medium/Low |
+            
+            ## Profile Architecture Analysis
+            | Profile Name | User License | Risk Level | Key Issues | Optimization Suggestions |
+            |-------------|--------------|------------|------------|-------------------------|
+            
+            ## Permission Set Strategy
+            | Permission Set | Type | Assignment Risk | Efficiency | Consolidation Opportunities |
+            |---------------|------|-----------------|------------|----------------------------|
+            
+            ## Permission Analysis
+            | Object/Field | Access Level | Risk | Compliance Issue | Best Practice Violation |
+            |-------------|--------------|------|------------------|------------------------|
+            
+            ## Compliance Assessment
+            | Framework | Requirement | Status | Gap | Remediation |
+            |-----------|-------------|--------|-----|-------------|
+            
+            ## Optimization Recommendations
+            | Category | Current State | Target State | Effort | Impact | Priority |
+            |----------|---------------|--------------|--------|--------|----------|
+            
+            ## Executive Summary
+            - **Overall Security Posture:** [Rating]
+            - **Key Risks:** [Bulleted list]
+            - **Immediate Actions:** [Bulleted list]
+            - **Strategic Improvements:** [Bulleted list]
+            
+            ANALYSIS RULES:
+            - Focus on practical, implementable recommendations
+            - Consider Salesforce platform limitations
+            - Prioritize by business impact and risk level
+            - Suggest specific permission removals, profile consolidations
+            - Identify over-privileged configurations
+            - Flag compliance violations (SOX, GDPR, etc.)
+            - Base conclusions ONLY on provided metadata
+            EOF
+          }
 
-          echo "✅ AI analysis completed. Full report saved to $REPORT_FILE"
+          echo "Running AI security analysis..."
+          summary=$(cat summaries/data_summary.json)
+          profiles=$(cat summaries/profiles_summary.json)
+          permsets=$(cat summaries/permsets_summary.json)
+          object_perms=$(cat summaries/object_perms_summary.json)
+          field_perms=$(cat summaries/field_perms_summary.json)
 
-      - name: Upload Analysis Report
+          generate_analysis_prompt "$summary" "$profiles" "$permsets" "$object_perms" "$field_perms" | \
+          ollama run "$MODEL_NAME" >> "$REPORT_FILE"
+
+          # Add technical appendix
+          echo -e "\n---\n" >> "$REPORT_FILE"
+          echo "## Technical Appendix" >> "$REPORT_FILE"
+          echo "- **Total Profiles Analyzed:** $(jq -r '.records | length' data/profiles.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
+          echo "- **Total Permission Sets Analyzed:** $(jq -r '.records | length' data/permission_sets.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
+          echo "- **Object Permissions:** $(jq -r '.records | length' data/object_permissions.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
+          echo "- **Field Permissions:** $(jq -r '.records | length' data/field_permissions.json 2>/dev/null || echo 'N/A')" >> "$REPORT_FILE"
+          echo "- **Analysis Timestamp:** $(date)" >> "$REPORT_FILE"
+
+          echo "Security analysis completed"
+
+      - name: Upload Security Analysis Report
         uses: actions/upload-artifact@v4
         with:
           name: security-analysis-report
-          path: security_analysis_report.md
+          path: |
+            security_analysis_report.md
+            summaries/
           retention-days: 14
 
-      - name: 📄 Report Preview
+      - name: Security Analysis Summary
         run: |
-          echo "## 🧠 Salesforce Security Analysis Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Model Used: \`${{ inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Generated on: $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔍 First 20 lines of the AI Report:" >> $GITHUB_STEP_SUMMARY
-          echo '```markdown' >> $GITHUB_STEP_SUMMARY
-          head -n 20 security_analysis_report.md >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🛡️ Security Configuration Analysis Summary"
+            echo "- **Profiles Analyzed:** ${{ needs.collect-security-data.outputs.profile_count }}"
+            echo "- **Permission Sets Analyzed:** ${{ needs.collect-security-data.outputs.permset_count }}"
+            echo "- **AI Model:** \`$MODEL_NAME\`"
+            echo "- **Analysis Depth:** \`$ANALYSIS_DEPTH\`"
+            echo "- **Report:** \`security_analysis_report.md\`"
+            echo "- **Artifact:** \`security-analysis-report\`"
+          } >> $GITHUB_STEP_SUMMARY
