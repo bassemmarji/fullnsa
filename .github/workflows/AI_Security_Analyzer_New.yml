@@ -180,3 +180,7 @@ jobs:
           echo "- Model: \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Report: \`data_model_analysis.md\`" >> $GITHUB_STEP_SUMMARY
           echo "- Artifact: \`ai-data-model-report\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🧩 AI Report Quick Summary
+        run: |
+          echo "**Summary:** $(grep -m1 -A3 'Recommendations' data_model_analysis.md | tr '\n' ' ')" >> "$GITHUB_STEP_SUMMARY"
