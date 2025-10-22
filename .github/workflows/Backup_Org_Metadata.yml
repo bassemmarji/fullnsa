@@ -123,15 +123,18 @@ jobs:
 
       - name: Sanitize metadata before commit
         run: |
-          echo "Sanitizing sensitive values (tokens, keys, secrets)..."
-          # Specifically target CustomMetadata XML files that may contain secrets
-          find orgMetadata/force-app/main/default/customMetadata -type f -name "*.xml" -print0 | while IFS= read -r -d '' file; do
-            echo "Scanning $file"
-            # Redact any token-looking values inside <value>...</value> tags
-            sed -i -E 's|<value>gh[pousr]_[A-Za-z0-9]{10,}</value>|<value>[REDACTED]</value>|g' "$file"
+          echo "Sanitizing metadata: removing GitHub tokens and other secrets..."
+
+          # Detect any GitHub token (ghp_, gho_, ghu_, ghs_, ghr_)
+          find orgMetadata -type f -name "*.xml" -print0 | while IFS= read -r -d '' file; do
+            sed -i -E 's|(>gh[pousr]_[A-Za-z0-9]+<)|>[REDACTED]<|g' "$file"
           done
-          echo "✅ Sanitization complete. Safe to commit."
-      
+
+          # Double-check for any missed token-like strings (40+ char alphanumerics)
+          find orgMetadata -type f -name "*.xml" -exec sed -i -E 's|>[A-Za-z0-9]{35,}<|>[REDACTED]<|g' {} +
+
+          echo "✅ Sanitization complete. All potential tokens replaced with [REDACTED]."
+          
       - name: Commit and push backup branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
