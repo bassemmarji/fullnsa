@@ -164,7 +164,3 @@ jobs:
           echo "## 🧠 AI Data Model Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Model: \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Report: \`data_model_analysis.md\`" >> $GITHUB_STEP_SUMMARY
-
-          
-Security_Analyzer_New.yml
-
