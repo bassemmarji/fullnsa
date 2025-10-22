@@ -124,9 +124,13 @@ jobs:
       - name: Sanitize metadata before commit
         run: |
           echo "Sanitizing sensitive values (tokens, keys, secrets)..."
-          find orgMetadata -type f -name "*.xml" -exec sed -i 's/[A-Za-z0-9_]\{20,\}/[REDACTED]/g' {} +
+          # Specifically target CustomMetadata XML files that may contain secrets
+          find orgMetadata/force-app/main/default/customMetadata -type f -name "*.xml" -print0 | while IFS= read -r -d '' file; do
+            echo "Scanning $file"
+            # Redact any token-looking values inside <value>...</value> tags
+            sed -i -E 's|<value>gh[pousr]_[A-Za-z0-9]{10,}</value>|<value>[REDACTED]</value>|g' "$file"
+          done
           echo "✅ Sanitization complete. Safe to commit."
-
       
       - name: Commit and push backup branch
         env:
