@@ -38,23 +38,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      # Enhanced: Use official SF CLI action for reliability
-      - name: Install Salesforce CLI + jq
+      
+      - name: Install Salesforce CLI
         uses: sfdx-actions/setup-sfdx@v1
         with:
-          sfdx-version: latest
-
+          sfdx-version: 'latest'  # Ensures v2.60+ as of Oct 2025
+      
       - name: Install jq
         run: sudo apt-get update -y && sudo apt-get install -y jq
-
+      
+      # Auth step remains unchanged—it will now work with the updated CLI
       - name: Authenticate to Salesforce
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
-        shell: bash
-
+      
       - name: Query Salesforce Metadata (Safe Mode, Parallel)
         run: |
           mkdir -p "$DATA_DIR"
