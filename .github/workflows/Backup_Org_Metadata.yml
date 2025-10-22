@@ -50,23 +50,70 @@ jobs:
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
 
-      - name: Generate full package.xml covering all metadata
+      - name: Generate package.xml manually
         run: |
-          echo "Generating full package.xml for all metadata..."
+          echo "Generating package.xml with all metadata types..."
           mkdir -p ./orgMetadata/manifest
-          cd ./orgMetadata
-          
-          # Initialize an empty SFDX project
-          sf project generate --name orgMetadata
-          
-          # Describe all metadata types available in the org
-          sf metadata describe --target-org "$ORG_ALIAS" --json > mdtypes.json
-          
-          # Generate package.xml from that list
-          sf metadata generate manifest --input mdtypes.json --output-file manifest/package.xml
-          
-          echo "Generated manifest/package.xml:"
-          head -n 20 manifest/package.xml
+          cat <<EOF > ./orgMetadata/manifest/package.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+              <types>
+                  <members>*</members>
+                  <name>ApexClass</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>ApexTrigger</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>ApexPage</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>ApexComponent</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>CustomObject</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>Layout</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>PermissionSet</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>Profile</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>CustomMetadata</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>CustomApplication</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>Workflow</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>ValidationRule</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>Flow</name>
+              </types>
+              <version>61.0</version>
+          </Package>
+          EOF
+          echo "package.xml created successfully:"
+          cat ./orgMetadata/manifest/package.xml
 
       - name: Retrieve all org metadata
         run: |
@@ -90,8 +137,3 @@ jobs:
       - name: Cleanup temporary files
         if: always()
         run: rm -f /tmp/sfdx.url
-
-
-
-
-
