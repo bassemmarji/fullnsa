@@ -31,9 +31,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Node + Salesforce CLI
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -41,7 +42,6 @@ jobs:
       - name: Install Salesforce CLI + jq
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y jq
           npm install -g @salesforce/cli
           
       - name: Authenticate to Salesforce
@@ -50,10 +50,23 @@ jobs:
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
 
-      - name: Generate project and retrieve metadata
+      - name: Generate project and manifest covering all metadata
         run: |
-          mkdir -p ./orgMetadata/manifest
-          sf project generate --name orgMetadata --manifest
+          echo "Generating full package.xml for all metadata..."
+          mkdir -p ./orgMetadata
+          cd ./orgMetadata
+
+          # Create an empty project
+          sf project generate --name orgMetadata
+          
+          # Generate package.xml covering all metadata types in the org
+          sf project retrieve start --target-org "$ORG_ALIAS" --generate-manifest-only --output-dir ./manifest
+          
+          echo "Generated manifest/package.xml:"
+          cat manifest/package.xml
+
+      - name: Retrieve all org metadata
+        run: |
           cd ./orgMetadata
           sf project retrieve start --target-org "$ORG_ALIAS" --manifest manifest/package.xml
 
@@ -68,9 +81,15 @@ jobs:
           git config --global user.name "$USER_NAME"
 
           git add orgMetadata
-          git commit -m "Backup - $(date '+%Y-%m-%d')" || echo "No changes to commit"
+          git commit -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')" || echo "No changes to commit"
           git push origin "HEAD:$BRANCH_NAME"
 
       - name: Cleanup temporary files
         if: always()
         run: rm -f /tmp/sfdx.url
+
+
+
+
+
+
