@@ -1,0 +1,72 @@
+name: Backup Org Metadata
+
+on:
+  # Scheduled run: 10:00 AM UTC on the 1st day of every month
+  schedule:
+    - cron: "0 10 1 * *"
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      ORG_ALIAS:
+        description: "Salesforce org alias"
+        required: true
+        default: "MY_ORG"
+      USER_EMAIL:
+        description: "Git user email"
+        required: true
+        default: "bassemmarji@gmail.com"
+      USER_NAME:
+        description: "Git user name"
+        required: true
+        default: "bassem marji"
+
+env:
+  ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS || 'MY_ORG' }}
+  USER_EMAIL: ${{ github.event.inputs.USER_EMAIL || 'bassemmarji@gmail.com' }}
+  USER_NAME: ${{ github.event.inputs.USER_NAME || 'bassem marji' }}
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+jobs:
+  collect_org_metadata:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Salesforce CLI
+        run: |
+          echo "Installing Salesforce CLI..."
+          npm install @salesforce/cli --global
+
+      - name: Authenticate to Salesforce
+        env:
+          ORG_AUTH_URL: ${{ secrets.ORG_AUTH_URL }}
+        run: |
+          echo "${ORG_AUTH_URL}" > /tmp/sfdx.url
+          sf org login sfdx-url -f /tmp/sfdx.url --alias "$ORG_ALIAS" --set-default
+
+      - name: Generate project and retrieve metadata
+        run: |
+          mkdir -p ./orgMetadata/manifest
+          sf project generate --name orgMetadata --manifest
+          cd ./orgMetadata
+          sf project retrieve start --target-org "$ORG_ALIAS" --manifest manifest/package.xml
+
+      - name: Commit and push backup branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Preparing to push metadata changes..."
+          export BRANCH_NAME="BACKUP-$(date '+%Y-%m-%d')"
+
+          git config --global user.email "$USER_EMAIL"
+          git config --global user.name "$USER_NAME"
+
+          git add orgMetadata
+          git commit -m "Backup - $(date '+%Y-%m-%d')" || echo "No changes to commit"
+          git push origin "HEAD:$BRANCH_NAME"
+
+      - name: Cleanup temporary files
+        if: always()
+        run: rm -f /tmp/sfdx.url
