@@ -115,11 +115,19 @@ jobs:
           echo "package.xml created successfully:"
           cat ./orgMetadata/manifest/package.xml
 
-      - name: Retrieve all org metadata
+      - name: Retrieve metadata from org
         run: |
-          cd ./orgMetadata
-          sf project retrieve start --target-org "$ORG_ALIAS" --manifest manifest/package.xml
+          cd orgMetadata
+          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
+          cd ..
 
+      - name: Sanitize metadata before commit
+        run: |
+          echo "Sanitizing sensitive values (tokens, keys, secrets)..."
+          find orgMetadata -type f -name "*.xml" -exec sed -i 's/[A-Za-z0-9_]\{20,\}/[REDACTED]/g' {} +
+          echo "✅ Sanitization complete. Safe to commit."
+
+      
       - name: Commit and push backup branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
