@@ -31,20 +31,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Salesforce CLI
+      - name: Setup Node + Salesforce CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Salesforce CLI + jq
         run: |
-          echo "Installing Salesforce CLI..."
-          npm install @salesforce/cli --global
-
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @salesforce/cli
+          
       - name: Authenticate to Salesforce
-        env:
-          ORG_AUTH_URL: ${{ secrets.ORG_AUTH_URL }}
         run: |
-          echo "${ORG_AUTH_URL}" > /tmp/sfdx.url
-          sf org login sfdx-url -f /tmp/sfdx.url --alias "$ORG_ALIAS" --set-default
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias "${{ github.event.inputs.org_alias }}" \
+            --sfdx-url-stdin
 
       - name: Generate project and retrieve metadata
         run: |
