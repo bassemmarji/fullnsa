@@ -165,3 +165,4 @@ jobs:
           echo "- Model: \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Report: \`data_model_analysis.md\`" >> $GITHUB_STEP_SUMMARY
           echo "- Artifact: \`ai-data-model-report\`" >> $GITHUB_STEP_SUMMARY
+Update AI_Security_Analyzer_New.yml
