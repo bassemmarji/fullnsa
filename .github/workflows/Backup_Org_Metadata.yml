@@ -19,6 +19,10 @@ on:
         description: "Git user name"
         required: true
         default: "bassem marji"
+      MINIMAL_PACKAGE:
+        description: "Use minimal package.xml for testing? (yes/no)"
+        required: false
+        default: "no"
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.ORG_ALIAS || 'MY_ORG' }}
@@ -27,6 +31,7 @@ env:
   NODE_VERSION: '20'
   NODE_OPTIONS: "--max-old-space-size=4096"
   TEMP_METADATA_DIR: "/tmp/orgMetadata"
+  MINIMAL: ${{ github.event.inputs.MINIMAL_PACKAGE == 'yes' }}
 
 jobs:
   collect_org_metadata:
@@ -62,9 +67,30 @@ jobs:
 
       - name: Generate package.xml manually
         run: |
-          echo "Generating comprehensive package.xml with all metadata types..."
+          echo "Generating package.xml (minimal: ${{ env.MINIMAL }})..."
           mkdir -p ${{ env.TEMP_METADATA_DIR }}/manifest
-          cat <<EOF > ${{ env.TEMP_METADATA_DIR }}/manifest/package.xml
+          if [ "${{ env.MINIMAL }}" = true ]; then
+            cat <<EOF > ${{ env.TEMP_METADATA_DIR }}/manifest/package.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+              <types>
+                  <members>*</members>
+                  <name>ApexClass</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>CustomObject</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>Profile</name>
+              </types>
+              <version>62.0</version>
+          </Package>
+          EOF
+            echo "Using minimal package.xml for testing."
+          else
+            cat <<EOF > ${{ env.TEMP_METADATA_DIR }}/manifest/package.xml
           <?xml version="1.0" encoding="UTF-8"?>
           <Package xmlns="http://soap.sforce.com/2006/04/metadata">
               <types>
@@ -538,6 +564,10 @@ jobs:
               <version>62.0</version>
           </Package>
           EOF
+            echo "Using full package.xml."
+          fi
+          echo "package.xml created successfully:"
+          cat ${{ env.TEMP_METADATA_DIR }}/manifest/package.xml
 
           # Create minimal sfdx-project.json for valid DX project context
           cat <<EOF > ${{ env.TEMP_METADATA_DIR }}/sfdx-project.json
@@ -554,51 +584,44 @@ jobs:
           }
           EOF
 
-          echo "package.xml and sfdx-project.json created successfully."
+          echo "sfdx-project.json created."
           ls -la ${{ env.TEMP_METADATA_DIR }}
 
       - name: Preview retrieval
         run: |
           echo "Previewing what metadata would be retrieved..."
           cd ${{ env.TEMP_METADATA_DIR }}
-          sf project retrieve preview --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml || echo "Preview failed, but continuing..."
+          sf project retrieve preview --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml
+          cd -
 
       - name: Retrieve metadata from org
         run: |
           cd ${{ env.TEMP_METADATA_DIR }}
-          sf project retrieve start --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml --target-metadata-dir . || echo "Retrieval completed with warnings/errors, checking files anyway"
+          sf project retrieve start --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml --target-metadata-dir . || echo "Retrieval may have warnings, but continuing"
           cd -
           echo "Retrieved files in temp dir:"
           ls -laR ${{ env.TEMP_METADATA_DIR }} || echo "No files retrieved"
 
       - name: Check if metadata was retrieved
         run: |
-          METADATA_COUNT=$(find ${{ env.TEMP_METADATA_DIR }} -type f -not -path "*/manifest/*" -not -name "sfdx-project.json" | wc -l)
+          METADATA_COUNT=$(find ${{ env.TEMP_METADATA_DIR }} -type f ! -path "*/manifest/*" ! -name "sfdx-project.json" -not -name "*.zip" | wc -l)
           echo "Number of metadata files retrieved: $METADATA_COUNT"
           if [ $METADATA_COUNT -eq 0 ]; then
-            echo "⚠️ No metadata retrieved. Possible causes:"
-            echo "  - Org alias '${{ env.ORG_ALIAS }}' may not have the expected metadata or permissions."
-            echo "  - Check secrets.ORG_SFDX_URL is valid for this org."
-            echo "  - Org might be empty/fresh sandbox without source tracking (though not required for package.xml)."
-            echo "  - Try a smaller package.xml (e.g., just ApexClass)."
-            echo "  - Run 'sf org display --target-org ${{ env.ORG_ALIAS }}' manually to verify connection."
+            echo "⚠️ No metadata retrieved. Troubleshooting:"
+            echo "  - Verify ORG_ALIAS and ORG_SFDX_URL secret."
+            echo "  - Org may lack metadata (try MINIMAL_PACKAGE=yes)."
+            echo "  - Check preview step logs for 'No results'."
+            echo "  - Ensure user in secret has 'Metadata API' access."
           fi
 
       - name: Sanitize metadata before commit
         if: always()
         run: |
           if [ -d "${{ env.TEMP_METADATA_DIR }}" ]; then
-            echo "Sanitizing metadata: removing GitHub tokens and other secrets..."
-
-            # Detect any GitHub token (ghp_, gho_, ghu_, ghs_, ghr_)
-            find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -print0 | while IFS= read -r -d '' file; do
-              sed -i -E 's|(>gh[pousr]_[A-Za-z0-9]+<)|>[REDACTED]<|g' "$file"
-            done
-
-            # Double-check for any missed token-like strings (40+ char alphanumerics)
-            find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -exec sed -i -E 's|>[A-Za-z0-9]{35,}<|>[REDACTED]<|g' {} +
-
-            echo "✅ Sanitization complete. All potential tokens replaced with [REDACTED]."
+            echo "Sanitizing metadata..."
+            find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -exec sed -i -E 's|(>gh[pousr]_[A-Za-z0-9]+<)|>[REDACTED]<|g' {} + || true
+            find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -exec sed -i -E 's|>[A-Za-z0-9]{35,}<|>[REDACTED]<|g' {} + || true
+            echo "✅ Sanitization complete."
           fi
           
       - name: Commit and push backup branch
@@ -606,20 +629,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Preparing to push metadata changes..."
+          echo "Preparing branch..."
           export BRANCH_NAME="BACKUP-$(date '+%Y-%m-%d')"
 
           git config --global user.email "$USER_EMAIL"
           git config --global user.name "$USER_NAME"
 
-          # Create orphan branch (no history from main)
+          # Create orphan branch
           git checkout --orphan "$BRANCH_NAME"
-
-          # Clear all files from working dir and index
           git rm -rf .
           git clean -fd
 
-          # Copy retrieved metadata (exclude temp project files and any .zip files)
+          # Copy metadata
           mkdir -p orgMetadata
           if [ -d "${{ env.TEMP_METADATA_DIR }}" ]; then
             cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/ 2>/dev/null || true
@@ -627,19 +648,19 @@ jobs:
             find orgMetadata -name "*.zip" -delete
           fi
 
-          echo "Files in orgMetadata after copy:"
-          ls -laR orgMetadata/ || echo "orgMetadata is empty"
-
-          # Only commit if there are changes or files
-          if git diff --cached --quiet && [ ! "$(ls -A orgMetadata/ 2>/dev/null)" ]; then
-            echo "No metadata to commit; skipping push."
-            exit 0
+          # If empty, add .gitkeep to track the empty dir
+          if [ ! "$(ls -A orgMetadata/)" ]; then
+            touch orgMetadata/.gitkeep
+            echo "Added .gitkeep for empty orgMetadata"
           fi
 
+          echo "Files in orgMetadata:"
+          ls -laR orgMetadata/
+
           git add orgMetadata
-          git commit -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')" || git commit --allow-empty -m "Empty Org Metadata Backup - $(date '+%Y-%m-%d')"
-          git push origin "$BRANCH_NAME" -f  # -f to overwrite if branch exists
-          echo "✅ Branch pushed: $BRANCH_NAME"
+          git commit -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')"
+          git push origin "$BRANCH_NAME" -f
+          echo "✅ Branch created and pushed: $BRANCH_NAME"
 
       - name: Cleanup temporary files
         if: always()
