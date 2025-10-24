@@ -586,10 +586,11 @@ jobs:
           git rm -rf .
           git clean -fd
 
-          # Copy retrieved metadata (exclude temp project files)
+          # Copy retrieved metadata (exclude temp project files and any .zip files)
           mkdir -p orgMetadata
-          cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/
+          cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/ 2>/dev/null || true
           rm -rf orgMetadata/manifest orgMetadata/sfdx-project.json
+          find orgMetadata -name "*.zip" -delete
 
           git add orgMetadata
           git commit -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')" || echo "No changes to commit"
