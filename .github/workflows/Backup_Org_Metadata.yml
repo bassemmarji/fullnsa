@@ -361,14 +361,6 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>LightningEmailTemplate</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>LightningExperiencePage</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>LightningExperienceTheme</name>
               </types>
               <types>
