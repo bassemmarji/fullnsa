@@ -405,10 +405,6 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>PlatformEvent</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>PostTemplate</name>
               </types>
               <types>
