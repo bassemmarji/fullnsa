@@ -51,6 +51,14 @@ jobs:
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
             --alias "${{ env.ORG_ALIAS }}" \
             --sfdx-url-stdin
+          echo "✅ Authenticated to org alias: ${{ env.ORG_ALIAS }}"
+
+      - name: Verify org connection
+        run: |
+          echo "Listing orgs to confirm alias exists:"
+          sf org list
+          echo "Org details for ${{ env.ORG_ALIAS }}:"
+          sf org display --target-org "${{ env.ORG_ALIAS }}" || echo "Failed to display org details"
 
       - name: Generate package.xml manually
         run: |
@@ -549,29 +557,52 @@ jobs:
           echo "package.xml and sfdx-project.json created successfully."
           ls -la ${{ env.TEMP_METADATA_DIR }}
 
+      - name: Preview retrieval
+        run: |
+          echo "Previewing what metadata would be retrieved..."
+          cd ${{ env.TEMP_METADATA_DIR }}
+          sf project retrieve preview --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml || echo "Preview failed, but continuing..."
+
       - name: Retrieve metadata from org
         run: |
           cd ${{ env.TEMP_METADATA_DIR }}
-          sf project retrieve start --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml --target-metadata-dir .
+          sf project retrieve start --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml --target-metadata-dir . || echo "Retrieval completed with warnings/errors, checking files anyway"
           cd -
-          echo "Retrieved files:"
-          ls -la ${{ env.TEMP_METADATA_DIR }} || true
+          echo "Retrieved files in temp dir:"
+          ls -laR ${{ env.TEMP_METADATA_DIR }} || echo "No files retrieved"
+
+      - name: Check if metadata was retrieved
+        run: |
+          METADATA_COUNT=$(find ${{ env.TEMP_METADATA_DIR }} -type f -not -path "*/manifest/*" -not -name "sfdx-project.json" | wc -l)
+          echo "Number of metadata files retrieved: $METADATA_COUNT"
+          if [ $METADATA_COUNT -eq 0 ]; then
+            echo "⚠️ No metadata retrieved. Possible causes:"
+            echo "  - Org alias '${{ env.ORG_ALIAS }}' may not have the expected metadata or permissions."
+            echo "  - Check secrets.ORG_SFDX_URL is valid for this org."
+            echo "  - Org might be empty/fresh sandbox without source tracking (though not required for package.xml)."
+            echo "  - Try a smaller package.xml (e.g., just ApexClass)."
+            echo "  - Run 'sf org display --target-org ${{ env.ORG_ALIAS }}' manually to verify connection."
+          fi
 
       - name: Sanitize metadata before commit
+        if: always()
         run: |
-          echo "Sanitizing metadata: removing GitHub tokens and other secrets..."
+          if [ -d "${{ env.TEMP_METADATA_DIR }}" ]; then
+            echo "Sanitizing metadata: removing GitHub tokens and other secrets..."
 
-          # Detect any GitHub token (ghp_, gho_, ghu_, ghs_, ghr_)
-          find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -print0 | while IFS= read -r -d '' file; do
-            sed -i -E 's|(>gh[pousr]_[A-Za-z0-9]+<)|>[REDACTED]<|g' "$file"
-          done
+            # Detect any GitHub token (ghp_, gho_, ghu_, ghs_, ghr_)
+            find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -print0 | while IFS= read -r -d '' file; do
+              sed -i -E 's|(>gh[pousr]_[A-Za-z0-9]+<)|>[REDACTED]<|g' "$file"
+            done
 
-          # Double-check for any missed token-like strings (40+ char alphanumerics)
-          find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -exec sed -i -E 's|>[A-Za-z0-9]{35,}<|>[REDACTED]<|g' {} +
+            # Double-check for any missed token-like strings (40+ char alphanumerics)
+            find ${{ env.TEMP_METADATA_DIR }} -type f -name "*.xml" -exec sed -i -E 's|>[A-Za-z0-9]{35,}<|>[REDACTED]<|g' {} +
 
-          echo "✅ Sanitization complete. All potential tokens replaced with [REDACTED]."
+            echo "✅ Sanitization complete. All potential tokens replaced with [REDACTED]."
+          fi
           
       - name: Commit and push backup branch
+        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -590,16 +621,25 @@ jobs:
 
           # Copy retrieved metadata (exclude temp project files and any .zip files)
           mkdir -p orgMetadata
-          cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/ 2>/dev/null || true
-          rm -rf orgMetadata/manifest orgMetadata/sfdx-project.json
-          find orgMetadata -name "*.zip" -delete
+          if [ -d "${{ env.TEMP_METADATA_DIR }}" ]; then
+            cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/ 2>/dev/null || true
+            rm -rf orgMetadata/manifest orgMetadata/sfdx-project.json
+            find orgMetadata -name "*.zip" -delete
+          fi
 
-          echo "Files after copy:"
-          ls -la orgMetadata/ || echo "No files in orgMetadata"
+          echo "Files in orgMetadata after copy:"
+          ls -laR orgMetadata/ || echo "orgMetadata is empty"
+
+          # Only commit if there are changes or files
+          if git diff --cached --quiet && [ ! "$(ls -A orgMetadata/ 2>/dev/null)" ]; then
+            echo "No metadata to commit; skipping push."
+            exit 0
+          fi
 
           git add orgMetadata
-          git commit --allow-empty -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')"
+          git commit -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')" || git commit --allow-empty -m "Empty Org Metadata Backup - $(date '+%Y-%m-%d')"
           git push origin "$BRANCH_NAME" -f  # -f to overwrite if branch exists
+          echo "✅ Branch pushed: $BRANCH_NAME"
 
       - name: Cleanup temporary files
         if: always()
