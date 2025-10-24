@@ -101,10 +101,6 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>AssignmentRules</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>Audience</name>
               </types>
               <types>
@@ -118,10 +114,6 @@ jobs:
               <types>
                   <members>*</members>
                   <name>AutoResponseRule</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>AutoResponseRules</name>
               </types>
               <types>
                   <members>*</members>
@@ -165,10 +157,6 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>CommunityThemeDefinition</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>CompactLayout</name>
               </types>
               <types>
@@ -206,10 +194,6 @@ jobs:
               <types>
                   <members>*</members>
                   <name>CustomLabel</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>CustomLabels</name>
               </types>
               <types>
                   <members>*</members>
@@ -281,15 +265,7 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>EmbeddedServiceFieldService</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>EscalationRule</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>EscalationRules</name>
               </types>
               <types>
                   <members>*</members>
@@ -385,19 +361,7 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>ManagedTopic</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>ManagedTopics</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>MatchingRule</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>MatchingRules</name>
               </types>
               <types>
                   <members>*</members>
@@ -477,10 +441,6 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>Scontrol</name>
-              </types>
-              <types>
-                  <members>*</members>
                   <name>SharingCriteriaRule</name>
               </types>
               <types>
@@ -490,10 +450,6 @@ jobs:
               <types>
                   <members>*</members>
                   <name>SharingReason</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>SharingRules</name>
               </types>
               <types>
                   <members>*</members>
@@ -577,43 +533,19 @@ jobs:
               </types>
               <types>
                   <members>*</members>
-                  <name>CustomPermission</name>
+                  <name>AssignmentRules</name>
               </types>
               <types>
                   <members>*</members>
-                  <name>CustomTab</name>
+                  <name>AutoResponseRules</name>
               </types>
               <types>
                   <members>*</members>
-                  <name>CustomObjectTranslation</name>
+                  <name>CustomLabels</name>
               </types>
               <types>
                   <members>*</members>
                   <name>CustomMetadataType</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>CustomSite</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>LightningExperiencePage</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>LightningEmailTemplate</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>LightningMessageChannel</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>PlatformEvent</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>CustomLabel</name>
               </types>
               <types>
                   <members>*</members>
@@ -625,58 +557,70 @@ jobs:
               </types>
               <types>
                   <members>*</members>
+                  <name>EscalationRules</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>LightningEmailTemplate</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>LightningExperiencePage</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>LightningMessageChannel</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>ManagedTopic</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>ManagedTopics</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>MatchingRules</name>
+              </types>
+              <types>
+                  <members>*</members>
+                  <name>PlatformEvent</name>
+              </types>
+              <types>
+                  <members>*</members>
                   <name>ReportFolder</name>
               </types>
               <types>
                   <members>*</members>
-                  <name>DashboardFolder</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>StaticResource</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>CustomPermission</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>Profile</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>PermissionSet</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>CustomMetadata</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>CustomApplication</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>Workflow</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>ValidationRule</name>
-              </types>
-              <types>
-                  <members>*</members>
-                  <name>Flow</name>
+                  <name>SharingRules</name>
               </types>
               <version>62.0</version>
           </Package>
           EOF
-          echo "package.xml created successfully:"
-          cat ${{ env.TEMP_METADATA_DIR }}/manifest/package.xml
+
+          # Create minimal sfdx-project.json for valid DX project context
+          cat <<EOF > ${{ env.TEMP_METADATA_DIR }}/sfdx-project.json
+          {
+            "packageDirectories": [
+              {
+                "path": "."
+              }
+            ],
+            "name": "temp-backup-project",
+            "namespace": "",
+            "sfdcLoginUrl": "https://login.salesforce.com",
+            "sourceApiVersion": "62.0"
+          }
+          EOF
+
+          echo "package.xml and sfdx-project.json created successfully."
+          ls -la ${{ env.TEMP_METADATA_DIR }}
 
       - name: Retrieve metadata from org
         run: |
           cd ${{ env.TEMP_METADATA_DIR }}
-          sf project retrieve start --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml
+          sf project retrieve start --target-org "${{ env.ORG_ALIAS }}" --manifest manifest/package.xml --target-metadata-dir .
           cd -
 
       - name: Sanitize metadata before commit
@@ -710,13 +654,14 @@ jobs:
           git rm -rf .
           git clean -fd
 
-          # Copy only the retrieved metadata to root as orgMetadata
+          # Copy retrieved metadata (exclude temp project files)
           mkdir -p orgMetadata
-          cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/ || true
+          cp -r ${{ env.TEMP_METADATA_DIR }}/* orgMetadata/
+          rm -rf orgMetadata/manifest orgMetadata/sfdx-project.json
 
           git add orgMetadata
           git commit -m "Full Org Metadata Backup - $(date '+%Y-%m-%d')" || echo "No changes to commit"
-          git push origin "$BRANCH_NAME"
+          git push origin "$BRANCH_NAME" -f  # -f to overwrite if branch exists
 
       - name: Cleanup temporary files
         if: always()
