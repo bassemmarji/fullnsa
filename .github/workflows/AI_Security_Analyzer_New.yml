@@ -128,30 +128,36 @@ jobs:
             sleep 2
           done
           ollama pull "${{ github.event.inputs.model_name }}"
+
       - name: Analyze Data Model with AI
         run: |
           REPORT_FILE="data_model_analysis.md"
           MODEL="${{ github.event.inputs.model_name }}"
+
+          jq -s '{objects: .[0], fields: .[1], relationships: .[2]}' \
+              data/objects.json data/fields.json data/relationships.json > data/combined.json
+
+          cat << 'EOF' > prompt.txt
+          You are a senior Salesforce Data Architect.
+          Analyze ONLY the JSON metadata provided below.
+          Focus on:
+          - object modeling & normalization
+          - lookup / master-detail relationships
+          - indexed fields & performance risk
+          - security implications
+          - opportunities for improvement
+          DO NOT invent objects that are not in the data.
+          If something is missing, state "insufficient data".
+          EOF
+
           echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
           echo "**Model:** $MODEL" >> "$REPORT_FILE"
           echo "**Generated:** $(date)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
-          prompt="You are a senior Salesforce Data Architect.
-          Analyze the provided metadata (objects, fields, relationships, etc).
-          Focus on normalization, relationships, indexing, performance, etc."
-          
-          # Combine all JSON into a single input file (optional)
-          jq -s '{objects: .[0], fields: .[1], relationships: .[2]}' \
-              data/objects.json data/fields.json data/relationships.json > data/combined.json
-          
-          # Run Ollama with a prompt and feed JSON via stdin
-          ollama run "$MODEL" "$prompt" < data/combined.json >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
-          echo "---" >> "$REPORT_FILE"
-          echo "## Technical Summary" >> "$REPORT_FILE"
-          echo "- Objects: $(jq -r '.result.totalSize // 0' data/objects.json)" >> "$REPORT_FILE"
-          echo "- Fields: $(jq -r '.result.totalSize // 0' data/fields.json)" >> "$REPORT_FILE"
-          echo "- Generated: $(date)" >> "$REPORT_FILE"
+
+          jq -r '.' data/combined.json >> prompt.txt
+
+          ollama run "$MODEL" -f prompt.txt >> "$REPORT_FILE"
           
       - uses: actions/upload-artifact@v4
         with:
