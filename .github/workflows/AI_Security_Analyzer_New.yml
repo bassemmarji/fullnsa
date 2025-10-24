@@ -137,30 +137,40 @@ jobs:
           jq -s '{objects: .[0], fields: .[1], relationships: .[2]}' \
               data/objects.json data/fields.json data/relationships.json > data/combined.json
           
-          # Create full prompt dynamically
           {
             echo "You are a senior Salesforce Data Architect."
             echo "Analyze ONLY the JSON metadata provided below."
-            echo "Focus on:"
-            echo "- object modeling & normalization"
-            echo "- lookup / master-detail relationships"
-            echo "- indexed fields & performance risk"
-            echo "- security implications"
-            echo "- opportunities for improvement"
-            echo "DO NOT invent objects that are not in the data."
-            echo "If something is missing, state \"insufficient data\"."
+            echo "Respond using ALL the sections below:"
             echo ""
-            echo "### METADATA BELOW ###"
+            echo "## 🔍 Key Findings"
+            echo "- (Bullet points summarizing most important issues)"
+            echo ""
+            echo "## 🏛 Object Modeling & Relationships"
+            echo "- (Focus on normalization, lookup/master-detail usage, orphan risk)"
+            echo ""
+            echo "## 🚀 Performance & Indexing"
+            echo "- (Indexed fields, risk due to missing indexes, search performance)"
+            echo ""
+            echo "## 🔐 Security & Governance"
+            echo "- (Field-level visibility, sharing model hints, insufficient data warnings)"
+            echo ""
+            echo "## ✅ Recommendations"
+            echo "- (Clear prioritized improvements)"
+            echo ""
+            echo "Rules:"
+            echo "- DO NOT invent objects or metadata not included"
+            echo "- If data is missing, state 'insufficient data'"
+            echo "- Use bullet points only, no paragraphs"
+            echo ""
+            echo "### METADATA INPUT ###"
             jq -r '.' data/combined.json
           } > full_prompt.txt
           
-          # Build report
           echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
           echo "**Model:** $MODEL" >> "$REPORT_FILE"
           echo "**Generated:** $(date)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
           
-          # Run Ollama using stdin
           ollama run "$MODEL" < full_prompt.txt >> "$REPORT_FILE"
 
       - uses: actions/upload-artifact@v4
