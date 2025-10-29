@@ -134,45 +134,94 @@ jobs:
           REPORT_FILE="data_model_analysis.md"
           MODEL="${{ github.event.inputs.model_name }}"
           
-          jq -s '{objects: .[0], fields: .[1], relationships: .[2]}' \
-              data/objects.json data/fields.json data/relationships.json > data/combined.json
+          # Combine ALL metadata into one JSON for richer analysis
+          jq -s '{
+            objects: .[0].result.records // [],
+            fields: .[1].result.records // [],
+            relationships: .[2].result.records // [],
+            validation_rules: .[3].result.records // [],
+            triggers: .[4].result.records // [],
+            flows: .[5].result.records // [],
+            record_types: .[6].result.records // []
+          }' \
+            data/objects.json data/fields.json data/relationships.json \
+            data/validation_rules.json data/triggers.json data/flows.json \
+            data/record_types.json > data/full_metadata.json
           
-          {
-            echo "You are a senior Salesforce Data Architect."
-            echo "Analyze ONLY the JSON metadata provided below."
-            echo "Respond using ALL the sections below:"
-            echo ""
-            echo "## 🔍 Key Findings"
-            echo "- (Bullet points summarizing most important issues)"
-            echo ""
-            echo "## 🏛 Object Modeling & Relationships"
-            echo "- (Focus on normalization, lookup/master-detail usage, orphan risk)"
-            echo ""
-            echo "## 🚀 Performance & Indexing"
-            echo "- (Indexed fields, risk due to missing indexes, search performance)"
-            echo ""
-            echo "## 🔐 Security & Governance"
-            echo "- (Field-level visibility, sharing model hints, insufficient data warnings)"
-            echo ""
-            echo "## ✅ Recommendations"
-            echo "- (Clear prioritized improvements)"
-            echo ""
-            echo "Rules:"
-            echo "- DO NOT invent objects or metadata not included"
-            echo "- If data is missing, state 'insufficient data'"
-            echo "- Use bullet points only, no paragraphs"
-            echo ""
-            echo "### METADATA INPUT ###"
-            jq -r '.' data/combined.json
-          } > full_prompt.txt
+          # Check if truly empty (beyond the basic validate)
+          total_records=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' data/full_metadata.json)
+          if [ "$total_records" -eq 0 ]; then
+            echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
+            echo "**Model:** $MODEL" >> "$REPORT_FILE"
+            echo "**Generated:** $(date)" >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+            echo "## 🔍 Key Findings" >> "$REPORT_FILE"
+            echo "- Insufficient custom metadata for analysis (no objects/fields/relationships found)" >> "$REPORT_FILE"
+            echo "## 🏛 Object Modeling & Relationships" >> "$REPORT_FILE"
+            echo "- Insufficient data" >> "$REPORT_FILE"
+            echo "## 🚀 Performance & Indexing" >> "$REPORT_FILE"
+            echo "- Insufficient data" >> "$REPORT_FILE"
+            echo "## 🔐 Security & Governance" >> "$REPORT_FILE"
+            echo "- Insufficient data" >> "$REPORT_FILE"
+            echo "## ✅ Recommendations" >> "$REPORT_FILE"
+            echo "- Query a production org with custom objects for meaningful insights" >> "$REPORT_FILE"
+            echo "Exiting early due to empty data."
+            exit 0
+          fi
+          
+          # System prompt for strict role adherence
+          SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise, factual, and base EVERY claim on the provided JSON ONLY. If data is sparse/missing for a section, use "- Insufficient data to assess". Use BULLET POINTS ONLY—no paragraphs, no numbering, no intro/conclusion text. NEVER invent metadata.'
+          
+          # User prompt with enforced structure and example
+          USER_PROMPT=$(cat << EOF
+          Analyze the following Salesforce metadata JSON. Respond **ONLY** with these EXACT sections in Markdown, nothing else. Use 3-5 bullets per section max.
+          
+          ## 🔍 Key Findings
+          - (Bullet points summarizing most important issues, e.g., "- High cardinality on unindexed text field risks query timeouts")
+          
+          ## 🏛 Object Modeling & Relationships
+          - (Focus on normalization, lookup/master-detail usage, orphan risk, e.g., "- Over-reliance on Master-Detail may cascade deletes unexpectedly")
+          
+          ## 🚀 Performance & Indexing
+          - (Indexed fields, risk due to missing indexes, search performance, e.g., "- 15% of lookup fields lack indexes, potential for SOQL governor limits")
+          
+          ## 🔐 Security & Governance
+          - (Field-level visibility hints from nillable/calculated, sharing models, validation rules, e.g., "- Active validation rules enforce data quality but may expose PII without FLS")
+          
+          ## ✅ Recommendations
+          - (Clear prioritized improvements, e.g., "- Priority 1: Index frequently queried custom fields on Account")
+          
+          EXAMPLE OUTPUT (for sparse data):
+          ## 🔍 Key Findings
+          - Only 2 objects detected; likely incomplete custom metadata
+          ## 🏛 Object Modeling & Relationships
+          - Insufficient relationships to evaluate normalization
+          ## ... (etc.)
+          
+          ### METADATA INPUT ###
+          $(jq -c '.' data/full_metadata.json)
+          EOF
+          )
           
           echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
           echo "**Model:** $MODEL" >> "$REPORT_FILE"
           echo "**Generated:** $(date)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
           
-          ollama run "$MODEL" < full_prompt.txt >> "$REPORT_FILE"
-
+          # Use Ollama API for system/user separation and low temperature for consistency
+          curl -s http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"model\": \"$MODEL\",
+              \"prompt\": \"$USER_PROMPT\",
+              \"system\": \"$SYSTEM_PROMPT\",
+              \"options\": {
+                \"temperature\": 0.2,
+                \"top_p\": 0.9
+              },
+              \"stream\": false
+            }" | jq -r '.response' >> "$REPORT_FILE"
+            
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
