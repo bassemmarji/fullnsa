@@ -14,7 +14,7 @@ on:
 
 env:
   NODE_VERSION: "20"
-  DATA_DIR: "data-model-data"
+  DATA_DIR: "data"  # Simplified for consistency
 
 jobs:
   collect-data:
@@ -59,24 +59,25 @@ jobs:
             soql=${q#*:}
             echo "🔍 Querying $name..."
             sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
-              --result-format json --query "$soql" > "$DATA_DIR/${name}.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/${name}.json"
+              --result-format json --query "$soql" > "$DATA_DIR/${name}.json" || echo '{"totalSize":0,"done":true,"records":[]}' > "$DATA_DIR/${name}.json"
           done
 
       - name: Validate Data Availability
         id: check
         run: |
-          object_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/objects.json")
-          field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
+          object_count=$(jq -r '.totalSize // 0' "$DATA_DIR/objects.json")
+          field_count=$(jq -r '.totalSize // 0' "$DATA_DIR/fields.json")
           echo "Objects: $object_count, Fields: $field_count"
           if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
             echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ No metadata found"
+            echo "⚠️ No metadata found (check if org has custom objects/fields)"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
       - uses: actions/upload-artifact@v4
+        if: always()  # Upload even on failure for debugging
         with:
           name: data-model-metadata-lite
           path: ${{ env.DATA_DIR }}
@@ -91,7 +92,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: data-model-metadata-lite
-          path: data
+          path: ${{ env.DATA_DIR }}
 
       - name: Setup Ollama
         run: |
@@ -105,6 +106,10 @@ jobs:
             echo "⏳ Waiting for Ollama to start ($i/20)..."
             sleep 3
           done
+          if [ $i -eq 20 ]; then
+            echo "❌ Ollama failed to start"
+            exit 1
+          fi
           ollama pull "${{ github.event.inputs.model_name }}"
 
       - name: Analyze Data Model with AI
@@ -114,10 +119,10 @@ jobs:
           MODEL="${{ github.event.inputs.model_name }}"
       
           echo "🔍 Checking metadata files..."
-          ls -lh data || echo "⚠️ No data folder found!"
+          ls -lh "$DATA_DIR" || echo "⚠️ No data folder found!"
       
           # Safety: ensure JSON files exist and are readable
-          for f in data/*.json; do
+          for f in "$DATA_DIR"/*.json; do
             if [ ! -s "$f" ]; then
               echo "⚠️ Missing or empty file: $f"
             else
@@ -126,19 +131,18 @@ jobs:
           done
       
           echo "🧩 Combining JSON metadata..."
-          mkdir -p data
           jq -s 'def safe(r): if r.result.records then r.result.records else (r.records // []) end;
            { "objects": safe(.[0]), "fields": safe(.[1]), "relationships": safe(.[2]),
              "validation_rules": safe(.[3]), "triggers": safe(.[4]), "flows": safe(.[5]),
              "record_types": safe(.[6]) }' \
-                data/objects.json data/fields.json data/relationships.json \
-                data/validation_rules.json data/triggers.json data/flows.json \
-                data/record_types.json > data/full_metadata.json
+                "$DATA_DIR"/objects.json "$DATA_DIR"/fields.json "$DATA_DIR"/relationships.json \
+                "$DATA_DIR"/validation_rules.json "$DATA_DIR"/triggers.json "$DATA_DIR"/flows.json \
+                "$DATA_DIR"/record_types.json > "$DATA_DIR/full_metadata.json"
           
-          record_count=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' data/full_metadata.json)
+          record_count=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' "$DATA_DIR/full_metadata.json")
           if [ "$record_count" -eq 0 ]; then
-            echo "❌ No metadata found in data/full_metadata"
-            jq . data/full_metadata.json | head -n 40
+            echo "❌ No metadata found in full_metadata"
+            jq . "$DATA_DIR/full_metadata.json" | head -n 40
             exit 1
           fi
           echo "✅ Metadata contains $record_count records"
@@ -147,26 +151,26 @@ jobs:
           SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and factual. Base every point ONLY on the JSON.'
           USER_PROMPT=$(cat << 'EOF'
           Analyze the provided Salesforce metadata JSON and produce exactly these sections:
-      
+
           ## 🔍 Key Findings
           ## 🏛 Object Modeling & Relationships
           ## 🚀 Performance & Indexing
           ## 🔐 Security & Governance
           ## ✅ Recommendations
-      
+
           Use bullet points only, no paragraphs. If data is sparse, write "Insufficient data".
           ### METADATA INPUT ###
           EOF
           )
           echo "$USER_PROMPT" > prompt.txt
-          jq -c '.' data/full_metadata.json >> prompt.txt
+          jq -c '.' "$DATA_DIR/full_metadata.json" >> prompt.txt
       
           echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
           echo "**Model:** $MODEL" >> "$REPORT_FILE"
           echo "**Generated:** $(date)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
       
-          curl -s http://localhost:11434/api/generate \
+          ollama_response=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
             -d "{
               \"model\": \"$MODEL\",
@@ -174,8 +178,14 @@ jobs:
               \"system\": \"$SYSTEM_PROMPT\",
               \"options\": {\"temperature\": 0.2, \"top_p\": 0.9},
               \"stream\": false
-            }" | jq -r '.response' >> "$REPORT_FILE"
+            }" | jq -r '.response // empty')
       
+          if [ -z "$ollama_response" ]; then
+            echo "❌ Ollama returned empty response"
+            exit 1
+          fi
+      
+          echo "$ollama_response" >> "$REPORT_FILE"
           echo "✅ AI analysis completed successfully"
     
       - uses: actions/upload-artifact@v4
