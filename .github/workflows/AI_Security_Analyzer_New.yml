@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       org_alias:
-        description: "Salesforce org alias to connect to"
+        description: "Salesforce org alias"
         required: true
         default: "dev"
       model_name:
-        description: "Ollama model to use for AI analysis"
+        description: "Ollama model to use"
         required: true
         default: "llama3:latest"
 
@@ -18,65 +18,61 @@ env:
 
 jobs:
   collect-data:
-    name: 🧩 Collect Salesforce Metadata
+    name: Collect Salesforce Metadata
     runs-on: ubuntu-latest
     outputs:
       has_data: ${{ steps.check.outputs.has_data }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node + Salesforce CLI
+      - name: Setup Node + Salesforce CLI
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: 🧰 Install Salesforce CLI + jq
+      - name: Install Salesforce CLI + jq
         run: |
           sudo apt-get update -y
           sudo apt-get install -y jq
           npm install -g @salesforce/cli
 
-      - name: 🔐 Authenticate to Salesforce
+      - name: Authenticate to Salesforce
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
 
-      - name: 📦 Query Salesforce Metadata (Safe Mode)
+      - name: Query Salesforce Metadata (Safe Mode)
         run: |
           mkdir -p "$DATA_DIR"
-
-          declare -A queries=(
-            ["objects.json"]="SELECT DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel FROM EntityDefinition WHERE IsCustomizable = true LIMIT 2000"
-            ["fields.json"]="SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale FROM FieldDefinition WHERE EntityDefinition.IsCustomizable = true LIMIT 2000"
-            ["relationships.json"]="SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinition.IsCustomizable = true AND DataType IN ('Lookup','MasterDetail') LIMIT 2000"
-            ["validation_rules.json"]="SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description FROM ValidationRule WHERE Active = true LIMIT 2000"
-            ["triggers.json"]="SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate FROM ApexTrigger LIMIT 2000"
-            ["flows.json"]="SELECT DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate FROM FlowDefinition LIMIT 2000"
-            ["record_types.json"]="SELECT DeveloperName, SobjectType, Name, Description, IsActive FROM RecordType LIMIT 2000"
+          queries=(
+            "objects:SELECT DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition WHERE IsCustomizable=true LIMIT 2000"
+            "fields:SELECT QualifiedApiName,EntityDefinition.DeveloperName,DataType,IsIndexed,IsCalculated,IsNillable,Length,Precision,Scale FROM FieldDefinition WHERE EntityDefinition.IsCustomizable=true LIMIT 2000"
+            "relationships:SELECT QualifiedApiName,EntityDefinition.DeveloperName,RelationshipName,ReferenceTo FROM FieldDefinition WHERE EntityDefinition.IsCustomizable=true AND DataType IN ('Lookup','MasterDetail') LIMIT 2000"
+            "validation_rules:SELECT ValidationName,EntityDefinition.DeveloperName,Active,ErrorMessage,Description FROM ValidationRule WHERE Active=true LIMIT 2000"
+            "triggers:SELECT Name,TableEnumOrId,Status,CreatedDate,LastModifiedDate FROM ApexTrigger LIMIT 2000"
+            "flows:SELECT DeveloperName,Description,Status,ProcessType,CreatedDate,LastModifiedDate FROM FlowDefinition LIMIT 2000"
+            "record_types:SELECT DeveloperName,SobjectType,Name,Description,IsActive FROM RecordType LIMIT 2000"
           )
-
-          for file in "${!queries[@]}"; do
-            echo "🔍 Querying ${file%.json}..."
-            if ! sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
-              --result-format json --query "${queries[$file]}" > "$DATA_DIR/$file"; then
-              echo "⚠️ Failed to query ${file%.json}, creating empty result"
-              echo '{"result":{"records":[]}}' > "$DATA_DIR/$file"
-            fi
+          for q in "${queries[@]}"; do
+            name=${q%%:*}
+            soql=${q#*:}
+            echo "🔍 Querying $name..."
+            sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
+              --result-format json --query "$soql" > "$DATA_DIR/${name}.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/${name}.json"
           done
 
-      - name: ✅ Validate Metadata Availability
+      - name: Validate Data Availability
         id: check
         run: |
           object_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/objects.json")
           field_count=$(jq -r '.result.totalSize // 0' "$DATA_DIR/fields.json")
-          echo "Objects found: $object_count | Fields found: $field_count"
-
+          echo "Objects: $object_count, Fields: $field_count"
           if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
-            echo "✅ Metadata available for analysis"
+            echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ Insufficient metadata — skipping AI analysis"
+            echo "⚠️ No metadata found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
@@ -87,7 +83,7 @@ jobs:
           retention-days: 7
 
   analyze-ai:
-    name: 🤖 Analyze Data Model (AI)
+    name: Analyze Data Model (AI)
     runs-on: ubuntu-latest
     needs: collect-data
     if: needs.collect-data.outputs.has_data == 'true'
@@ -97,115 +93,90 @@ jobs:
           name: data-model-metadata-lite
           path: data
 
-      - name: ⚙️ Setup Ollama (local runtime)
+      - name: Setup Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve > /tmp/ollama.log 2>&1 &
-          echo "🕒 Waiting for Ollama to start..."
-          for i in {1..30}; do
+          ollama serve &
+          for i in {1..20}; do
             if curl -s http://localhost:11434/api/version >/dev/null; then
               echo "✅ Ollama API ready"
               break
             fi
-            sleep 2
+            echo "⏳ Waiting for Ollama to start ($i/20)..."
+            sleep 3
           done
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: 🧠 AI Data Model Analysis
+      - name: Analyze Data Model with AI
         run: |
           REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
           MODEL="${{ github.event.inputs.model_name }}"
 
-          # Merge JSON metadata
           jq -s '{
-              "objects": (.[0].result.records // []),
-              "fields": (.[1].result.records // []),
-              "relationships": (.[2].result.records // []),
-              "validation_rules": (.[3].result.records // []),
-              "triggers": (.[4].result.records // []),
-              "flows": (.[5].result.records // []),
-              "record_types": (.[6].result.records // [])
-            }' \
-            data/objects.json data/fields.json data/relationships.json \
-            data/validation_rules.json data/triggers.json data/flows.json \
-            data/record_types.json > data/full_metadata.json
+            objects: (.[0].result.records // []),
+            fields: (.[1].result.records // []),
+            relationships: (.[2].result.records // []),
+            validation_rules: (.[3].result.records // []),
+            triggers: (.[4].result.records // []),
+            flows: (.[5].result.records // []),
+            record_types: (.[6].result.records // [])
+          }' data/*.json > data/full_metadata.json
 
           total_records=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' data/full_metadata.json)
-          echo "📊 Total records combined: $total_records"
-
           if [ "$total_records" -eq 0 ]; then
             echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
             echo "**Model:** $MODEL" >> "$REPORT_FILE"
             echo "**Generated:** $(date)" >> "$REPORT_FILE"
-            echo "" >> "$REPORT_FILE"
-            echo "## 🔍 Key Findings" >> "$REPORT_FILE"
-            echo "- No metadata available for analysis" >> "$REPORT_FILE"
-            echo "## 🏛 Object Modeling & Relationships" >> "$REPORT_FILE"
-            echo "- Insufficient data" >> "$REPORT_FILE"
-            echo "## 🚀 Performance & Indexing" >> "$REPORT_FILE"
-            echo "- Insufficient data" >> "$REPORT_FILE"
-            echo "## 🔐 Security & Governance" >> "$REPORT_FILE"
-            echo "- Insufficient data" >> "$REPORT_FILE"
-            echo "## ✅ Recommendations" >> "$REPORT_FILE"
-            echo "- Query a sandbox or production org with custom objects" >> "$REPORT_FILE"
+            echo "- No metadata found for analysis" >> "$REPORT_FILE"
             exit 0
           fi
 
-          SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Base your analysis ONLY on the provided metadata JSON. Use concise bullet points, no paragraphs, no filler. If data is sparse, state "Insufficient data to assess".'
+          SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and use bullet points only. Never fabricate metadata.'
 
-          USER_PROMPT=$(cat << EOF
-          Analyze the following Salesforce metadata JSON and produce a concise, bullet-pointed Markdown report with these exact sections:
-          
+          RAW_PROMPT=$(cat <<'EOF'
+          Analyze the following Salesforce metadata JSON. Respond **ONLY** with these EXACT sections:
           ## 🔍 Key Findings
-          - (Main insights)
-
           ## 🏛 Object Modeling & Relationships
-          - (Structure, relationships, normalization)
-
           ## 🚀 Performance & Indexing
-          - (Indexes, performance, data load considerations)
-
           ## 🔐 Security & Governance
-          - (Sharing, validation rules, risk)
-
           ## ✅ Recommendations
-          - (Improvements and priorities)
 
           ### METADATA INPUT ###
-          $(jq -c '.' data/full_metadata.json)
           EOF
           )
 
+          # Escape and append JSON safely
+          USER_PROMPT="$RAW_PROMPT $(jq -c '.' data/full_metadata.json)"
+
+          echo "🧠 Sending prompt to Ollama..."
+          REQUEST_JSON=$(jq -n --arg model "$MODEL" --arg prompt "$USER_PROMPT" --arg system "$SYSTEM_PROMPT" \
+            '{model:$model, prompt:$prompt, system:$system, options:{temperature:0.2, top_p:0.9}, stream:false}')
+
+          echo "$REQUEST_JSON" > debug_ollama_request.json
+
+          # Run Ollama call with error checking
+          AI_RESPONSE=$(curl -s -X POST http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" -d @"debug_ollama_request.json" | jq -r '.response')
+
+          if [ -z "$AI_RESPONSE" ] || [ "$AI_RESPONSE" == "null" ]; then
+            echo "⚠️ Empty AI response. Check Ollama logs."
+            exit 1
+          fi
+
           echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
           echo "**Model:** $MODEL" >> "$REPORT_FILE"
-          echo "**Generated:** $(date -u)" >> "$REPORT_FILE"
+          echo "**Generated:** $(date)" >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
-
-          curl -s http://localhost:11434/api/generate \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"$MODEL\",
-              \"system\": \"$SYSTEM_PROMPT\",
-              \"prompt\": \"$USER_PROMPT\",
-              \"options\": {
-                \"temperature\": 0.2,
-                \"top_p\": 0.9
-              },
-              \"stream\": false
-            }" | jq -r '.response' >> "$REPORT_FILE"
-
-          echo "🧾 Report saved to: $REPORT_FILE"
-          echo "REPORT_FILE=$REPORT_FILE" >> $GITHUB_ENV
+          echo "$AI_RESPONSE" >> "$REPORT_FILE"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
-          path: ${{ env.REPORT_FILE }}
+          path: data_model_analysis_*.md
           retention-days: 14
 
-      - name: 🪶 AI Summary
+      - name: 📄 AI Summary
         run: |
           echo "## 🧠 AI Data Model Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Model: \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Report generated: \`${{ env.REPORT_FILE }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Execution Time: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "- Generated report successfully" >> $GITHUB_STEP_SUMMARY
