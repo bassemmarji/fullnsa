@@ -107,61 +107,86 @@ jobs:
           done
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: 🧠 Analyze Data Model with AI
-        id: analyze_model
-        shell: bash
+      - name: Analyze Data Model with AI
         run: |
-          echo "🔍 Checking extracted metadata..."
-          if [ ! -d "data/full_metadata" ]; then
-            echo "❌ No metadata found in data/full_metadata"
-            exit 1
-          fi
-      
-          FILE_COUNT=$(find data/full_metadata -type f -name "*.json" | wc -l)
-          echo "📁 Found $FILE_COUNT metadata JSON files."
-      
-          if [ "$FILE_COUNT" -eq 0 ]; then
-            echo "❌ No JSON metadata files detected!"
-            exit 1
-          fi
-      
-          echo "🧩 Merging Salesforce metadata JSON files safely..."
-          MERGED_FILE="merged_data_model.json"
-      
-          # Use find + xargs + jq to safely merge all JSON files
-          find data/full_metadata -type f -name "*.json" -print0 | \
-          xargs -0 jq -s '
-            reduce .[] as $item ({"objects":[]};
-              .objects += ($item.result.records // $item.records // [])
-            )
-          ' > "$MERGED_FILE"
-      
-          echo "✅ JSON files merged successfully into $MERGED_FILE"
-      
-          # Check file size sanity
-          FILE_SIZE=$(stat -c%s "$MERGED_FILE")
-          echo "📦 Merged file size: $FILE_SIZE bytes"
-      
-          if [ "$FILE_SIZE" -lt 100 ]; then
-            echo "⚠️ Merged file appears empty or too small. Aborting analysis."
-            exit 1
-          fi
-      
-          # Now analyze with Ollama or your AI model
+          echo "🧠 Starting AI Analysis Step..."
           REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
-          echo "🧠 Sending merged model to AI for analysis..."
-          
-          ollama run llama3:latest --system "You are a senior Salesforce Data Architect. Analyze the provided JSON data model and generate an insightful structured report." \
-            --file "$MERGED_FILE" > "$REPORT_FILE"
+          MODEL="${{ github.event.inputs.model_name }}"
       
-          echo "✅ AI analysis complete. Report saved to $REPORT_FILE"
+          echo "🔍 Checking metadata files..."
+          ls -lh data || echo "⚠️ No data folder found!"
       
-          echo "📝 Report Summary:"
-          head -n 20 "$REPORT_FILE"
+          # Safety: ensure JSON files exist and are readable
+          for f in data/*.json; do
+            if [ ! -s "$f" ]; then
+              echo "⚠️ Missing or empty file: $f"
+            else
+              echo "✅ Found $f ($(wc -l < "$f") lines)"
+            fi
+          done
       
-          echo "SUMMARY_FILE=data_model_summary.txt" >> $GITHUB_ENV
-          echo "**Summary:** $(grep -m1 -A3 'Recommendations' "$REPORT_FILE" | tr '\n' ' ')" >> "$GITHUB_STEP_SUMMARY"
-
+          echo "🧩 Combining JSON metadata..."
+          mkdir -p data
+          jq -s '{
+              "objects": (.[0].result.records // []),
+              "fields": (.[1].result.records // []),
+              "relationships": (.[2].result.records // []),
+              "validation_rules": (.[3].result.records // []),
+              "triggers": (.[4].result.records // []),
+              "flows": (.[5].result.records // []),
+              "record_types": (.[6].result.records // [])
+            }' \
+            data/objects.json data/fields.json data/relationships.json \
+            data/validation_rules.json data/triggers.json data/flows.json \
+            data/record_types.json > data/full_metadata.json || {
+              echo "❌ jq merge failed – check for malformed JSON in data/*.json"
+              exit 1
+            }
+      
+          echo "🔎 Checking extracted metadata..."
+          record_count=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' data/full_metadata.json)
+          if [ "$record_count" -eq 0 ]; then
+            echo "❌ No metadata found in data/full_metadata"
+            jq . data/full_metadata.json | head -n 40
+            exit 1
+          fi
+          echo "✅ Metadata contains $record_count records"
+      
+          echo "🧠 Sending prompt to Ollama..."
+          SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and factual. Base every point ONLY on the JSON.'
+          USER_PROMPT=$(cat << 'EOF'
+          Analyze the provided Salesforce metadata JSON and produce exactly these sections:
+      
+          ## 🔍 Key Findings
+          ## 🏛 Object Modeling & Relationships
+          ## 🚀 Performance & Indexing
+          ## 🔐 Security & Governance
+          ## ✅ Recommendations
+      
+          Use bullet points only, no paragraphs. If data is sparse, write "Insufficient data".
+          ### METADATA INPUT ###
+          EOF
+          )
+          echo "$USER_PROMPT" > prompt.txt
+          jq -c '.' data/full_metadata.json >> prompt.txt
+      
+          echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
+          echo "**Model:** $MODEL" >> "$REPORT_FILE"
+          echo "**Generated:** $(date)" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+      
+          curl -s http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"model\": \"$MODEL\",
+              \"prompt\": \"$(jq -Rs . < prompt.txt)\",
+              \"system\": \"$SYSTEM_PROMPT\",
+              \"options\": {\"temperature\": 0.2, \"top_p\": 0.9},
+              \"stream\": false
+            }" | jq -r '.response' >> "$REPORT_FILE"
+      
+          echo "✅ AI analysis completed successfully"
+    
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
