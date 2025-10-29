@@ -107,67 +107,60 @@ jobs:
           done
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: Analyze Data Model with AI
+      - name: 🧠 Analyze Data Model with AI
+        id: analyze_model
+        shell: bash
         run: |
-          REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
-          MODEL="${{ github.event.inputs.model_name }}"
-
-          jq -s '{
-            objects: (.[0].result.records // []),
-            fields: (.[1].result.records // []),
-            relationships: (.[2].result.records // []),
-            validation_rules: (.[3].result.records // []),
-            triggers: (.[4].result.records // []),
-            flows: (.[5].result.records // []),
-            record_types: (.[6].result.records // [])
-          }' data/*.json > data/full_metadata.json
-
-          total_records=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' data/full_metadata.json)
-          if [ "$total_records" -eq 0 ]; then
-            echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
-            echo "**Model:** $MODEL" >> "$REPORT_FILE"
-            echo "**Generated:** $(date)" >> "$REPORT_FILE"
-            echo "- No metadata found for analysis" >> "$REPORT_FILE"
-            exit 0
-          fi
-
-          SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and use bullet points only. Never fabricate metadata.'
-
-          RAW_PROMPT=$(cat <<'EOF'
-          Analyze the following Salesforce metadata JSON. Respond **ONLY** with these EXACT sections:
-          ## 🔍 Key Findings
-          ## 🏛 Object Modeling & Relationships
-          ## 🚀 Performance & Indexing
-          ## 🔐 Security & Governance
-          ## ✅ Recommendations
-
-          ### METADATA INPUT ###
-          EOF
-          )
-
-          # Escape and append JSON safely
-          USER_PROMPT="$RAW_PROMPT $(jq -c '.' data/full_metadata.json)"
-
-          echo "🧠 Sending prompt to Ollama..."
-          REQUEST_JSON=$(jq -n --arg model "$MODEL" --arg prompt "$USER_PROMPT" --arg system "$SYSTEM_PROMPT" \
-            '{model:$model, prompt:$prompt, system:$system, options:{temperature:0.2, top_p:0.9}, stream:false}')
-
-          echo "$REQUEST_JSON" > debug_ollama_request.json
-
-          # Run Ollama call with error checking
-          AI_RESPONSE=$(curl -s -X POST http://localhost:11434/api/generate \
-            -H "Content-Type: application/json" -d @"debug_ollama_request.json" | jq -r '.response')
-
-          if [ -z "$AI_RESPONSE" ] || [ "$AI_RESPONSE" == "null" ]; then
-            echo "⚠️ Empty AI response. Check Ollama logs."
+          echo "🔍 Checking extracted metadata..."
+          if [ ! -d "data/full_metadata" ]; then
+            echo "❌ No metadata found in data/full_metadata"
             exit 1
           fi
-
-          echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
-          echo "**Model:** $MODEL" >> "$REPORT_FILE"
-          echo "**Generated:** $(date)" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
-          echo "$AI_RESPONSE" >> "$REPORT_FILE"
+      
+          FILE_COUNT=$(find data/full_metadata -type f -name "*.json" | wc -l)
+          echo "📁 Found $FILE_COUNT metadata JSON files."
+      
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "❌ No JSON metadata files detected!"
+            exit 1
+          fi
+      
+          echo "🧩 Merging Salesforce metadata JSON files safely..."
+          MERGED_FILE="merged_data_model.json"
+      
+          # Use find + xargs + jq to safely merge all JSON files
+          find data/full_metadata -type f -name "*.json" -print0 | \
+          xargs -0 jq -s '
+            reduce .[] as $item ({"objects":[]};
+              .objects += ($item.result.records // $item.records // [])
+            )
+          ' > "$MERGED_FILE"
+      
+          echo "✅ JSON files merged successfully into $MERGED_FILE"
+      
+          # Check file size sanity
+          FILE_SIZE=$(stat -c%s "$MERGED_FILE")
+          echo "📦 Merged file size: $FILE_SIZE bytes"
+      
+          if [ "$FILE_SIZE" -lt 100 ]; then
+            echo "⚠️ Merged file appears empty or too small. Aborting analysis."
+            exit 1
+          fi
+      
+          # Now analyze with Ollama or your AI model
+          REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
+          echo "🧠 Sending merged model to AI for analysis..."
+          
+          ollama run llama3:latest --system "You are a senior Salesforce Data Architect. Analyze the provided JSON data model and generate an insightful structured report." \
+            --file "$MERGED_FILE" > "$REPORT_FILE"
+      
+          echo "✅ AI analysis complete. Report saved to $REPORT_FILE"
+      
+          echo "📝 Report Summary:"
+          head -n 20 "$REPORT_FILE"
+      
+          echo "SUMMARY_FILE=data_model_summary.txt" >> $GITHUB_ENV
+          echo "**Summary:** $(grep -m1 -A3 'Recommendations' "$REPORT_FILE" | tr '\n' ' ')" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
