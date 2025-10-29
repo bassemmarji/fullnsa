@@ -62,7 +62,7 @@ jobs:
             --result-format json \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo 
                      FROM FieldDefinition 
-                     WHERE DataType IN ('Lookup','MasterDetail') 
+                     WHERE EntityDefinition.IsCustomizable = true AND DataType IN ('Lookup','MasterDetail') 
                      LIMIT 2000" > "$DATA_DIR/relationships.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/relationships.json"
           echo "🔍 Querying Validation Rules..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
