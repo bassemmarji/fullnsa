@@ -127,23 +127,14 @@ jobs:
       
           echo "🧩 Combining JSON metadata..."
           mkdir -p data
-          jq -s '{
-              "objects": (.[0].result.records // []),
-              "fields": (.[1].result.records // []),
-              "relationships": (.[2].result.records // []),
-              "validation_rules": (.[3].result.records // []),
-              "triggers": (.[4].result.records // []),
-              "flows": (.[5].result.records // []),
-              "record_types": (.[6].result.records // [])
-            }' \
-            data/objects.json data/fields.json data/relationships.json \
-            data/validation_rules.json data/triggers.json data/flows.json \
-            data/record_types.json > data/full_metadata.json || {
-              echo "❌ jq merge failed – check for malformed JSON in data/*.json"
-              exit 1
-            }
-      
-          echo "🔎 Checking extracted metadata..."
+          jq -s 'def safe(r): if r.result.records then r.result.records else (r.records // []) end;
+           { "objects": safe(.[0]), "fields": safe(.[1]), "relationships": safe(.[2]),
+             "validation_rules": safe(.[3]), "triggers": safe(.[4]), "flows": safe(.[5]),
+             "record_types": safe(.[6]) }' \
+                data/objects.json data/fields.json data/relationships.json \
+                data/validation_rules.json data/triggers.json data/flows.json \
+                data/record_types.json > data/full_metadata.json
+          
           record_count=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' data/full_metadata.json)
           if [ "$record_count" -eq 0 ]; then
             echo "❌ No metadata found in data/full_metadata"
