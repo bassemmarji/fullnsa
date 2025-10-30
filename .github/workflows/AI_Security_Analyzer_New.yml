@@ -63,12 +63,17 @@ jobs:
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT count() as TotalEntities FROM EntityDefinition" > "$DATA_DIR/debug_count.json" 2>/tmp/debug_err.log || echo '{"records":[{"TotalEntities":0}]}' > "$DATA_DIR/debug_count.json"
-          debug_count=$(jq -r '.records[0].TotalEntities // 0' "$DATA_DIR/debug_count.json")
+            --query "SELECT COUNT() FROM EntityDefinition" > "$DATA_DIR/debug_count.json" 2>/tmp/debug_err.log || echo '{"records":[{"expr0":0}]}' > "$DATA_DIR/debug_count.json"
+          debug_count=$(jq -r '.records[0].expr0 // 0' "$DATA_DIR/debug_count.json")
           echo "📊 Debug: Total EntityDefinitions available: $debug_count (if 0, check perms/org setup)"
           if [ "$debug_count" -eq 0 ]; then
-            echo "⚠️ Tooling API returns no data - Action: 1) Re-auth as Admin (sf org login web --alias ${{ github.event.inputs.org_alias }}). 2) Enable features in scratch-def.json (e.g., 'Account'). 3) Recreate org (sf org create scratch ...)"
+            echo "⚠️ Tooling API returns no data - Check error: $(cat /tmp/debug_err.log 2>/dev/null || echo 'No log')"
+            echo "Action: 1) Re-auth as Admin (sf org login web --alias ${{ github.event.inputs.org_alias }}). 2) Enable features in scratch-def.json (e.g., 'Account'). 3) Recreate org (sf org create scratch ...)"
+            rm -f /tmp/debug_err.log
+          else
+            echo "✅ Debug: Tooling API access confirmed!"
           fi
+          rm -f /tmp/debug_err.log
           
           # === STEP 1: Query main metadata (excluding relationships) ===
           queries=(
@@ -140,7 +145,7 @@ jobs:
             rm -rf "$tmp_dir"
             echo "✅ relationships: completed (totalSize: $rel_count)"
           fi
-    
+      
       - name: Validate Data Availability
         id: check
         run: |
