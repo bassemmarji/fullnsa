@@ -62,18 +62,17 @@ jobs:
           sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --result-format json \
-            --query "SELECT COUNT() FROM EntityDefinition" > "$DATA_DIR/debug_count.json" 2>/tmp/debug_err.log || echo '{"records":[{"expr0":0}]}' > "$DATA_DIR/debug_count.json"
-          debug_count=$(jq -r '.records[0].expr0 // 0' "$DATA_DIR/debug_count.json")
+            --result-format human \
+            --query "SELECT COUNT() FROM EntityDefinition" > /tmp/debug_human.log 2>/tmp/debug_err.log || echo "Total number of records retrieved: 0" > /tmp/debug_human.log
+          debug_count=$(grep -oP 'Total number of records retrieved: \K\d+' /tmp/debug_human.log || echo 0)
           echo "📊 Debug: Total EntityDefinitions available: $debug_count (if 0, check perms/org setup)"
           if [ "$debug_count" -eq 0 ]; then
             echo "⚠️ Tooling API returns no data - Check error: $(cat /tmp/debug_err.log 2>/dev/null || echo 'No log')"
             echo "Action: 1) Re-auth as Admin (sf org login web --alias ${{ github.event.inputs.org_alias }}). 2) Enable features in scratch-def.json (e.g., 'Account'). 3) Recreate org (sf org create scratch ...)"
-            rm -f /tmp/debug_err.log
           else
             echo "✅ Debug: Tooling API access confirmed!"
           fi
-          rm -f /tmp/debug_err.log
+          rm -f /tmp/debug_human.log /tmp/debug_err.log
           
           # === STEP 1: Query main metadata (excluding relationships) ===
           queries=(
@@ -97,6 +96,11 @@ jobs:
                 --query "$soql" > "$DATA_DIR/${name}.json" 2>/tmp/sf_err_${name}.log; then
               echo "✅ $name: success"
               echo "📊 $name totalSize: $(jq -r '.totalSize // 0' "$DATA_DIR/${name}.json")"
+              # Debug: Dump first 20 lines of JSON for objects only
+              if [ "$name" = "objects" ]; then
+                echo "🔍 Objects JSON snippet (first 20 lines):"
+                jq . "$DATA_DIR/objects.json" | head -n 20
+              fi
             else
               echo "⚠️  $name: failed – $(cat /tmp/sf_err_${name}.log)"
               echo '{"totalSize":0,"done":true,"records":[]}' > "$DATA_DIR/${name}.json"
@@ -115,19 +119,28 @@ jobs:
             echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
             echo "✅ relationships: no objects found"
           else
-            # Loop through each object and query its relationship fields
-            while IFS= read -r line; do
-              entity_id=$(echo "$line" | cut -d' ' -f1)
-              developer_name=$(echo "$line" | cut -d' ' -f2-)
-              echo "  → $developer_name ($entity_id)"
+            rel_count=0
+            # Loop through each object and query its relationship fields (sample first 10 for speed/debug)
+            object_ids=$(jq -r '.records[0:10] | .[] | select(.Id and .DeveloperName) | "\(.Id) \(.DeveloperName)"' "$DATA_DIR/objects.json")
+            if [ -z "$object_ids" ]; then
+              echo "⚠️ No sample objects for relationships loop"
+            else
+              echo "$object_ids" | while IFS= read -r line; do
+                entity_id=$(echo "$line" | cut -d' ' -f1)
+                developer_name=$(echo "$line" | cut -d' ' -f2-)
+                echo "  → $developer_name ($entity_id)"
       
-              sf data query \
-                --use-tooling-api \
-                --target-org "${{ github.event.inputs.org_alias }}" \
-                --result-format json \
-                --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinitionId = '${entity_id}' AND (DataType LIKE 'Lookup(%' OR DataType LIKE 'MasterDetail(%') LIMIT 100" \
-                > "$tmp_dir/${entity_id}.json" 2>/dev/null || echo '{"totalSize":0,"done":true,"records":[]}' > "$tmp_dir/${entity_id}.json"
-            done < <(jq -r '.records[] | select(.Id and .DeveloperName) | "\(.Id) \(.DeveloperName)"' "$DATA_DIR/objects.json")
+                sf data query \
+                  --use-tooling-api \
+                  --target-org "${{ github.event.inputs.org_alias }}" \
+                  --result-format json \
+                  --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinitionId = '${entity_id}' AND (DataType LIKE 'Lookup(%' OR DataType LIKE 'MasterDetail(%') LIMIT 100" \
+                  > "$tmp_dir/${entity_id}.json" 2>/dev/null || echo '{"totalSize":0,"done":true,"records":[]}' > "$tmp_dir/${entity_id}.json"
+                
+                this_count=$(jq -r '.totalSize // 0' "$tmp_dir/${entity_id}.json")
+                rel_count=$((rel_count + this_count))
+              done
+            fi
       
             # Merge all relationship results
             if compgen -G "$tmp_dir/*.json" > /dev/null; then
@@ -145,7 +158,7 @@ jobs:
             rm -rf "$tmp_dir"
             echo "✅ relationships: completed (totalSize: $rel_count)"
           fi
-      
+    
       - name: Validate Data Availability
         id: check
         run: |
