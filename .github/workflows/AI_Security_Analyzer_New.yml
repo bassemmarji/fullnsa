@@ -46,18 +46,30 @@ jobs:
         run: |
           mkdir -p "$DATA_DIR"
           
+          # === DEBUG: Simple count to verify Tooling API access ===
+          echo "🔍 Debug: Testing Tooling API access..."
+          sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT count() as TotalEntities FROM EntityDefinition" > "$DATA_DIR/debug_count.json" 2>/tmp/debug_err.log || echo '{"totalSize":0}' > "$DATA_DIR/debug_count.json"
+          debug_count=$(jq -r '.records[0].TotalEntities // 0' "$DATA_DIR/debug_count.json")
+          echo "📊 Debug: Total EntityDefinitions available: $debug_count (if 0, check perms/org setup)"
+          if [ "$debug_count" -eq 0 ]; then
+            echo "⚠️ Tooling API returns no data - verify 'View Setup' permission or enable org features"
+          fi
+          
           # === STEP 1: Query main metadata (excluding relationships) ===
           queries=(
-            "objects:SELECT Id,DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition WHERE IsCustomizable=true LIMIT 2000"
-            # Optional: Remove WHERE IsCustomizable=true for broader results (includes non-customizables)
-            "fields:SELECT QualifiedApiName,EntityDefinition.DeveloperName,DataType,IsIndexed,IsCalculated,IsNillable,Length,Precision,Scale FROM FieldDefinition WHERE EntityDefinition.IsCustomizable=true LIMIT 2000"
-            # Optional: Same as above
+            "objects:SELECT Id,DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition LIMIT 2000"
+            # Removed WHERE for broader results (all entities, incl. systems)
+            "fields:SELECT QualifiedApiName,EntityDefinition.DeveloperName,DataType,IsIndexed,IsCalculated,IsNillable,Length,Precision,Scale FROM FieldDefinition LIMIT 2000"
+            # Removed WHERE - now ~10k+ fields in typical org
             "validation_rules:SELECT ValidationName,EntityDefinition.DeveloperName,Active,ErrorMessage,Description FROM ValidationRule WHERE Active=true LIMIT 2000"
             "triggers:SELECT Name,TableEnumOrId,Status,CreatedDate,LastModifiedDate FROM ApexTrigger LIMIT 2000"
             "flows:SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate FROM Flow WHERE Status = 'Active' LIMIT 2000"
-            # Fixed: Use Definition.DeveloperName via relationship
-            "record_types:SELECT Name,SobjectType,Description,IsActive FROM RecordType LIMIT 2000"
-            # Fixed: Use Name (equiv to DeveloperName in Tooling API); removed invalid DeveloperName
+            "record_types:SELECT Name, SobjectType, Description, IsActive, FullName FROM RecordType LIMIT 2000"
+            # Added FullName (format: Object.DeveloperName) for developer name equiv
           )
       
           for q in "${queries[@]}"; do
@@ -87,8 +99,9 @@ jobs:
           # Ensure objects.json exists and has records
           if [ ! -s "$DATA_DIR/objects.json" ] || [ "$(jq -r '.records | length // 0' "$DATA_DIR/objects.json")" -eq 0 ]; then
             echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
-            echo "✅ relationships: no customizable objects found"
+            echo "✅ relationships: no objects found"
           else
+            rel_count=0
             # Loop through each object and query its relationship fields
             while IFS= read -r line; do
               entity_id=$(echo "$line" | cut -d' ' -f1)
@@ -101,7 +114,10 @@ jobs:
                 --result-format json \
                 --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinitionId = '${entity_id}' AND (DataType LIKE 'Lookup(%' OR DataType LIKE 'MasterDetail(%') LIMIT 100" \
                 > "$tmp_dir/${entity_id}.json" 2>/dev/null || echo '{"totalSize":0,"done":true,"records":[]}' > "$tmp_dir/${entity_id}.json"
-              # Fixed: LIKE for DataType; added LIMIT 100 (per object, safe)
+              
+              # Accumulate count for logging
+              this_count=$(jq -r '.totalSize // 0' "$tmp_dir/${entity_id}.json")
+              rel_count=$((rel_count + this_count))
             done < <(jq -r '.records[] | select(.Id and .DeveloperName) | "\(.Id) \(.DeveloperName)"' "$DATA_DIR/objects.json")
       
             # Merge all relationship results
@@ -111,15 +127,14 @@ jobs:
                 done: true,
                 records: (map(.records // []) | flatten)
               }' "$tmp_dir"/*.json > "$relationships_file"
-              # Minor: Added // 0 and // [] for safety on missing keys
             else
               echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
             fi
       
             rm -rf "$tmp_dir"
-            echo "✅ relationships: completed (totalSize: $(jq -r '.totalSize // 0' "$relationships_file"))"
+            echo "✅ relationships: completed (totalSize: $rel_count)"
           fi
-    
+          
       - name: Validate Data Availability
         id: check
         run: |
