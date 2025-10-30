@@ -46,11 +46,11 @@ jobs:
         run: |
           echo "🔍 Testing post-auth Tooling access..."
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT count() as QuickTest FROM EntityDefinition LIMIT 1" \
+            --query "SELECT count() FROM EntityDefinition LIMIT 1" \
             --result-format human || echo "❌ Quick test failed - check permissions"
           echo "📊 Full EntityDefinition count (for reference):"
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT count() as TotalEntities FROM EntityDefinition" \
+            --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
           
       - name: Query Salesforce Metadata (Safe Mode)
