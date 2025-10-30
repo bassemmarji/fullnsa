@@ -45,23 +45,81 @@ jobs:
       - name: Query Salesforce Metadata (Safe Mode)
         run: |
           mkdir -p "$DATA_DIR"
+          
+          # === STEP 1: Query main metadata (excluding relationships) ===
           queries=(
-            "objects:SELECT DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition WHERE IsCustomizable=true LIMIT 2000"
+            "objects:SELECT Id,DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition WHERE IsCustomizable=true LIMIT 2000"
+            # Optional: Remove WHERE IsCustomizable=true for broader results (includes non-customizables)
             "fields:SELECT QualifiedApiName,EntityDefinition.DeveloperName,DataType,IsIndexed,IsCalculated,IsNillable,Length,Precision,Scale FROM FieldDefinition WHERE EntityDefinition.IsCustomizable=true LIMIT 2000"
-            "relationships:SELECT QualifiedApiName,EntityDefinition.DeveloperName,RelationshipName,ReferenceTo FROM FieldDefinition WHERE EntityDefinition.IsCustomizable=true AND DataType IN ('Lookup','MasterDetail') LIMIT 2000"
+            # Optional: Same as above
             "validation_rules:SELECT ValidationName,EntityDefinition.DeveloperName,Active,ErrorMessage,Description FROM ValidationRule WHERE Active=true LIMIT 2000"
             "triggers:SELECT Name,TableEnumOrId,Status,CreatedDate,LastModifiedDate FROM ApexTrigger LIMIT 2000"
-            "flows:SELECT DeveloperName,Description,Status,ProcessType,CreatedDate,LastModifiedDate FROM FlowDefinition LIMIT 2000"
-            "record_types:SELECT DeveloperName,SobjectType,Name,Description,IsActive FROM RecordType LIMIT 2000"
+            "flows:SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate FROM Flow WHERE Status = 'Active' LIMIT 2000"
+            # Fixed: Use Definition.DeveloperName via relationship
+            "record_types:SELECT Name,SobjectType,Description,IsActive FROM RecordType LIMIT 2000"
+            # Fixed: Use Name (equiv to DeveloperName in Tooling API); removed invalid DeveloperName
           )
+      
           for q in "${queries[@]}"; do
-            name=${q%%:*}
-            soql=${q#*:}
+            name="${q%%:*}"
+            soql="${q#*:}"
             echo "🔍 Querying $name..."
-            sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
-              --result-format json --query "$soql" > "$DATA_DIR/${name}.json" || echo '{"totalSize":0,"done":true,"records":[]}' > "$DATA_DIR/${name}.json"
+            
+            if sf data query \
+                --use-tooling-api \
+                --target-org "${{ github.event.inputs.org_alias }}" \
+                --result-format json \
+                --query "$soql" > "$DATA_DIR/${name}.json" 2>/tmp/sf_err_${name}.log; then
+              echo "✅ $name: success"
+              echo "📊 $name totalSize: $(jq -r '.totalSize // 0' "$DATA_DIR/${name}.json")"
+            else
+              echo "⚠️  $name: failed – $(cat /tmp/sf_err_${name}.log)"
+              echo '{"totalSize":0,"done":true,"records":[]}' > "$DATA_DIR/${name}.json"
+            fi
+            rm -f /tmp/sf_err_${name}.log
           done
-
+      
+          # === STEP 2: Query relationship fields (requires EntityDefinitionId) ===
+          echo "🔍 Querying relationships (per object)..."
+          relationships_file="$DATA_DIR/relationships.json"
+          tmp_dir="$(mktemp -d)"
+      
+          # Ensure objects.json exists and has records
+          if [ ! -s "$DATA_DIR/objects.json" ] || [ "$(jq -r '.records | length // 0' "$DATA_DIR/objects.json")" -eq 0 ]; then
+            echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
+            echo "✅ relationships: no customizable objects found"
+          else
+            # Loop through each object and query its relationship fields
+            while IFS= read -r line; do
+              entity_id=$(echo "$line" | cut -d' ' -f1)
+              developer_name=$(echo "$line" | cut -d' ' -f2-)
+              echo "  → $developer_name ($entity_id)"
+      
+              sf data query \
+                --use-tooling-api \
+                --target-org "${{ github.event.inputs.org_alias }}" \
+                --result-format json \
+                --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinitionId = '${entity_id}' AND (DataType LIKE 'Lookup(%' OR DataType LIKE 'MasterDetail(%') LIMIT 100" \
+                > "$tmp_dir/${entity_id}.json" 2>/dev/null || echo '{"totalSize":0,"done":true,"records":[]}' > "$tmp_dir/${entity_id}.json"
+              # Fixed: LIKE for DataType; added LIMIT 100 (per object, safe)
+            done < <(jq -r '.records[] | select(.Id and .DeveloperName) | "\(.Id) \(.DeveloperName)"' "$DATA_DIR/objects.json")
+      
+            # Merge all relationship results
+            if compgen -G "$tmp_dir/*.json" > /dev/null; then
+              jq -s '{
+                totalSize: (map(.totalSize // 0) | add),
+                done: true,
+                records: (map(.records // []) | flatten)
+              }' "$tmp_dir"/*.json > "$relationships_file"
+              # Minor: Added // 0 and // [] for safety on missing keys
+            else
+              echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
+            fi
+      
+            rm -rf "$tmp_dir"
+            echo "✅ relationships: completed (totalSize: $(jq -r '.totalSize // 0' "$relationships_file"))"
+          fi
+    
       - name: Validate Data Availability
         id: check
         run: |
