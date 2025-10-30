@@ -38,7 +38,7 @@ jobs:
 
       - name: Authenticate to Salesforce
         run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+          echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url \
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
 
