@@ -41,7 +41,10 @@ jobs:
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
-
+          echo "✅ Authenticated to org alias: ${{ github.event.inputs.org_alias }}"
+          echo "📋 Org Details:"
+          sf org display --target-org "${{ github.event.inputs.org_alias }}" --verbose
+          
       - name: Query Salesforce Metadata (Safe Mode)
         run: |
           mkdir -p "$DATA_DIR"
