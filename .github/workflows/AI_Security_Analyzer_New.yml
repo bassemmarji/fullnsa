@@ -206,6 +206,7 @@ jobs:
           fi
           ollama pull "${{ github.event.inputs.model_name }}"
 
+
       - name: Analyze Data Model with AI
         run: |
           echo "🧠 Starting AI Analysis Step..."
@@ -259,29 +260,33 @@ jobs:
           echo "$USER_PROMPT" > prompt.txt
           jq -c '.' "$DATA_DIR/full_metadata.json" >> prompt.txt
       
-          echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
-          echo "**Model:** $MODEL" >> "$REPORT_FILE"
-          echo "**Generated:** $(date)" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
+          # Create JSON payload file to avoid command-line length limits
+          cat > request.json << EOF
+          {
+            "model": "$MODEL",
+            "prompt": $(jq -Rs . < prompt.txt),
+            "system": "$SYSTEM_PROMPT",
+            "options": {"temperature": 0.2, "top_p": 0.9},
+            "stream": false
+          }
+          EOF
       
           ollama_response=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"$MODEL\",
-              \"prompt\": \"$(jq -Rs . < prompt.txt)\",
-              \"system\": \"$SYSTEM_PROMPT\",
-              \"options\": {\"temperature\": 0.2, \"top_p\": 0.9},
-              \"stream\": false
-            }" | jq -r '.response // empty')
+            -d @request.json | jq -r '.response // empty')
       
           if [ -z "$ollama_response" ]; then
             echo "❌ Ollama returned empty response"
             exit 1
           fi
       
+          echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
+          echo "**Model:** $MODEL" >> "$REPORT_FILE"
+          echo "**Generated:** $(date)" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
           echo "$ollama_response" >> "$REPORT_FILE"
           echo "✅ AI analysis completed successfully"
-    
+          
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
