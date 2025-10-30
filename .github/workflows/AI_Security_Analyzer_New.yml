@@ -157,14 +157,16 @@ jobs:
       - name: Validate Data Availability
         id: check
         run: |
-          object_count=$(jq -r '.totalSize // 0' "$DATA_DIR/objects.json")
-          field_count=$(jq -r '.totalSize // 0' "$DATA_DIR/fields.json")
-          echo "Objects: $object_count, Fields: $field_count"
+          object_count=$(jq -r '.result.totalSize // .totalSize // 0' "$DATA_DIR/objects.json")
+          field_count=$(jq -r '.result.totalSize // .totalSize // 0' "$DATA_DIR/fields.json")
+          object_len=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
+          field_len=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
+          echo "Objects: count=$object_count (len=$object_len), Fields: count=$field_count (len=$field_len)"
           if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
             echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ No metadata found (check if org has custom objects/fields)"
+            echo "⚠️ No metadata found (check org/permissions)"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
