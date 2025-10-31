@@ -60,13 +60,6 @@ jobs:
           echo "🚀 Starting metadata extraction..."
           mkdir -p "$DATA_DIR"
       
-          echo "🔑 Checking Salesforce org authentication..."
-          if ! sf org display --target-org "${{ github.event.inputs.org_alias }}" > /dev/null 2>&1; then
-            echo "❌ Org alias not found or not authenticated"
-            exit 1
-          fi
-          echo "✅ Org authentication verified."
-      
           echo "📦 Querying custom objects..."
           if ! sf data query \
             --use-tooling-api \
@@ -74,22 +67,28 @@ jobs:
             --result-format json \
             --query "SELECT Id, DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel
                      FROM EntityDefinition
-                     WHERE DeveloperName LIKE '%__c'
+                     WHERE QualifiedApiName LIKE '%__c'
+                     AND IsCustomizable = true
                      LIMIT 2000" > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
               echo "❌ Failed to fetch custom objects"; cat /tmp/query_objects.log; exit 1
           fi
       
           object_count=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
           echo "✅ Retrieved $object_count custom objects."
+          
           if [ "$object_count" -eq 0 ]; then
             echo "⚠️ No custom objects found. Exiting safely."
             exit 0
           fi
       
-          object_names_quoted=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/.*/'&'/g" | paste -sd, -)
-          echo "🔹 Objects prepared for queries: $object_names_quoted"
+          # Debug: Show first 10 objects
+          echo "🔍 First 10 custom objects retrieved:"
+          jq -r '.result.records[0:10] | .[] | .DeveloperName' "$DATA_DIR/objects.json"
       
-          echo "🧩 Querying field definitions..."
+          object_names_quoted=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/.*/'&'/g" | paste -sd, -)
+          echo "🔹 Objects prepared for queries (count: $object_count)"
+      
+          echo "🧩 Querying field definitions (custom fields only)..."
           if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
@@ -97,17 +96,25 @@ jobs:
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label
                      FROM FieldDefinition
                      WHERE EntityDefinition.DeveloperName IN ($object_names_quoted)
+                     AND QualifiedApiName LIKE '%__c'
+                     AND IsCustom = true
                      LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log; then
               echo "❌ Failed to fetch fields"; cat /tmp/query_fields.log; exit 1
           fi
+          
           field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
-          echo "✅ Retrieved $field_count fields."
+          echo "✅ Retrieved $field_count custom fields."
+      
+          # Debug: Show sample fields
+          echo "🔍 Sample fields retrieved:"
+          jq -r '.result.records[0:5] | .[] | "\(.EntityDefinition.DeveloperName).\(.QualifiedApiName)"' "$DATA_DIR/fields.json"
       
           echo "🔗 Extracting relationships..."
           jq '.result.records
               | map(select(.DataType == "Lookup" or .DataType == "MasterDetail"))
               | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo, dataType: .DataType, isIndexed: .IsIndexed})
               ' "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
+          
           rel_count=$(jq -r 'length' "$DATA_DIR/relationships.json")
           echo "✅ Extracted $rel_count relationship fields."
       
@@ -123,6 +130,7 @@ jobs:
                      LIMIT 2000" > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
               echo "❌ Failed to fetch validation rules"; cat /tmp/query_vrules.log; exit 1
           fi
+          
           vrule_count=$(jq -r '.result.records | length' "$DATA_DIR/validation_rules.json")
           echo "✅ Retrieved $vrule_count validation rules."
       
@@ -137,6 +145,7 @@ jobs:
                      LIMIT 2000" > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
               echo "❌ Failed to fetch triggers"; cat /tmp/query_triggers.log; exit 1
           fi
+          
           trigger_count=$(jq -r '.result.records | length' "$DATA_DIR/triggers.json")
           echo "✅ Retrieved $trigger_count triggers."
       
@@ -151,6 +160,7 @@ jobs:
                      LIMIT 2000" > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
               echo "❌ Failed to fetch record types"; cat /tmp/query_recordtypes.log; exit 1
           fi
+          
           rt_count=$(jq -r '.result.records | length' "$DATA_DIR/record_types.json")
           echo "✅ Retrieved $rt_count record types."
       
@@ -165,11 +175,21 @@ jobs:
                      LIMIT 2000" > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
               echo "❌ Failed to fetch flows"; cat /tmp/query_flows.log; exit 1
           fi
+          
           flow_count=$(jq -r '.result.records | length' "$DATA_DIR/flows.json")
           echo "✅ Retrieved $flow_count active flows."
       
           echo "🎉 Metadata extraction completed successfully."
-                    
+          echo ""
+          echo "📊 Summary:"
+          echo "  - Custom Objects: $object_count"
+          echo "  - Custom Fields: $field_count"
+          echo "  - Relationships: $rel_count"
+          echo "  - Validation Rules: $vrule_count"
+          echo "  - Triggers: $trigger_count"
+          echo "  - Record Types: $rt_count"
+          echo "  - Active Flows: $flow_count"
+          
       - name: Validate Data Availability
         id: check
         run: |
