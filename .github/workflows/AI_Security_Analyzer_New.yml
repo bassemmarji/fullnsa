@@ -53,85 +53,79 @@ jobs:
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
 
-      - name: Query Salesforce Metadata (Safe Mode)
+      
+      - name: "🔍 Query Salesforce Metadata (Safe Mode)"
+        shell: bash
         run: |
+          set -e
+          echo "🚀 Starting safe metadata extraction..."
           mkdir -p "$DATA_DIR"
-
-          echo "🔍 Querying core Salesforce metadata (safe mode)..."
-
-          queries=(
-            "objects:SELECT Id,DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition LIMIT 2000"
-            "fields:SELECT QualifiedApiName,EntityDefinition.DeveloperName,DataType,IsIndexed,IsCalculated,IsNillable,Length,Precision,Scale FROM FieldDefinition WHERE EntityDefinition.DeveloperName != null LIMIT 2000"
-            "validation_rules:SELECT ValidationName,EntityDefinition.DeveloperName,Active,ErrorMessage,Description FROM ValidationRule WHERE Active=true LIMIT 2000"
-            "triggers:SELECT Name,TableEnumOrId,Status,CreatedDate,LastModifiedDate FROM ApexTrigger LIMIT 2000"
-            "flows:SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate FROM Flow WHERE Status = 'Active' LIMIT 2000"
-            "record_types:SELECT Name, SobjectType, Description, IsActive FROM RecordType LIMIT 2000"
-          )
       
-          for q in "${queries[@]}"; do
-            name="${q%%:*}"
-            soql="${q#*:}"
-            echo "🔍 Querying $name..."
-            
-            if sf data query \
-                --use-tooling-api \
-                --target-org "${{ github.event.inputs.org_alias }}" \
-                --result-format json \
-                --query "$soql" > "$DATA_DIR/${name}.json" 2>/tmp/sf_err_${name}.log; then
-              echo "✅ $name: success"
-              records_len=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/${name}.json")
-              total_size=$(jq -r '.result.totalSize // .totalSize // empty' "$DATA_DIR/${name}.json")
-              echo "📊 $name records length: $records_len (totalSize: $total_size)"
-            else
-              echo "⚠️  $name: failed – $(cat /tmp/sf_err_${name}.log)"
-              echo '{"totalSize":0,"done":true,"records":[]}' > "$DATA_DIR/${name}.json"
-              echo "📊 $name records length: 0 (fallback)"
-            fi
-            rm -f /tmp/sf_err_${name}.log
-          done
+          # === STEP 1: Fetch Custom & Managed Objects ===
+          echo "📦 Querying custom and managed objects..."
+          sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel
+                     FROM EntityDefinition
+                     WHERE (DeveloperName LIKE '%__c' OR NamespacePrefix != null)
+                     AND IsCustomSetting = false
+                     LIMIT 2000" > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log || {
+              echo "❌ Failed to fetch objects. Check /tmp/query_objects.log"; exit 1;
+            }
       
-          # === STEP 2: Query relationship fields (requires EntityDefinitionId) ===
-          echo "🔍 Querying relationships (per object)..."
-          relationships_file="$DATA_DIR/relationships.json"
-          tmp_dir="$(mktemp -d)"
+          echo "✅ Objects metadata saved to $DATA_DIR/objects.json"
       
-          object_record_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
-          if [ ! -s "$DATA_DIR/objects.json" ] || [ "$object_record_count" -eq 0 ]; then
-            echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
-            echo "✅ relationships: no objects found (length: $object_record_count)"
-          else
-            rel_count=0
-            object_ids=$(jq -r '.result.records // .records // [] | .[0:10] | .[] | select(.Id and .DeveloperName) | "\(.Id) \(.DeveloperName)"' "$DATA_DIR/objects.json")
-            if [ -z "$object_ids" ]; then
-              echo "⚠️ No sample objects for relationships loop"
-            else
-              echo "$object_ids" | while IFS= read -r line; do
-                entity_id=$(echo "$line" | cut -d' ' -f1)
-                developer_name=$(echo "$line" | cut -d' ' -f2-)
-                echo "  → $developer_name ($entity_id)"
-      
-                sf data query \
-                  --use-tooling-api \
-                  --target-org "${{ github.event.inputs.org_alias }}" \
-                  --result-format json \
-                  --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinitionId = '${entity_id}' AND (DataType LIKE 'Lookup(%' OR DataType LIKE 'MasterDetail(%') LIMIT 100" \
-                  > "$tmp_dir/${entity_id}.json" 2>/dev/null || echo '{"totalSize":0,"done":true,"records":[]}' > "$tmp_dir/${entity_id}.json"
-              done
-            fi
-      
-            # Merge all relationship results
-            if compgen -G "$tmp_dir/*.json" > /dev/null; then
-              merged_records=$(jq -s '(map(.result.records // .records // []) | flatten | length)' "$tmp_dir"/*.json)
-              echo '{"totalSize":'$merged_records',"done":true,"records":'$(jq -s 'map(.result.records // .records // []) | flatten' "$tmp_dir"/*.json | jq -c .)' }' > "$relationships_file"
-              rel_count=$(jq -r '.totalSize // empty' "$relationships_file")
-            else
-              echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
-              rel_count=0
-            fi
-      
-            rm -rf "$tmp_dir"
-            echo "✅ relationships: completed (records length: $rel_count)"
+          # === Extract object API names for downstream filters ===
+          object_names=$(jq -r '.result.records // .records // [] | .[].DeveloperName' "$DATA_DIR/objects.json" | paste -sd, -)
+          if [ -z "$object_names" ]; then
+            echo "⚠️ No custom or managed objects found. Exiting safely."
+            exit 0
           fi
+      
+          # === STEP 2: Fetch Field Metadata ===
+          echo "🧩 Querying field definitions..."
+          sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale
+                     FROM FieldDefinition
+                     WHERE EntityDefinition.DeveloperName IN ($object_names)
+                     LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log || {
+              echo "❌ Failed to fetch fields. Check /tmp/query_fields.log"; exit 1;
+            }
+      
+          # === STEP 3: Fetch Validation Rules ===
+          echo "🧠 Querying validation rules..."
+          sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description
+                     FROM ValidationRule
+                     WHERE Active = true
+                     AND EntityDefinition.DeveloperName IN ($object_names)
+                     LIMIT 2000" > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log || {
+              echo "❌ Failed to fetch validation rules. Check /tmp/query_vrules.log"; exit 1;
+            }
+      
+          # === STEP 4: Fetch Triggers ===
+          echo "⚙️ Querying triggers..."
+          sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate
+                     FROM ApexTrigger
+                     WHERE TableEnumOrId IN ($object_names)
+                     LIMIT 2000" > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log || {
+              echo "❌ Failed to fetch triggers. Check /tmp/query_triggers.log"; exit 1;
+            }
+      
+          echo "✅ All metadata queries completed successfully."
+
                     
       - name: Validate Data Availability
         id: check
