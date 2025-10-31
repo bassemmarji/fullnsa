@@ -386,7 +386,7 @@ jobs:
           Use ONLY the data provided below. Do NOT add explanatory text outside tables.
 
           ### STATISTICS:
-EOFPROMPT
+          EOFPROMPT
           )
           
           # Combine into single prompt
