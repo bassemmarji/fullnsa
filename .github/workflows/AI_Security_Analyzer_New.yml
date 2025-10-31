@@ -198,6 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: collect-data
     if: needs.collect-data.outputs.has_data == 'true'
+
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -222,29 +223,48 @@ jobs:
           fi
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: "📊 Pre-Analysis: Generate Structured Data"
+      - name: 📊 Pre-Analysis: Generate Structured Data
         shell: bash
         run: |
           echo "📊 Performing pre-analysis to generate structured findings..."
           
-          # Helper function
+          # === JSON Validation ===
+          echo "🔍 Validating metadata files..."
+          for f in "$DATA_DIR"/*.json; do
+            if [ ! -s "$f" ]; then
+              echo "⚠️ Empty file detected: $f — replacing with []"
+              echo "[]" > "$f"
+              continue
+            fi
+            if ! jq empty "$f" >/dev/null 2>&1; then
+              echo "❌ Invalid JSON in $f, resetting..."
+              echo "[]" > "$f"
+              continue
+            fi
+            # Fix files that are numbers/null instead of objects
+            if jq -e 'type=="number" or type=="null"' "$f" >/dev/null; then
+              echo "⚠️ $f contained invalid JSON type, resetting to []"
+              echo "[]" > "$f"
+            fi
+          done
+          echo "✅ JSON validation complete."
+
+          # === Helper Function ===
           safe_records() {
-            file=$1
-            jq 'if type != "object" then [] 
-                elif .result? and .result.records? then .result.records
-                elif .records? then .records
+            local file=$1
+            jq 'if type=="object" then
+                  if .result? and .result.records? then .result.records
+                  elif .records? then .records
+                  else [] end
                 elif type=="array" then .
-                else [] end end end' "$file"
+                else [] end' "$file"
           }
-          
-          # 1. Missing Indexes Analysis
+
+          # === 1. Missing Indexes Analysis ===
           echo "🔍 Analyzing missing indexes..."
-          jq -r '
-            def safe_records: if .result? and .result.records? then .result.records else if .records? then .records else if type=="array" then . else [] end end end;
-            
-            safe_records |
+          safe_records "$DATA_DIR/fields.json" | jq '
             map(select(
-              (.DataType == "Text" or .DataType == "Number" or .DataType == "Lookup" or .DataType == "MasterDetail" or .DataType == "Email" or .DataType == "Phone") 
+              (.DataType == "Text" or .DataType == "Number" or .DataType == "Lookup" or .DataType == "MasterDetail" or .DataType == "Email" or .DataType == "Phone")
               and (.IsIndexed != true)
             )) |
             map({
@@ -252,20 +272,15 @@ jobs:
               field: .QualifiedApiName,
               dataType: .DataType,
               label: .Label,
-              risk: (if .DataType == "Lookup" or .DataType == "MasterDetail" then "HIGH" 
+              risk: (if .DataType == "Lookup" or .DataType == "MasterDetail" then "HIGH"
                      elif .DataType == "Text" and (.Length // 0) > 255 then "MEDIUM"
                      elif .DataType == "Email" or .DataType == "Phone" then "MEDIUM"
                      else "LOW" end)
-            }) |
-            sort_by(.risk) | reverse
-          ' "$DATA_DIR/fields.json" > "$DATA_DIR/missing_indexes_structured.json"
-          
-          # 2. Duplicate Fields Analysis
+            })' > "$DATA_DIR/missing_indexes_structured.json"
+
+          # === 2. Duplicate Fields Analysis ===
           echo "🔍 Analyzing duplicate fields..."
-          jq -r '
-            def safe_records: if .result? and .result.records? then .result.records else if .records? then .records else if type=="array" then . else [] end end end;
-            
-            safe_records |
+          safe_records "$DATA_DIR/fields.json" | jq '
             group_by(.QualifiedApiName) |
             map(select(length > 1)) |
             map({
@@ -273,84 +288,75 @@ jobs:
               occurrences: length,
               objects: map(.EntityDefinition.DeveloperName),
               risk: (if length > 3 then "HIGH" elif length > 2 then "MEDIUM" else "LOW" end)
-            }) |
-            sort_by(.occurrences) | reverse
-          ' "$DATA_DIR/fields.json" > "$DATA_DIR/duplicate_fields_structured.json"
-          
-          # 3. Invalid/Risky Relationships
+            })' > "$DATA_DIR/duplicate_fields_structured.json"
+
+          # === 3. Relationship Analysis ===
           echo "🔍 Analyzing relationships..."
-          jq -r '
-            map({
-              parent: .parent,
-              field: .field,
-              referenced: (.referencedObject // "null"),
-              type: .dataType,
-              indexed: (.isIndexed // false),
-              risk: (if (.referencedObject // "null") == "null" then "HIGH"
-                     elif .dataType == "MasterDetail" and (.isIndexed == false) then "HIGH"
-                     elif .dataType == "Lookup" and (.isIndexed == false) then "MEDIUM"
-                     else "LOW" end)
-            }) |
-            sort_by(.risk) | reverse
-          ' "$DATA_DIR/relationships.json" > "$DATA_DIR/relationships_structured.json"
-          
-          # 4. Calculate statistics using jq for everything
+          if [ -s "$DATA_DIR/relationships.json" ]; then
+            jq 'if type=="array" then .
+                elif .result? and .result.records? then .result.records
+                else [] end |
+                map({
+                  parent: .parent,
+                  field: .field,
+                  referenced: (.referencedObject // "null"),
+                  type: .dataType,
+                  indexed: (.isIndexed // false),
+                  risk: (if (.referencedObject // "null") == "null" then "HIGH"
+                         elif .dataType == "MasterDetail" and (.isIndexed == false) then "HIGH"
+                         elif .dataType == "Lookup" and (.isIndexed == false) then "MEDIUM"
+                         else "LOW" end)
+                })' "$DATA_DIR/relationships.json" > "$DATA_DIR/relationships_structured.json"
+          else
+            echo "[]" > "$DATA_DIR/relationships_structured.json"
+          fi
+
+          # === 4. Compute Global Statistics ===
           echo "📊 Calculating statistics..."
           jq -n \
             --slurpfile fields "$DATA_DIR/fields.json" \
-            --slurpfile missing_idx "$DATA_DIR/missing_indexes_structured.json" \
-            --slurpfile dup_fields "$DATA_DIR/duplicate_fields_structured.json" \
-            --slurpfile relationships "$DATA_DIR/relationships_structured.json" \
-            '
-            # Extract records safely
-            ($fields | map(if .[].result?.records? then .[].result.records else if .[].records? then .[].records else .[] end end) | flatten | length) as $total_fields |
-            ($missing_idx | flatten | length) as $missing_indexes |
-            ($dup_fields | flatten | length) as $duplicate_fields |
-            ($relationships | flatten | length) as $total_relationships |
-            ($relationships | flatten | map(select(.risk == "HIGH" or .risk == "MEDIUM")) | length) as $risky_relationships |
-            
-            # Calculate percentages
-            (if $total_fields > 0 then (($missing_indexes * 100.0) / $total_fields) else 0 end) as $missing_idx_pct |
-            (if $total_fields > 0 then (($duplicate_fields * 100.0) / $total_fields) else 0 end) as $dup_fields_pct |
-            (if $total_relationships > 0 then (($risky_relationships * 100.0) / $total_relationships) else 0 end) as $risky_rel_pct |
-            
-            {
-              totalFields: $total_fields,
-              missingIndexes: $missing_indexes,
-              missingIndexesPct: ($missing_idx_pct | tonumber | . * 10 | round / 10),
-              duplicateFields: $duplicate_fields,
-              duplicateFieldsPct: ($dup_fields_pct | tonumber | . * 10 | round / 10),
-              totalRelationships: $total_relationships,
-              riskyRelationships: $risky_relationships,
-              riskyRelationshipsPct: ($risky_rel_pct | tonumber | . * 10 | round / 10)
-            }
-            ' > "$DATA_DIR/statistics.json"
-          
-          echo "✅ Pre-analysis complete"
-          echo "📊 Statistics:"
-          cat "$DATA_DIR/statistics.json" | jq .
-          
-          echo ""
-          echo "📋 File Summary:"
-          echo "- Missing Indexes: $(jq length "$DATA_DIR/missing_indexes_structured.json") records"
-          echo "- Duplicate Fields: $(jq length "$DATA_DIR/duplicate_fields_structured.json") records"
-          echo "- Relationships: $(jq length "$DATA_DIR/relationships_structured.json") records"
+            --slurpfile missing "$DATA_DIR/missing_indexes_structured.json" \
+            --slurpfile dup "$DATA_DIR/duplicate_fields_structured.json" \
+            --slurpfile rel "$DATA_DIR/relationships_structured.json" '
+            def normalize(x): if (x|type)=="array" then x else [] end;
+            def safe_count(x): if (x|type)=="array" then (x|length) else 0 end;
 
-      - name: "🧠 AI Analysis with Structured Output"
+            ($fields | map(if .[].result?.records? then .[].result.records else if .[].records? then .[].records else .[] end end) | flatten) as $allFields |
+            ($missing | flatten) as $miss |
+            ($dup | flatten) as $dups |
+            ($rel | flatten) as $rels |
+
+            {
+              totalFields: ($allFields|length),
+              missingIndexes: ($miss|length),
+              duplicateFields: ($dups|length),
+              totalRelationships: ($rels|length),
+              riskyRelationships: ($rels|map(select(.risk=="HIGH" or .risk=="MEDIUM"))|length)
+            }' > "$DATA_DIR/statistics.json"
+
+          echo "✅ Statistics calculated:"
+          cat "$DATA_DIR/statistics.json" | jq .
+
+      - name: 🧠 AI Analysis with Structured Output
         shell: bash
         run: |
-          echo "🧠 Starting AI Analysis with structured prompting..."
+          echo "🧠 Starting AI Analysis..."
           REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
           MODEL="${{ github.event.inputs.model_name }}"
           
-          # Read statistics
           stats=$(cat "$DATA_DIR/statistics.json")
-          
-          # Create structured prompt
-          SYSTEM_PROMPT='You are a Salesforce Data Architect. Provide analysis in MARKDOWN TABLE FORMAT ONLY. Be concise and data-driven. Follow the exact structure requested.'
-          
-          USER_PROMPT=$(cat << 'EOFPROMPT'
-          Analyze this Salesforce metadata and respond with ONLY markdown tables in the exact format shown below.
+          totalFields=$(jq -r .totalFields "$DATA_DIR/statistics.json")
+          missCount=$(jq -r .missingIndexes "$DATA_DIR/statistics.json")
+          dupCount=$(jq -r .duplicateFields "$DATA_DIR/statistics.json")
+          riskyCount=$(jq -r .riskyRelationships "$DATA_DIR/statistics.json")
+          relCount=$(jq -r .totalRelationships "$DATA_DIR/statistics.json")
+
+          echo "📊 Quick Stats:"
+          echo "Fields: $totalFields | Missing Indexes: $missCount | Duplicates: $dupCount | Risky Relationships: $riskyCount/$relCount"
+
+          SYSTEM_PROMPT="You are a Salesforce Data Architect. Respond ONLY with Markdown tables and structured recommendations — no prose."
+          USER_PROMPT=$(cat << 'EOP'
+          Generate the following Markdown tables and sections based on the provided structured data:
 
           ## 📊 Executive Summary
 
@@ -360,106 +366,86 @@ jobs:
           | Duplicate Fields | X | Y% | 🔴/🟡/🟢 |
           | Risky Relationships | X | Y% | 🔴/🟡/🟢 |
 
-          Risk Status: 🔴 HIGH (>20%), 🟡 MEDIUM (10-20%), 🟢 LOW (<10%)
+          Risk Status thresholds:
+          - 🔴 HIGH if >20%
+          - 🟡 MEDIUM if 10–20%
+          - 🟢 LOW if <10%
 
           ## 🔍 Missing Indexes (Top 10)
 
           | Object | Field | Data Type | Risk Level | Impact |
           |--------|-------|-----------|------------|--------|
-          | Object__c | Field__c | Lookup | HIGH | Query performance |
 
           ## 🧩 Duplicate Fields (Top 10)
 
           | Field Name | Occurrences | Objects | Risk Level | Recommendation |
           |------------|-------------|---------|------------|----------------|
-          | Name | 3 | Obj1, Obj2, Obj3 | MEDIUM | Consolidate |
 
           ## 🔗 Invalid/Risky Relationships (Top 10)
 
           | Parent Object | Field | Referenced Object | Type | Indexed | Risk | Issue |
           |---------------|-------|-------------------|------|---------|------|-------|
-          | Order__c | Account__c | null | Lookup | No | HIGH | Broken reference |
 
           ## ✅ Recommendations
 
-          Provide 3-5 prioritized recommendations as a bullet list.
-
-          Use ONLY the data provided below. Do NOT add explanatory text outside tables.
-
-          ### STATISTICS:
-          EOFPROMPT
+          Provide 3–5 bullet points with specific actions.
+          EOP
           )
-          
-          # Combine into single prompt
+
+          # Build Prompt
           cat > prompt.txt << EOF
           $USER_PROMPT
-          
+
+          ### STATISTICS:
           $stats
-          
+
           ### MISSING INDEXES (Sample):
           $(jq -c '[limit(15; .[])]' "$DATA_DIR/missing_indexes_structured.json")
-          
+
           ### DUPLICATE FIELDS (Sample):
           $(jq -c '[limit(15; .[])]' "$DATA_DIR/duplicate_fields_structured.json")
-          
+
           ### RELATIONSHIPS (Sample):
           $(jq -c '[limit(15; .[])]' "$DATA_DIR/relationships_structured.json")
           EOF
-          
-          # Send to Ollama
-          cat > request.json << EOF
-          {
-            "model": "$MODEL",
-            "prompt": $(jq -Rs . < prompt.txt),
-            "system": "$SYSTEM_PROMPT",
-            "options": {
-              "temperature": 0.1,
-              "top_p": 0.9,
-              "num_predict": 2000
-            },
-            "stream": false
-          }
-          EOF
-          
-          echo "📤 Sending request to Ollama..."
+
+          # Call Ollama
+          echo "📤 Sending prompt to Ollama..."
           ollama_response=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d @request.json | jq -r '.response // empty')
-          
+            -d @<(jq -n \
+              --arg model "$MODEL" \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg prompt "$(cat prompt.txt)" \
+              '{model:$model, system:$system, prompt:$prompt, options:{temperature:0.1, top_p:0.9, num_predict:2000}, stream:false}') \
+            | jq -r '.response // empty')
+
           if [ -z "$ollama_response" ]; then
             echo "❌ Ollama returned empty response"
             exit 1
           fi
-          
-          # Generate report
+
+          # Save Markdown report
           cat > "$REPORT_FILE" << EOF
           # 📊 Salesforce Data Model Analysis Report
-          
+
           **Model:** $MODEL  
-          **Generated:** $(date)  
+          **Generated:** $(date -u)  
           **Org:** ${{ github.event.inputs.org_alias }}
-          
+
           ---
-          
           $ollama_response
-          
           ---
-          
           ## 📁 Raw Data Files
-          
-          - \`missing_indexes_structured.json\` - All fields missing indexes
-          - \`duplicate_fields_structured.json\` - All duplicate field patterns
-          - \`relationships_structured.json\` - All relationship configurations
-          - \`statistics.json\` - Overall metrics
-          
-          **Analysis powered by Ollama ($MODEL)**
+          - \`missing_indexes_structured.json\`
+          - \`duplicate_fields_structured.json\`
+          - \`relationships_structured.json\`
+          - \`statistics.json\`
+          **AI Model:** $MODEL (Ollama)
           EOF
-          
-          echo "✅ AI analysis completed"
+
+          echo "✅ AI analysis complete"
           cat "$REPORT_FILE"
-          
-          # Cleanup
-          rm -f request.json prompt.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -473,27 +459,20 @@ jobs:
       - name: 📄 Generate GitHub Summary
         run: |
           REPORT=$(ls -t data_model_analysis_*.md | head -1)
-          
           echo "# 🧠 AI Data Model Analysis Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Model:** \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Org:** \`${{ github.event.inputs.org_alias }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Generated:** $(date)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Include statistics
+
           if [ -f "$DATA_DIR/statistics.json" ]; then
             echo "## 📊 Quick Stats" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| Total Fields | $(jq -r .totalFields $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
-            echo "| Missing Indexes | $(jq -r .missingIndexes $DATA_DIR/statistics.json) ($(jq -r .missingIndexesPct $DATA_DIR/statistics.json)%) |" >> $GITHUB_STEP_SUMMARY
-            echo "| Duplicate Fields | $(jq -r .duplicateFields $DATA_DIR/statistics.json) ($(jq -r .duplicateFieldsPct $DATA_DIR/statistics.json)%) |" >> $GITHUB_STEP_SUMMARY
-            echo "| Risky Relationships | $(jq -r .riskyRelationships $DATA_DIR/statistics.json)/$(jq -r .totalRelationships $DATA_DIR/statistics.json) ($(jq -r .riskyRelationshipsPct $DATA_DIR/statistics.json)%) |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Missing Indexes | $(jq -r .missingIndexes $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Duplicate Fields | $(jq -r .duplicateFields $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Risky Relationships | $(jq -r .riskyRelationships $DATA_DIR/statistics.json)/$(jq -r .totalRelationships $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
           fi
-          
-          echo "## 📄 Full Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the complete analysis report from the artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "📄 Full report available in artifacts." >> $GITHUB_STEP_SUMMARY
