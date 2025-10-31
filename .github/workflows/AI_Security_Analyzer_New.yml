@@ -89,8 +89,11 @@ jobs:
             exit 0
           fi
       
-          # === STEP 2: Extract Object API Names ===
-          object_names=$(jq -r '.result.records | .[].DeveloperName' "$DATA_DIR/objects.json" | paste -sd, -)
+          # === STEP 2: Prepare Object Names for SOQL IN Clause ===
+          # Quote each object name for Tooling API compliance
+          object_names_quoted=$(jq -r '.result.records | .[].DeveloperName | @sh' "$DATA_DIR/objects.json" | paste -sd, -)
+          object_names_quoted=$(echo "$object_names_quoted" | sed "s/^'//;s/'$//;s/' '/','/g")
+          echo "🔹 Objects prepared for queries: $object_names_quoted"
       
           # === STEP 3: Query Field Definitions ===
           echo "🧩 Querying field definitions for custom objects..."
@@ -100,11 +103,10 @@ jobs:
             --result-format json \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo
                      FROM FieldDefinition
-                     WHERE EntityDefinition.DeveloperName IN ($object_names)
+                     WHERE EntityDefinition.DeveloperName IN ($object_names_quoted)
                      LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log; then
               echo "❌ Failed to fetch fields. Log:"; cat /tmp/query_fields.log; exit 1
           fi
-      
           field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
           echo "✅ Retrieved $field_count fields."
       
@@ -114,7 +116,6 @@ jobs:
               | map(select(.DataType == "Lookup" or .DataType == "MasterDetail"))
               | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo})
               ' "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
-      
           rel_count=$(jq -r 'length' "$DATA_DIR/relationships.json")
           echo "✅ Extracted $rel_count relationship fields."
       
@@ -127,11 +128,10 @@ jobs:
             --query "SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description
                      FROM ValidationRule
                      WHERE Active = true
-                     AND EntityDefinition.DeveloperName IN ($object_names)
+                     AND EntityDefinition.DeveloperName IN ($object_names_quoted)
                      LIMIT 2000" > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
               echo "❌ Failed to fetch validation rules. Log:"; cat /tmp/query_vrules.log; exit 1
           fi
-      
           vrule_count=$(jq -r '.result.records | length' "$DATA_DIR/validation_rules.json")
           echo "✅ Retrieved $vrule_count validation rules."
       
@@ -143,15 +143,14 @@ jobs:
             --result-format json \
             --query "SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate
                      FROM ApexTrigger
-                     WHERE TableEnumOrId IN ($object_names)
+                     WHERE TableEnumOrId IN ($object_names_quoted)
                      LIMIT 2000" > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
               echo "❌ Failed to fetch triggers. Log:"; cat /tmp/query_triggers.log; exit 1
           fi
-      
           trigger_count=$(jq -r '.result.records | length' "$DATA_DIR/triggers.json")
           echo "✅ Retrieved $trigger_count triggers."
       
-          echo "🎉 Metadata extraction (custom + relationships) completed successfully."
+          echo "🎉 Metadata extraction (custom objects + relationships) completed successfully."
                     
       - name: Validate Data Availability
         id: check
