@@ -52,13 +52,20 @@ jobs:
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
-            
+                  
       - name: "🔍 Query Salesforce Metadata"
         shell: bash
         run: |
           set -e
           echo "🚀 Starting metadata extraction..."
           mkdir -p "$DATA_DIR"
+      
+          echo "🔑 Checking Salesforce org authentication..."
+          if ! sf org display --target-org "${{ github.event.inputs.org_alias }}" > /dev/null 2>&1; then
+            echo "❌ Org alias not found or not authenticated"
+            exit 1
+          fi
+          echo "✅ Org authentication verified."
       
           echo "📦 Querying custom objects..."
           if ! sf data query \
@@ -189,7 +196,7 @@ jobs:
           echo "  - Triggers: $trigger_count"
           echo "  - Record Types: $rt_count"
           echo "  - Active Flows: $flow_count"
-          
+    
       - name: Validate Data Availability
         id: check
         run: |
