@@ -223,7 +223,7 @@ jobs:
           fi
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: 📊 Pre-Analysis: Generate Structured Data
+      - name: 📊 Pre-Analysis Generate Structured Data
         shell: bash
         run: |
           echo "📊 Performing pre-analysis to generate structured findings..."
