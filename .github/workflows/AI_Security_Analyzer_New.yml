@@ -53,7 +53,6 @@ jobs:
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
 
-      
       - name: "🔍 Query Salesforce Metadata (Safe Mode)"
         shell: bash
         run: |
@@ -61,45 +60,59 @@ jobs:
           echo "🚀 Starting safe metadata extraction..."
           mkdir -p "$DATA_DIR"
       
+          # === STEP 0: Verify org authentication ===
+          echo "🔑 Checking Salesforce org authentication..."
+          if ! sf org display --target-org "${{ github.event.inputs.org_alias }}" > /dev/null 2>&1; then
+            echo "❌ Org alias not found or not authenticated: ${{ github.event.inputs.org_alias }}"
+            echo "Please ensure the org is authorized using 'sf org login web' or a connected app auth flow."
+            exit 1
+          fi
+          echo "✅ Org authentication verified."
+      
           # === STEP 1: Fetch Custom & Managed Objects ===
           echo "📦 Querying custom and managed objects..."
-          sf data query \
+          if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Id, DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel
                      FROM EntityDefinition
                      WHERE (DeveloperName LIKE '%__c' OR NamespacePrefix != null)
-                     AND IsCustomSetting = false
-                     LIMIT 2000" > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log || {
-              echo "❌ Failed to fetch objects. Check /tmp/query_objects.log"; exit 1;
-            }
+                     LIMIT 2000" > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
+              echo "❌ Failed to fetch objects. Log:"
+              cat /tmp/query_objects.log
+              exit 1
+          fi
       
           echo "✅ Objects metadata saved to $DATA_DIR/objects.json"
       
-          # === Extract object API names for downstream filters ===
+          # === STEP 2: Extract object API names ===
           object_names=$(jq -r '.result.records // .records // [] | .[].DeveloperName' "$DATA_DIR/objects.json" | paste -sd, -)
           if [ -z "$object_names" ]; then
             echo "⚠️ No custom or managed objects found. Exiting safely."
             exit 0
           fi
       
-          # === STEP 2: Fetch Field Metadata ===
+          # === STEP 3: Fetch Field Metadata ===
           echo "🧩 Querying field definitions..."
-          sf data query \
+          if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale
                      FROM FieldDefinition
                      WHERE EntityDefinition.DeveloperName IN ($object_names)
-                     LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log || {
-              echo "❌ Failed to fetch fields. Check /tmp/query_fields.log"; exit 1;
-            }
+                     LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log; then
+              echo "❌ Failed to fetch fields. Log:"
+              cat /tmp/query_fields.log
+              exit 1
+          fi
       
-          # === STEP 3: Fetch Validation Rules ===
+          echo "✅ Fields metadata saved to $DATA_DIR/fields.json"
+      
+          # === STEP 4: Fetch Validation Rules ===
           echo "🧠 Querying validation rules..."
-          sf data query \
+          if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
@@ -107,25 +120,32 @@ jobs:
                      FROM ValidationRule
                      WHERE Active = true
                      AND EntityDefinition.DeveloperName IN ($object_names)
-                     LIMIT 2000" > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log || {
-              echo "❌ Failed to fetch validation rules. Check /tmp/query_vrules.log"; exit 1;
-            }
+                     LIMIT 2000" > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
+              echo "❌ Failed to fetch validation rules. Log:"
+              cat /tmp/query_vrules.log
+              exit 1
+          fi
       
-          # === STEP 4: Fetch Triggers ===
+          echo "✅ Validation rules metadata saved to $DATA_DIR/validation_rules.json"
+      
+          # === STEP 5: Fetch Apex Triggers ===
           echo "⚙️ Querying triggers..."
-          sf data query \
+          if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate
                      FROM ApexTrigger
                      WHERE TableEnumOrId IN ($object_names)
-                     LIMIT 2000" > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log || {
-              echo "❌ Failed to fetch triggers. Check /tmp/query_triggers.log"; exit 1;
-            }
+                     LIMIT 2000" > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
+              echo "❌ Failed to fetch triggers. Log:"
+              cat /tmp/query_triggers.log
+              exit 1
+          fi
       
-          echo "✅ All metadata queries completed successfully."
-
+          echo "✅ Triggers metadata saved to $DATA_DIR/triggers.json"
+      
+          echo "🎉 All metadata queries completed successfully."
                     
       - name: Validate Data Availability
         id: check
