@@ -232,9 +232,10 @@ jobs:
           fi
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: Analyze Data Model with AI
+      - name: "🧠 Analyze Data Model with AI (with pre-analysis)"
+        shell: bash
         run: |
-          echo "🧠 Starting AI Analysis Step..."
+          echo "🧠 Starting AI Analysis Step with Pre-analysis..."
           REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
           MODEL="${{ github.event.inputs.model_name }}"
       
@@ -250,52 +251,92 @@ jobs:
             fi
           done
       
-          echo "🧩 Combining JSON metadata..."
-          jq -s 'def safe(r): if r.result.records then r.result.records else (r.records // []) end;
-           { "objects": safe(.[0]), "fields": safe(.[1]), "relationships": safe(.[2]),
-             "validation_rules": safe(.[3]), "triggers": safe(.[4]), "flows": safe(.[5]),
-             "record_types": safe(.[6]) }' \
-                "$DATA_DIR"/objects.json "$DATA_DIR"/fields.json "$DATA_DIR"/relationships.json \
-                "$DATA_DIR"/validation_rules.json "$DATA_DIR"/triggers.json "$DATA_DIR"/flows.json \
-                "$DATA_DIR"/record_types.json > "$DATA_DIR/full_metadata.json"
-          
-          record_count=$(jq '[.objects, .fields, .relationships, .validation_rules, .triggers, .flows, .record_types] | map(length) | add' "$DATA_DIR/full_metadata.json")
-          if [ "$record_count" -eq 0 ]; then
-            echo "❌ No metadata found in full_metadata"
-            jq . "$DATA_DIR/full_metadata.json" | head -n 40
-            exit 1
-          fi
-          echo "✅ Metadata contains $record_count records"
+          # --- Helper to safely get records from JSON files ---
+          safe_records() {
+            file=$1
+            jq 'if .result? and .result.records? then .result.records
+                else if .records? then .records
+                else if type=="array" then .
+                else [] end end end' "$file"
+          }
       
+          # --- Pre-count ---
+          echo "📊 Metadata counts:"
+          echo "- Objects: $(safe_records "$DATA_DIR/objects.json" | jq length)"
+          echo "- Fields: $(safe_records "$DATA_DIR/fields.json" | jq length)"
+          echo "- Relationships: $(safe_records "$DATA_DIR/relationships.json" | jq length)"
+          echo "- Validation Rules: $(safe_records "$DATA_DIR/validation_rules.json" | jq length)"
+          echo "- Triggers: $(safe_records "$DATA_DIR/triggers.json" | jq length)"
+          echo "- Record Types: $(safe_records "$DATA_DIR/record_types.json" | jq length)"
+          echo "- Flows: $(safe_records "$DATA_DIR/flows.json" | jq length)"
+      
+          echo "🧩 Combining JSON metadata..."
+          jq -n \
+            --slurpfile objects "$DATA_DIR/objects.json" \
+            --slurpfile fields "$DATA_DIR/fields.json" \
+            --slurpfile relationships "$DATA_DIR/relationships.json" \
+            --slurpfile validation_rules "$DATA_DIR/validation_rules.json" \
+            --slurpfile triggers "$DATA_DIR/triggers.json" \
+            --slurpfile record_types "$DATA_DIR/record_types.json" \
+            --slurpfile flows "$DATA_DIR/flows.json" \
+            '{
+              objects: ($objects | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
+              fields: ($fields | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
+              relationships: ($relationships | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
+              validation_rules: ($validation_rules | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
+              triggers: ($triggers | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
+              record_types: ($record_types | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
+              flows: ($flows | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten)
+            }' > "$DATA_DIR/full_metadata.json"
+      
+          # --- Pre-analysis: Duplicate Fields ---
+          echo "🧩 Detecting duplicate fields..."
+          jq '[.fields[] | {object: .EntityDefinition.DeveloperName, api: .QualifiedApiName, label: .Label}] |
+              group_by(.api) | map(select(length > 1))' "$DATA_DIR/full_metadata.json" > "$DATA_DIR/duplicate_fields.json"
+          dup_count=$(jq length "$DATA_DIR/duplicate_fields.json")
+          echo "✅ Found $dup_count duplicate fields"
+      
+          # --- Pre-analysis: Missing Indexes ---
+          echo "🧩 Detecting fields likely missing indexes..."
+          jq '[.fields[] | select((.DataType=="Text" or .DataType=="Number" or .DataType=="Lookup" or .DataType=="MasterDetail") and (.IsIndexed!=true or .IsIndexed==null))]' \
+            "$DATA_DIR/full_metadata.json" > "$DATA_DIR/missing_indexes.json"
+          mi_count=$(jq length "$DATA_DIR/missing_indexes.json")
+          echo "✅ Found $mi_count potentially missing indexes"
+      
+          # --- AI Prompt ---
           echo "🧠 Sending prompt to Ollama..."
           SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and factual. Base every point ONLY on the JSON.'
+      
           USER_PROMPT=$(cat << 'EOF'
-          You are a Salesforce Data Architect. Analyze the provided Salesforce metadata JSON and focus specifically on:
-
+          You are a Salesforce Data Architect. Analyze the provided Salesforce metadata JSON and pre-analyzed files:
+          
           ## 🔍 Missing Indexes
-          - Identify fields that are frequently used in relationships or likely queried but lack IsIndexed=true.
-          - Highlight numeric or text fields that may benefit from indexing for performance.
-
+          - Focus on fields in missing_indexes.json
+          - Highlight numeric or text fields used in relationships that lack IsIndexed=true
+          
           ## 🧩 Duplicate Fields
-          - Detect fields with the same Label, QualifiedApiName, or similar purposes across different objects.
-          - Note potential redundancies that could cause confusion or maintenance issues.
-
+          - Focus on duplicate_fields.json
+          - Identify fields with same QualifiedApiName or Label
+          
           ## 🔗 Relationships
-          - Describe key Lookup and Master-Detail relationships.
-          - Identify circular or weakly defined relationships.
-
+          - Describe key Lookup and Master-Detail relationships from relationships.json
+          - Identify circular or weakly defined relationships
+          
           ## ✅ Recommendations
-          - Provide short, factual bullet-point advice based on the above findings.
-
+          - Provide short, factual bullet-point advice based on the above findings
+          
           Use bullet points only, no paragraphs. If any section lacks data, write "Insufficient data".
-
+          
           ### METADATA INPUT ###
           EOF
           )
+      
           echo "$USER_PROMPT" > prompt.txt
           jq -c '.' "$DATA_DIR/full_metadata.json" >> prompt.txt
+          jq -c '.' "$DATA_DIR/duplicate_fields.json" >> prompt.txt
+          jq -c '.' "$DATA_DIR/missing_indexes.json" >> prompt.txt
       
-          # Create JSON payload file to avoid command-line length limits
+          # --- Send to Ollama ---
           cat > request.json << EOF
           {
             "model": "$MODEL",
@@ -321,6 +362,8 @@ jobs:
           echo "" >> "$REPORT_FILE"
           echo "$ollama_response" >> "$REPORT_FILE"
           echo "✅ AI analysis completed successfully"
+      
+          # Clean up
           rm -f request.json prompt.txt
           
       - uses: actions/upload-artifact@v4
