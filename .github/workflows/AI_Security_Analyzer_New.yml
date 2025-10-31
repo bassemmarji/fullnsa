@@ -104,7 +104,6 @@ jobs:
                      FROM FieldDefinition
                      WHERE EntityDefinition.DeveloperName IN ($object_names_quoted)
                      AND QualifiedApiName LIKE '%__c'
-                     AND IsCustom = true
                      LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log; then
               echo "❌ Failed to fetch fields"; cat /tmp/query_fields.log; exit 1
           fi
@@ -196,7 +195,7 @@ jobs:
           echo "  - Triggers: $trigger_count"
           echo "  - Record Types: $rt_count"
           echo "  - Active Flows: $flow_count"
-          
+    
       - name: Validate Data Availability
         id: check
         run: |
