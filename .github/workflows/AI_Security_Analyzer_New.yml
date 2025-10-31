@@ -227,7 +227,7 @@ jobs:
         shell: bash
         run: |
           echo "📊 Performing pre-analysis to generate structured findings..."
-          
+
           # === JSON Validation ===
           echo "🔍 Validating metadata files..."
           for f in "$DATA_DIR"/*.json; do
@@ -236,20 +236,23 @@ jobs:
               echo "[]" > "$f"
               continue
             fi
+
+            # Check JSON validity
             if ! jq empty "$f" >/dev/null 2>&1; then
-              echo "❌ Invalid JSON in $f, resetting..."
+              echo "❌ Invalid JSON in $f — resetting to []"
               echo "[]" > "$f"
               continue
             fi
-            # Fix files that are numbers/null instead of objects
-            if jq -e 'type=="number" or type=="null"' "$f" >/dev/null; then
-              echo "⚠️ $f contained invalid JSON type, resetting to []"
+
+            # Replace numbers, nulls, or other invalid types
+            if jq -e 'type=="number" or type=="null" or type=="boolean"' "$f" >/dev/null; then
+              echo "⚠️ $f contained invalid type (number/null/bool) — resetting to []"
               echo "[]" > "$f"
             fi
           done
           echo "✅ JSON validation complete."
 
-          # === Helper Function ===
+          # === Helper Function to Normalize Records ===
           safe_records() {
             local file=$1
             jq 'if type=="object" then
@@ -264,16 +267,17 @@ jobs:
           echo "🔍 Analyzing missing indexes..."
           safe_records "$DATA_DIR/fields.json" | jq '
             map(select(
-              (.DataType == "Text" or .DataType == "Number" or .DataType == "Lookup" or .DataType == "MasterDetail" or .DataType == "Email" or .DataType == "Phone")
+              (.DataType == "Text" or .DataType == "Number" or .DataType == "Lookup" or
+               .DataType == "MasterDetail" or .DataType == "Email" or .DataType == "Phone")
               and (.IsIndexed != true)
             )) |
             map({
-              object: .EntityDefinition.DeveloperName,
-              field: .QualifiedApiName,
-              dataType: .DataType,
-              label: .Label,
+              object: (.EntityDefinition.DeveloperName // "Unknown"),
+              field: (.QualifiedApiName // "Unknown"),
+              dataType: (.DataType // "Unknown"),
+              label: (.Label // ""),
               risk: (if .DataType == "Lookup" or .DataType == "MasterDetail" then "HIGH"
-                     elif .DataType == "Text" and (.Length // 0) > 255 then "MEDIUM"
+                     elif .DataType == "Text" and ((.Length // 0) > 255) then "MEDIUM"
                      elif .DataType == "Email" or .DataType == "Phone" then "MEDIUM"
                      else "LOW" end)
             })' > "$DATA_DIR/missing_indexes_structured.json"
@@ -284,9 +288,9 @@ jobs:
             group_by(.QualifiedApiName) |
             map(select(length > 1)) |
             map({
-              fieldName: .[0].QualifiedApiName,
+              fieldName: (.[0].QualifiedApiName // "Unknown"),
               occurrences: length,
-              objects: map(.EntityDefinition.DeveloperName),
+              objects: map(.EntityDefinition.DeveloperName // "Unknown"),
               risk: (if length > 3 then "HIGH" elif length > 2 then "MEDIUM" else "LOW" end)
             })' > "$DATA_DIR/duplicate_fields_structured.json"
 
@@ -297,12 +301,12 @@ jobs:
                 elif .result? and .result.records? then .result.records
                 else [] end |
                 map({
-                  parent: .parent,
-                  field: .field,
-                  referenced: (.referencedObject // "null"),
-                  type: .dataType,
+                  parent: (.parent // "Unknown"),
+                  field: (.field // "Unknown"),
+                  referenced: (.referencedObject // "Unknown"),
+                  type: (.dataType // "Unknown"),
                   indexed: (.isIndexed // false),
-                  risk: (if (.referencedObject // "null") == "null" then "HIGH"
+                  risk: (if (.referencedObject // "Unknown") == "Unknown" then "HIGH"
                          elif .dataType == "MasterDetail" and (.isIndexed == false) then "HIGH"
                          elif .dataType == "Lookup" and (.isIndexed == false) then "MEDIUM"
                          else "LOW" end)
@@ -311,31 +315,41 @@ jobs:
             echo "[]" > "$DATA_DIR/relationships_structured.json"
           fi
 
-          # === 4. Compute Global Statistics ===
+          # === 4. Compute Global Statistics (Fully Safe) ===
           echo "📊 Calculating statistics..."
+
           jq -n \
             --slurpfile fields "$DATA_DIR/fields.json" \
             --slurpfile missing "$DATA_DIR/missing_indexes_structured.json" \
             --slurpfile dup "$DATA_DIR/duplicate_fields_structured.json" \
             --slurpfile rel "$DATA_DIR/relationships_structured.json" '
-            def normalize(x): if (x|type)=="array" then x else [] end;
+            def normalize(x):
+              if (x|type)=="array" then x
+              elif (x|type)=="object" then
+                if x.result? and x.result.records? then x.result.records
+                elif x.records? then x.records
+                else [] end
+              else [] end;
+
             def safe_count(x): if (x|type)=="array" then (x|length) else 0 end;
 
-            ($fields | map(if .[].result?.records? then .[].result.records else if .[].records? then .[].records else .[] end end) | flatten) as $allFields |
-            ($missing | flatten) as $miss |
-            ($dup | flatten) as $dups |
-            ($rel | flatten) as $rels |
+            # Normalize all possible shapes
+            ($fields | map(normalize(.)) | add // []) as $allFields |
+            ($missing | map(normalize(.)) | add // []) as $miss |
+            ($dup | map(normalize(.)) | add // []) as $dups |
+            ($rel | map(normalize(.)) | add // []) as $rels |
 
             {
-              totalFields: ($allFields|length),
-              missingIndexes: ($miss|length),
-              duplicateFields: ($dups|length),
-              totalRelationships: ($rels|length),
-              riskyRelationships: ($rels|map(select(.risk=="HIGH" or .risk=="MEDIUM"))|length)
+              totalFields: safe_count($allFields),
+              missingIndexes: safe_count($miss),
+              duplicateFields: safe_count($dups),
+              totalRelationships: safe_count($rels),
+              riskyRelationships: safe_count($rels | map(select(.risk=="HIGH" or .risk=="MEDIUM")))
             }' > "$DATA_DIR/statistics.json"
 
           echo "✅ Statistics calculated:"
           cat "$DATA_DIR/statistics.json" | jq .
+
 
       - name: 🧠 AI Analysis with Structured Output
         shell: bash
