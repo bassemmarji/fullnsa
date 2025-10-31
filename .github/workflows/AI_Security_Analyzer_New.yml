@@ -52,29 +52,13 @@ jobs:
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
-          
+
       - name: Query Salesforce Metadata (Safe Mode)
         run: |
           mkdir -p "$DATA_DIR"
-          
-          # === DEBUG: Simple count to verify Tooling API access ===
-          echo "🔍 Debug: Testing Tooling API access..."
-          sf data query \
-            --use-tooling-api \
-            --target-org "${{ github.event.inputs.org_alias }}" \
-            --result-format human \
-            --query "SELECT COUNT() FROM EntityDefinition" > /tmp/debug_human.log 2>/tmp/debug_err.log || echo "Total number of records retrieved: 0" > /tmp/debug_human.log
-          debug_count=$(grep -oP 'Total number of records retrieved: \K\d+' /tmp/debug_human.log || echo 0)
-          echo "📊 Debug: Total EntityDefinitions available: $debug_count (if 0, check perms/org setup)"
-          if [ "$debug_count" -eq 0 ]; then
-            echo "⚠️ Tooling API returns no data - Check error: $(cat /tmp/debug_err.log 2>/dev/null || echo 'No log')"
-            echo "Action: 1) Re-auth as Admin (sf org login web --alias ${{ github.event.inputs.org_alias }}). 2) Enable features in scratch-def.json (e.g., 'Account'). 3) Recreate org (sf org create scratch ...)"
-          else
-            echo "✅ Debug: Tooling API access confirmed!"
-          fi
-          rm -f /tmp/debug_human.log /tmp/debug_err.log
-          
-          # === STEP 1: Query main metadata (excluding relationships) ===
+
+          echo "🔍 Querying core Salesforce metadata (safe mode)..."
+
           queries=(
             "objects:SELECT Id,DeveloperName,Label,NamespacePrefix,ExternalSharingModel,InternalSharingModel FROM EntityDefinition LIMIT 2000"
             "fields:SELECT QualifiedApiName,EntityDefinition.DeveloperName,DataType,IsIndexed,IsCalculated,IsNillable,Length,Precision,Scale FROM FieldDefinition WHERE EntityDefinition.DeveloperName != null LIMIT 2000"
@@ -111,14 +95,12 @@ jobs:
           relationships_file="$DATA_DIR/relationships.json"
           tmp_dir="$(mktemp -d)"
       
-          # Ensure objects.json exists and has records (use length)
           object_record_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
           if [ ! -s "$DATA_DIR/objects.json" ] || [ "$object_record_count" -eq 0 ]; then
             echo '{"totalSize":0,"done":true,"records":[]}' > "$relationships_file"
             echo "✅ relationships: no objects found (length: $object_record_count)"
           else
             rel_count=0
-            # Loop through first 10 objects for debug (expand by removing [0:10])
             object_ids=$(jq -r '.result.records // .records // [] | .[0:10] | .[] | select(.Id and .DeveloperName) | "\(.Id) \(.DeveloperName)"' "$DATA_DIR/objects.json")
             if [ -z "$object_ids" ]; then
               echo "⚠️ No sample objects for relationships loop"
@@ -134,9 +116,6 @@ jobs:
                   --result-format json \
                   --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, RelationshipName, ReferenceTo FROM FieldDefinition WHERE EntityDefinitionId = '${entity_id}' AND (DataType LIKE 'Lookup(%' OR DataType LIKE 'MasterDetail(%') LIMIT 100" \
                   > "$tmp_dir/${entity_id}.json" 2>/dev/null || echo '{"totalSize":0,"done":true,"records":[]}' > "$tmp_dir/${entity_id}.json"
-                
-                this_len=$(jq -r '.result.records // .records // [] | length' "$tmp_dir/${entity_id}.json")
-                rel_count=$((rel_count + this_len))
               done
             fi
       
@@ -153,7 +132,7 @@ jobs:
             rm -rf "$tmp_dir"
             echo "✅ relationships: completed (records length: $rel_count)"
           fi
-          
+                    
       - name: Validate Data Availability
         id: check
         run: |
@@ -244,15 +223,25 @@ jobs:
           echo "🧠 Sending prompt to Ollama..."
           SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and factual. Base every point ONLY on the JSON.'
           USER_PROMPT=$(cat << 'EOF'
-          Analyze the provided Salesforce metadata JSON and produce exactly these sections:
+          You are a Salesforce Data Architect. Analyze the provided Salesforce metadata JSON and focus specifically on:
 
-          ## 🔍 Key Findings
-          ## 🏛 Object Modeling & Relationships
-          ## 🚀 Performance & Indexing
-          ## 🔐 Security & Governance
+          ## 🔍 Missing Indexes
+          - Identify fields that are frequently used in relationships or likely queried but lack IsIndexed=true.
+          - Highlight numeric or text fields that may benefit from indexing for performance.
+
+          ## 🧩 Duplicate Fields
+          - Detect fields with the same Label, QualifiedApiName, or similar purposes across different objects.
+          - Note potential redundancies that could cause confusion or maintenance issues.
+
+          ## 🔗 Relationships
+          - Describe key Lookup and Master-Detail relationships.
+          - Identify circular or weakly defined relationships.
+
           ## ✅ Recommendations
+          - Provide short, factual bullet-point advice based on the above findings.
 
-          Use bullet points only, no paragraphs. If data is sparse, write "Insufficient data".
+          Use bullet points only, no paragraphs. If any section lacks data, write "Insufficient data".
+
           ### METADATA INPUT ###
           EOF
           )
