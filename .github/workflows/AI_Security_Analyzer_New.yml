@@ -196,7 +196,7 @@ jobs:
           echo "  - Triggers: $trigger_count"
           echo "  - Record Types: $rt_count"
           echo "  - Active Flows: $flow_count"
-    
+          
       - name: Validate Data Availability
         id: check
         run: |
