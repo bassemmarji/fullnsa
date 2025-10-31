@@ -230,9 +230,10 @@ jobs:
           # Helper function
           safe_records() {
             file=$1
-            jq 'if .result? and .result.records? then .result.records
-                else if .records? then .records
-                else if type=="array" then .
+            jq 'if type != "object" then [] 
+                elif .result? and .result.records? then .result.records
+                elif .records? then .records
+                elif type=="array" then .
                 else [] end end end' "$file"
           }
           
