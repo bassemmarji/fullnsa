@@ -53,11 +53,11 @@ jobs:
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
             
-      - name: "🔍 Query Salesforce Metadata (Safe Mode - Custom Objects + Relationships)"
+      - name: "🔍 Query Salesforce Metadata (Safe Mode - Custom Objects + Relationships + RecordTypes + Flows)"
         shell: bash
         run: |
           set -e
-          echo "🚀 Starting safe metadata extraction (Custom Objects + Relationships)..."
+          echo "🚀 Starting safe metadata extraction (Custom Objects + Relationships + RecordTypes + Flows)..."
           mkdir -p "$DATA_DIR"
       
           # === STEP 0: Verify org authentication ===
@@ -148,8 +148,37 @@ jobs:
           trigger_count=$(jq -r '.result.records | length' "$DATA_DIR/triggers.json")
           echo "✅ Retrieved $trigger_count triggers."
       
-          echo "🎉 Metadata extraction (custom objects + relationships) completed successfully."
-
+          # === STEP 7: Query Record Types ===
+          echo "🗂 Querying record types for custom objects..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Name, SobjectType, Description, IsActive
+                     FROM RecordType
+                     WHERE SobjectType IN ($object_names_quoted)
+                     LIMIT 2000" > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
+              echo "❌ Failed to fetch record types. Log:"; cat /tmp/query_recordtypes.log; exit 1
+          fi
+          rt_count=$(jq -r '.result.records | length' "$DATA_DIR/record_types.json")
+          echo "✅ Retrieved $rt_count record types."
+      
+          # === STEP 8: Query Active Flows ===
+          echo "🌊 Querying active flows..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate
+                     FROM Flow
+                     WHERE Status = 'Active'
+                     LIMIT 2000" > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
+              echo "❌ Failed to fetch flows. Log:"; cat /tmp/query_flows.log; exit 1
+          fi
+          flow_count=$(jq -r '.result.records | length' "$DATA_DIR/flows.json")
+          echo "✅ Retrieved $flow_count active flows."
+      
+          echo "🎉 Metadata extraction (Custom Objects + Relationships + RecordTypes + Flows) completed successfully."
                     
       - name: Validate Data Availability
         id: check
