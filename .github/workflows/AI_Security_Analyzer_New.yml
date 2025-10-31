@@ -1,4 +1,4 @@
-name: AI-Powered New Data Model Analyzer (Lite-Safe)
+name: AI-Powered Data Model Analyzer (Enhanced Tabular)
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
 
 env:
   NODE_VERSION: "20"
-  DATA_DIR: "data"  # Simplified for consistency
+  DATA_DIR: "data"
 
 jobs:
   collect-data:
@@ -53,23 +53,20 @@ jobs:
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
             
-      - name: "🔍 Query Salesforce Metadata (Safe Mode - Custom Objects + Relationships + RecordTypes + Flows)"
+      - name: "🔍 Query Salesforce Metadata"
         shell: bash
         run: |
           set -e
-          echo "🚀 Starting safe metadata extraction (Custom Objects + Relationships + RecordTypes + Flows)..."
+          echo "🚀 Starting metadata extraction..."
           mkdir -p "$DATA_DIR"
       
-          # === STEP 0: Verify org authentication ===
           echo "🔑 Checking Salesforce org authentication..."
           if ! sf org display --target-org "${{ github.event.inputs.org_alias }}" > /dev/null 2>&1; then
-            echo "❌ Org alias not found or not authenticated: ${{ github.event.inputs.org_alias }}"
-            echo "Please ensure the org is authorized using 'sf org login web' or 'sf org login sfdx-url'."
+            echo "❌ Org alias not found or not authenticated"
             exit 1
           fi
           echo "✅ Org authentication verified."
       
-          # === STEP 1: Fetch Custom Objects Only ===
           echo "📦 Querying custom objects..."
           if ! sf data query \
             --use-tooling-api \
@@ -79,7 +76,7 @@ jobs:
                      FROM EntityDefinition
                      WHERE DeveloperName LIKE '%__c'
                      LIMIT 2000" > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
-              echo "❌ Failed to fetch custom objects. Log:"; cat /tmp/query_objects.log; exit 1
+              echo "❌ Failed to fetch custom objects"; cat /tmp/query_objects.log; exit 1
           fi
       
           object_count=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
@@ -89,35 +86,31 @@ jobs:
             exit 0
           fi
       
-          # === STEP 2: Prepare Object Names for SOQL IN Clause ===
           object_names_quoted=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/.*/'&'/g" | paste -sd, -)
           echo "🔹 Objects prepared for queries: $object_names_quoted"
       
-          # === STEP 3: Query Field Definitions ===
-          echo "🧩 Querying field definitions for custom objects..."
+          echo "🧩 Querying field definitions..."
           if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo
+            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label
                      FROM FieldDefinition
                      WHERE EntityDefinition.DeveloperName IN ($object_names_quoted)
                      LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log; then
-              echo "❌ Failed to fetch fields. Log:"; cat /tmp/query_fields.log; exit 1
+              echo "❌ Failed to fetch fields"; cat /tmp/query_fields.log; exit 1
           fi
           field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
           echo "✅ Retrieved $field_count fields."
       
-          # === STEP 4: Extract Relationships (Lookup / Master-Detail) ===
-          echo "🔗 Extracting relationship fields..."
+          echo "🔗 Extracting relationships..."
           jq '.result.records
               | map(select(.DataType == "Lookup" or .DataType == "MasterDetail"))
-              | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo})
+              | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo, dataType: .DataType, isIndexed: .IsIndexed})
               ' "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
           rel_count=$(jq -r 'length' "$DATA_DIR/relationships.json")
           echo "✅ Extracted $rel_count relationship fields."
       
-          # === STEP 5: Query Validation Rules ===
           echo "🧠 Querying validation rules..."
           if ! sf data query \
             --use-tooling-api \
@@ -128,12 +121,11 @@ jobs:
                      WHERE Active = true
                      AND EntityDefinition.DeveloperName IN ($object_names_quoted)
                      LIMIT 2000" > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
-              echo "❌ Failed to fetch validation rules. Log:"; cat /tmp/query_vrules.log; exit 1
+              echo "❌ Failed to fetch validation rules"; cat /tmp/query_vrules.log; exit 1
           fi
           vrule_count=$(jq -r '.result.records | length' "$DATA_DIR/validation_rules.json")
           echo "✅ Retrieved $vrule_count validation rules."
       
-          # === STEP 6: Query Apex Triggers ===
           echo "⚙️ Querying triggers..."
           if ! sf data query \
             --use-tooling-api \
@@ -143,13 +135,12 @@ jobs:
                      FROM ApexTrigger
                      WHERE TableEnumOrId IN ($object_names_quoted)
                      LIMIT 2000" > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
-              echo "❌ Failed to fetch triggers. Log:"; cat /tmp/query_triggers.log; exit 1
+              echo "❌ Failed to fetch triggers"; cat /tmp/query_triggers.log; exit 1
           fi
           trigger_count=$(jq -r '.result.records | length' "$DATA_DIR/triggers.json")
           echo "✅ Retrieved $trigger_count triggers."
       
-          # === STEP 7: Query Record Types ===
-          echo "🗂 Querying record types for custom objects..."
+          echo "🗂 Querying record types..."
           if ! sf data query \
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
@@ -158,12 +149,11 @@ jobs:
                      FROM RecordType
                      WHERE SobjectType IN ($object_names_quoted)
                      LIMIT 2000" > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
-              echo "❌ Failed to fetch record types. Log:"; cat /tmp/query_recordtypes.log; exit 1
+              echo "❌ Failed to fetch record types"; cat /tmp/query_recordtypes.log; exit 1
           fi
           rt_count=$(jq -r '.result.records | length' "$DATA_DIR/record_types.json")
           echo "✅ Retrieved $rt_count record types."
       
-          # === STEP 8: Query Active Flows ===
           echo "🌊 Querying active flows..."
           if ! sf data query \
             --use-tooling-api \
@@ -173,12 +163,12 @@ jobs:
                      FROM Flow
                      WHERE Status = 'Active'
                      LIMIT 2000" > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
-              echo "❌ Failed to fetch flows. Log:"; cat /tmp/query_flows.log; exit 1
+              echo "❌ Failed to fetch flows"; cat /tmp/query_flows.log; exit 1
           fi
           flow_count=$(jq -r '.result.records | length' "$DATA_DIR/flows.json")
           echo "✅ Retrieved $flow_count active flows."
       
-          echo "🎉 Metadata extraction (Custom Objects + Relationships + RecordTypes + Flows) completed successfully."
+          echo "🎉 Metadata extraction completed successfully."
                     
       - name: Validate Data Availability
         id: check
@@ -192,12 +182,12 @@ jobs:
             echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ No metadata found (check org/permissions)"
+            echo "⚠️ No metadata found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
 
       - uses: actions/upload-artifact@v4
-        if: always()  # Upload even on failure for debugging
+        if: always()
         with:
           name: data-model-metadata-lite
           path: ${{ env.DATA_DIR }}
@@ -223,7 +213,7 @@ jobs:
               echo "✅ Ollama API ready"
               break
             fi
-            echo "⏳ Waiting for Ollama to start ($i/20)..."
+            echo "⏳ Waiting for Ollama ($i/20)..."
             sleep 3
           done
           if [ $i -eq 20 ]; then
@@ -232,26 +222,12 @@ jobs:
           fi
           ollama pull "${{ github.event.inputs.model_name }}"
 
-      - name: "🧠 Analyze Data Model with AI (with pre-analysis)"
+      - name: "📊 Pre-Analysis: Generate Structured Data"
         shell: bash
         run: |
-          echo "🧠 Starting AI Analysis Step with Pre-analysis..."
-          REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
-          MODEL="${{ github.event.inputs.model_name }}"
-      
-          echo "🔍 Checking metadata files..."
-          ls -lh "$DATA_DIR" || echo "⚠️ No data folder found!"
-      
-          # Safety: ensure JSON files exist and are readable
-          for f in "$DATA_DIR"/*.json; do
-            if [ ! -s "$f" ]; then
-              echo "⚠️ Missing or empty file: $f"
-            else
-              echo "✅ Found $f ($(wc -l < "$f") lines)"
-            fi
-          done
-      
-          # --- Helper to safely get records from JSON files ---
+          echo "📊 Performing pre-analysis to generate structured findings..."
+          
+          # Helper function
           safe_records() {
             file=$1
             jq 'if .result? and .result.records? then .result.records
@@ -259,121 +235,252 @@ jobs:
                 else if type=="array" then .
                 else [] end end end' "$file"
           }
-      
-          # --- Pre-count ---
-          echo "📊 Metadata counts:"
-          echo "- Objects: $(safe_records "$DATA_DIR/objects.json" | jq length)"
-          echo "- Fields: $(safe_records "$DATA_DIR/fields.json" | jq length)"
-          echo "- Relationships: $(safe_records "$DATA_DIR/relationships.json" | jq length)"
-          echo "- Validation Rules: $(safe_records "$DATA_DIR/validation_rules.json" | jq length)"
-          echo "- Triggers: $(safe_records "$DATA_DIR/triggers.json" | jq length)"
-          echo "- Record Types: $(safe_records "$DATA_DIR/record_types.json" | jq length)"
-          echo "- Flows: $(safe_records "$DATA_DIR/flows.json" | jq length)"
-      
-          echo "🧩 Combining JSON metadata..."
-          jq -n \
-            --slurpfile objects "$DATA_DIR/objects.json" \
-            --slurpfile fields "$DATA_DIR/fields.json" \
-            --slurpfile relationships "$DATA_DIR/relationships.json" \
-            --slurpfile validation_rules "$DATA_DIR/validation_rules.json" \
-            --slurpfile triggers "$DATA_DIR/triggers.json" \
-            --slurpfile record_types "$DATA_DIR/record_types.json" \
-            --slurpfile flows "$DATA_DIR/flows.json" \
-            '{
-              objects: ($objects | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
-              fields: ($fields | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
-              relationships: ($relationships | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
-              validation_rules: ($validation_rules | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
-              triggers: ($triggers | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
-              record_types: ($record_types | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten),
-              flows: ($flows | map(if .result?.records? then .result.records else if .records? then .records else . end end) | flatten)
-            }' > "$DATA_DIR/full_metadata.json"
-      
-          # --- Pre-analysis: Duplicate Fields ---
-          echo "🧩 Detecting duplicate fields..."
-          jq '[.fields[] | {object: .EntityDefinition.DeveloperName, api: .QualifiedApiName, label: .Label}] |
-              group_by(.api) | map(select(length > 1))' "$DATA_DIR/full_metadata.json" > "$DATA_DIR/duplicate_fields.json"
-          dup_count=$(jq length "$DATA_DIR/duplicate_fields.json")
-          echo "✅ Found $dup_count duplicate fields"
-      
-          # --- Pre-analysis: Missing Indexes ---
-          echo "🧩 Detecting fields likely missing indexes..."
-          jq '[.fields[] | select((.DataType=="Text" or .DataType=="Number" or .DataType=="Lookup" or .DataType=="MasterDetail") and (.IsIndexed!=true or .IsIndexed==null))]' \
-            "$DATA_DIR/full_metadata.json" > "$DATA_DIR/missing_indexes.json"
-          mi_count=$(jq length "$DATA_DIR/missing_indexes.json")
-          echo "✅ Found $mi_count potentially missing indexes"
-      
-          # --- AI Prompt ---
-          echo "🧠 Sending prompt to Ollama..."
-          SYSTEM_PROMPT='You are a senior Salesforce Data Architect. Be concise and factual. Base every point ONLY on the JSON.'
-      
-          USER_PROMPT=$(cat << 'EOF'
-          You are a Salesforce Data Architect. Analyze the provided Salesforce metadata JSON and pre-analyzed files:
           
-          ## 🔍 Missing Indexes
-          - Focus on fields in missing_indexes.json
-          - Highlight numeric or text fields used in relationships that lack IsIndexed=true
+          # 1. Missing Indexes Analysis
+          echo "🔍 Analyzing missing indexes..."
+          jq -r '
+            def safe_records: if .result? and .result.records? then .result.records else if .records? then .records else if type=="array" then . else [] end end end;
+            
+            safe_records |
+            map(select(
+              (.DataType == "Text" or .DataType == "Number" or .DataType == "Lookup" or .DataType == "MasterDetail" or .DataType == "Email" or .DataType == "Phone") 
+              and (.IsIndexed != true)
+            )) |
+            map({
+              object: .EntityDefinition.DeveloperName,
+              field: .QualifiedApiName,
+              dataType: .DataType,
+              label: .Label,
+              risk: (if .DataType == "Lookup" or .DataType == "MasterDetail" then "HIGH" 
+                     elif .DataType == "Text" and (.Length // 0) > 255 then "MEDIUM"
+                     elif .DataType == "Email" or .DataType == "Phone" then "MEDIUM"
+                     else "LOW" end)
+            }) |
+            sort_by(.risk) | reverse
+          ' "$DATA_DIR/fields.json" > "$DATA_DIR/missing_indexes_structured.json"
           
-          ## 🧩 Duplicate Fields
-          - Focus on duplicate_fields.json
-          - Identify fields with same QualifiedApiName or Label
+          # 2. Duplicate Fields Analysis
+          echo "🔍 Analyzing duplicate fields..."
+          jq -r '
+            def safe_records: if .result? and .result.records? then .result.records else if .records? then .records else if type=="array" then . else [] end end end;
+            
+            safe_records |
+            group_by(.QualifiedApiName) |
+            map(select(length > 1)) |
+            map({
+              fieldName: .[0].QualifiedApiName,
+              occurrences: length,
+              objects: map(.EntityDefinition.DeveloperName),
+              risk: (if length > 3 then "HIGH" elif length > 2 then "MEDIUM" else "LOW" end)
+            }) |
+            sort_by(.occurrences) | reverse
+          ' "$DATA_DIR/fields.json" > "$DATA_DIR/duplicate_fields_structured.json"
           
-          ## 🔗 Relationships
-          - Describe key Lookup and Master-Detail relationships from relationships.json
-          - Identify circular or weakly defined relationships
+          # 3. Invalid/Risky Relationships
+          echo "🔍 Analyzing relationships..."
+          jq -r '
+            map({
+              parent: .parent,
+              field: .field,
+              referenced: (.referencedObject // "null"),
+              type: .dataType,
+              indexed: (.isIndexed // false),
+              risk: (if (.referencedObject // "null") == "null" then "HIGH"
+                     elif .dataType == "MasterDetail" and (.isIndexed == false) then "HIGH"
+                     elif .dataType == "Lookup" and (.isIndexed == false) then "MEDIUM"
+                     else "LOW" end)
+            }) |
+            sort_by(.risk) | reverse
+          ' "$DATA_DIR/relationships.json" > "$DATA_DIR/relationships_structured.json"
           
-          ## ✅ Recommendations
-          - Provide short, factual bullet-point advice based on the above findings
+          # 4. Calculate statistics
+          total_fields=$(safe_records "$DATA_DIR/fields.json" | jq length)
+          missing_idx=$(jq length "$DATA_DIR/missing_indexes_structured.json")
+          dup_fields=$(jq length "$DATA_DIR/duplicate_fields_structured.json")
+          risky_rels=$(jq '[.[] | select(.risk == "HIGH" or .risk == "MEDIUM")] | length' "$DATA_DIR/relationships_structured.json")
+          total_rels=$(jq length "$DATA_DIR/relationships_structured.json")
           
-          Use bullet points only, no paragraphs. If any section lacks data, write "Insufficient data".
+          # Calculate percentages
+          idx_pct=$(echo "scale=1; ($missing_idx * 100) / $total_fields" | bc 2>/dev/null || echo "0")
+          dup_pct=$(echo "scale=1; ($dup_fields * 100) / $total_fields" | bc 2>/dev/null || echo "0")
+          rel_pct=$(echo "scale=1; ($risky_rels * 100) / $total_rels" | bc 2>/dev/null || echo "0")
           
-          ### METADATA INPUT ###
+          # Save stats
+          cat > "$DATA_DIR/statistics.json" << EOF
+          {
+            "totalFields": $total_fields,
+            "missingIndexes": $missing_idx,
+            "missingIndexesPct": $idx_pct,
+            "duplicateFields": $dup_fields,
+            "duplicateFieldsPct": $dup_pct,
+            "totalRelationships": $total_rels,
+            "riskyRelationships": $risky_rels,
+            "riskyRelationshipsPct": $rel_pct
+          }
           EOF
+          
+          echo "✅ Pre-analysis complete"
+          echo "📊 Statistics:"
+          cat "$DATA_DIR/statistics.json" | jq .
+
+      - name: "🧠 AI Analysis with Structured Output"
+        shell: bash
+        run: |
+          echo "🧠 Starting AI Analysis with structured prompting..."
+          REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
+          MODEL="${{ github.event.inputs.model_name }}"
+          
+          # Read statistics
+          stats=$(cat "$DATA_DIR/statistics.json")
+          
+          # Create structured prompt
+          SYSTEM_PROMPT='You are a Salesforce Data Architect. Provide analysis in MARKDOWN TABLE FORMAT ONLY. Be concise and data-driven. Follow the exact structure requested.'
+          
+          USER_PROMPT=$(cat << 'EOFPROMPT'
+          Analyze this Salesforce metadata and respond with ONLY markdown tables in the exact format shown below.
+
+          ## 📊 Executive Summary
+
+          | Metric | Count | Risk % | Status |
+          |--------|-------|--------|--------|
+          | Missing Indexes | X | Y% | 🔴/🟡/🟢 |
+          | Duplicate Fields | X | Y% | 🔴/🟡/🟢 |
+          | Risky Relationships | X | Y% | 🔴/🟡/🟢 |
+
+          Risk Status: 🔴 HIGH (>20%), 🟡 MEDIUM (10-20%), 🟢 LOW (<10%)
+
+          ## 🔍 Missing Indexes (Top 10)
+
+          | Object | Field | Data Type | Risk Level | Impact |
+          |--------|-------|-----------|------------|--------|
+          | Object__c | Field__c | Lookup | HIGH | Query performance |
+
+          ## 🧩 Duplicate Fields (Top 10)
+
+          | Field Name | Occurrences | Objects | Risk Level | Recommendation |
+          |------------|-------------|---------|------------|----------------|
+          | Name | 3 | Obj1, Obj2, Obj3 | MEDIUM | Consolidate |
+
+          ## 🔗 Invalid/Risky Relationships (Top 10)
+
+          | Parent Object | Field | Referenced Object | Type | Indexed | Risk | Issue |
+          |---------------|-------|-------------------|------|---------|------|-------|
+          | Order__c | Account__c | null | Lookup | No | HIGH | Broken reference |
+
+          ## ✅ Recommendations
+
+          Provide 3-5 prioritized recommendations as a bullet list.
+
+          Use ONLY the data provided below. Do NOT add explanatory text outside tables.
+
+          ### STATISTICS:
+EOFPROMPT
           )
-      
-          echo "$USER_PROMPT" > prompt.txt
-          jq -c '.' "$DATA_DIR/full_metadata.json" >> prompt.txt
-          jq -c '.' "$DATA_DIR/duplicate_fields.json" >> prompt.txt
-          jq -c '.' "$DATA_DIR/missing_indexes.json" >> prompt.txt
-      
-          # --- Send to Ollama ---
+          
+          # Combine into single prompt
+          cat > prompt.txt << EOF
+          $USER_PROMPT
+          
+          $stats
+          
+          ### MISSING INDEXES (Sample):
+          $(jq -c '[limit(15; .[])]' "$DATA_DIR/missing_indexes_structured.json")
+          
+          ### DUPLICATE FIELDS (Sample):
+          $(jq -c '[limit(15; .[])]' "$DATA_DIR/duplicate_fields_structured.json")
+          
+          ### RELATIONSHIPS (Sample):
+          $(jq -c '[limit(15; .[])]' "$DATA_DIR/relationships_structured.json")
+          EOF
+          
+          # Send to Ollama
           cat > request.json << EOF
           {
             "model": "$MODEL",
             "prompt": $(jq -Rs . < prompt.txt),
             "system": "$SYSTEM_PROMPT",
-            "options": {"temperature": 0.2, "top_p": 0.9},
+            "options": {
+              "temperature": 0.1,
+              "top_p": 0.9,
+              "num_predict": 2000
+            },
             "stream": false
           }
           EOF
-      
+          
+          echo "📤 Sending request to Ollama..."
           ollama_response=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
             -d @request.json | jq -r '.response // empty')
-      
+          
           if [ -z "$ollama_response" ]; then
             echo "❌ Ollama returned empty response"
             exit 1
           fi
-      
-          echo "# Salesforce Data Model Analysis Report" > "$REPORT_FILE"
-          echo "**Model:** $MODEL" >> "$REPORT_FILE"
-          echo "**Generated:** $(date)" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
-          echo "$ollama_response" >> "$REPORT_FILE"
-          echo "✅ AI analysis completed successfully"
-      
-          # Clean up
-          rm -f request.json prompt.txt
           
+          # Generate report
+          cat > "$REPORT_FILE" << EOF
+          # 📊 Salesforce Data Model Analysis Report
+          
+          **Model:** $MODEL  
+          **Generated:** $(date)  
+          **Org:** ${{ github.event.inputs.org_alias }}
+          
+          ---
+          
+          $ollama_response
+          
+          ---
+          
+          ## 📁 Raw Data Files
+          
+          - \`missing_indexes_structured.json\` - All fields missing indexes
+          - \`duplicate_fields_structured.json\` - All duplicate field patterns
+          - \`relationships_structured.json\` - All relationship configurations
+          - \`statistics.json\` - Overall metrics
+          
+          **Analysis powered by Ollama ($MODEL)**
+          EOF
+          
+          echo "✅ AI analysis completed"
+          cat "$REPORT_FILE"
+          
+          # Cleanup
+          rm -f request.json prompt.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
-          path: data_model_analysis_*.md
+          path: |
+            data_model_analysis_*.md
+            ${{ env.DATA_DIR }}/*_structured.json
+            ${{ env.DATA_DIR }}/statistics.json
           retention-days: 14
 
-      - name: 📄 AI Summary
+      - name: 📄 Generate GitHub Summary
         run: |
-          echo "## 🧠 AI Data Model Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Model: \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Generated report successfully" >> $GITHUB_STEP_SUMMARY
+          REPORT=$(ls -t data_model_analysis_*.md | head -1)
+          
+          echo "# 🧠 AI Data Model Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Model:** \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Org:** \`${{ github.event.inputs.org_alias }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Generated:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Include statistics
+          if [ -f "$DATA_DIR/statistics.json" ]; then
+            echo "## 📊 Quick Stats" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Fields | $(jq -r .totalFields $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Missing Indexes | $(jq -r .missingIndexes $DATA_DIR/statistics.json) ($(jq -r .missingIndexesPct $DATA_DIR/statistics.json)%) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Duplicate Fields | $(jq -r .duplicateFields $DATA_DIR/statistics.json) ($(jq -r .duplicateFieldsPct $DATA_DIR/statistics.json)%) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Risky Relationships | $(jq -r .riskyRelationships $DATA_DIR/statistics.json)/$(jq -r .totalRelationships $DATA_DIR/statistics.json) ($(jq -r .riskyRelationshipsPct $DATA_DIR/statistics.json)%) |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "## 📄 Full Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the complete analysis report from the artifacts." >> $GITHUB_STEP_SUMMARY
