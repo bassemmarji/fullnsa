@@ -293,35 +293,47 @@ jobs:
             sort_by(.risk) | reverse
           ' "$DATA_DIR/relationships.json" > "$DATA_DIR/relationships_structured.json"
           
-          # 4. Calculate statistics
-          total_fields=$(safe_records "$DATA_DIR/fields.json" | jq length)
-          missing_idx=$(jq length "$DATA_DIR/missing_indexes_structured.json")
-          dup_fields=$(jq length "$DATA_DIR/duplicate_fields_structured.json")
-          risky_rels=$(jq '[.[] | select(.risk == "HIGH" or .risk == "MEDIUM")] | length' "$DATA_DIR/relationships_structured.json")
-          total_rels=$(jq length "$DATA_DIR/relationships_structured.json")
-          
-          # Calculate percentages
-          idx_pct=$(echo "scale=1; ($missing_idx * 100) / $total_fields" | bc 2>/dev/null || echo "0")
-          dup_pct=$(echo "scale=1; ($dup_fields * 100) / $total_fields" | bc 2>/dev/null || echo "0")
-          rel_pct=$(echo "scale=1; ($risky_rels * 100) / $total_rels" | bc 2>/dev/null || echo "0")
-          
-          # Save stats
-          cat > "$DATA_DIR/statistics.json" << EOF
-          {
-            "totalFields": $total_fields,
-            "missingIndexes": $missing_idx,
-            "missingIndexesPct": $idx_pct,
-            "duplicateFields": $dup_fields,
-            "duplicateFieldsPct": $dup_pct,
-            "totalRelationships": $total_rels,
-            "riskyRelationships": $risky_rels,
-            "riskyRelationshipsPct": $rel_pct
-          }
-          EOF
+          # 4. Calculate statistics using jq for everything
+          echo "📊 Calculating statistics..."
+          jq -n \
+            --slurpfile fields "$DATA_DIR/fields.json" \
+            --slurpfile missing_idx "$DATA_DIR/missing_indexes_structured.json" \
+            --slurpfile dup_fields "$DATA_DIR/duplicate_fields_structured.json" \
+            --slurpfile relationships "$DATA_DIR/relationships_structured.json" \
+            '
+            # Extract records safely
+            ($fields | map(if .[].result?.records? then .[].result.records else if .[].records? then .[].records else .[] end end) | flatten | length) as $total_fields |
+            ($missing_idx | flatten | length) as $missing_indexes |
+            ($dup_fields | flatten | length) as $duplicate_fields |
+            ($relationships | flatten | length) as $total_relationships |
+            ($relationships | flatten | map(select(.risk == "HIGH" or .risk == "MEDIUM")) | length) as $risky_relationships |
+            
+            # Calculate percentages
+            (if $total_fields > 0 then (($missing_indexes * 100.0) / $total_fields) else 0 end) as $missing_idx_pct |
+            (if $total_fields > 0 then (($duplicate_fields * 100.0) / $total_fields) else 0 end) as $dup_fields_pct |
+            (if $total_relationships > 0 then (($risky_relationships * 100.0) / $total_relationships) else 0 end) as $risky_rel_pct |
+            
+            {
+              totalFields: $total_fields,
+              missingIndexes: $missing_indexes,
+              missingIndexesPct: ($missing_idx_pct | tonumber | . * 10 | round / 10),
+              duplicateFields: $duplicate_fields,
+              duplicateFieldsPct: ($dup_fields_pct | tonumber | . * 10 | round / 10),
+              totalRelationships: $total_relationships,
+              riskyRelationships: $risky_relationships,
+              riskyRelationshipsPct: ($risky_rel_pct | tonumber | . * 10 | round / 10)
+            }
+            ' > "$DATA_DIR/statistics.json"
           
           echo "✅ Pre-analysis complete"
           echo "📊 Statistics:"
           cat "$DATA_DIR/statistics.json" | jq .
+          
+          echo ""
+          echo "📋 File Summary:"
+          echo "- Missing Indexes: $(jq length "$DATA_DIR/missing_indexes_structured.json") records"
+          echo "- Duplicate Fields: $(jq length "$DATA_DIR/duplicate_fields_structured.json") records"
+          echo "- Relationships: $(jq length "$DATA_DIR/relationships_structured.json") records"
 
       - name: "🧠 AI Analysis with Structured Output"
         shell: bash
@@ -374,7 +386,7 @@ jobs:
           Use ONLY the data provided below. Do NOT add explanatory text outside tables.
 
           ### STATISTICS:
-          EOFPROMPT
+EOFPROMPT
           )
           
           # Combine into single prompt
