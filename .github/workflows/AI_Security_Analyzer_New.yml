@@ -52,7 +52,7 @@ jobs:
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
-                  
+
       - name: "🔍 Query Salesforce Metadata"
         shell: bash
         run: |
@@ -96,20 +96,42 @@ jobs:
           echo "🔹 Objects prepared for queries (count: $object_count)"
       
           echo "🧩 Querying field definitions (custom fields only)..."
-          if ! sf data query \
-            --use-tooling-api \
-            --target-org "${{ github.event.inputs.org_alias }}" \
-            --result-format json \
-            --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label
-                     FROM FieldDefinition
-                     WHERE EntityDefinition.DeveloperName IN ($object_names_quoted)
-                     AND QualifiedApiName LIKE '%__c'
-                     LIMIT 5000" > "$DATA_DIR/fields.json" 2>/tmp/query_fields.log; then
-              echo "❌ Failed to fetch fields"; cat /tmp/query_fields.log; exit 1
-          fi
+          # FieldDefinition has a 200 record limit per query
+          echo '{"result":{"records":[]}}' > "$DATA_DIR/fields.json"
+          
+          # Query fields in batches per object to stay within limits
+          batch_size=10
+          object_array=($(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json"))
+          total_objects=${#object_array[@]}
+          
+          for ((i=0; i<total_objects; i+=batch_size)); do
+            batch_objects=("${object_array[@]:i:batch_size}")
+            batch_quoted=$(printf "'%s'," "${batch_objects[@]}" | sed 's/,$//')
+            
+            echo "  📦 Batch $((i/batch_size + 1)): Querying ${#batch_objects[@]} objects..."
+            
+            if sf data query \
+              --use-tooling-api \
+              --target-org "${{ github.event.inputs.org_alias }}" \
+              --result-format json \
+              --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label
+                       FROM FieldDefinition
+                       WHERE EntityDefinition.DeveloperName IN ($batch_quoted)
+                       AND QualifiedApiName LIKE '%__c'
+                       LIMIT 200" > "$DATA_DIR/fields_batch.json" 2>/tmp/query_fields_batch.log; then
+              
+              # Merge batch results
+              jq -s '.[0].result.records += .[1].result.records | .[0]' \
+                "$DATA_DIR/fields.json" "$DATA_DIR/fields_batch.json" > "$DATA_DIR/fields_temp.json"
+              mv "$DATA_DIR/fields_temp.json" "$DATA_DIR/fields.json"
+            else
+              echo "  ⚠️ Warning: Batch failed, continuing..."
+              cat /tmp/query_fields_batch.log
+            fi
+          done
           
           field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
-          echo "✅ Retrieved $field_count custom fields."
+          echo "✅ Retrieved $field_count custom fields from $total_objects objects."
       
           # Debug: Show sample fields
           echo "🔍 Sample fields retrieved:"
@@ -194,8 +216,8 @@ jobs:
           echo "  - Validation Rules: $vrule_count"
           echo "  - Triggers: $trigger_count"
           echo "  - Record Types: $rt_count"
-          echo "  - Active Flows: $flow_count"
-    
+          echo "  - Active Flows: $flow_count"                  
+          
       - name: Validate Data Availability
         id: check
         run: |
