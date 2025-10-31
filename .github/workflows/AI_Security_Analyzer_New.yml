@@ -52,7 +52,7 @@ jobs:
           sf data query --use-tooling-api --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT count() FROM EntityDefinition" \
             --result-format human || echo "❌ Full count test failed"
-
+            
       - name: "🔍 Query Salesforce Metadata (Safe Mode - Custom Objects + Relationships)"
         shell: bash
         run: |
@@ -90,9 +90,7 @@ jobs:
           fi
       
           # === STEP 2: Prepare Object Names for SOQL IN Clause ===
-          # Quote each object name for Tooling API compliance
-          object_names_quoted=$(jq -r '.result.records | .[].DeveloperName | @sh' "$DATA_DIR/objects.json" | paste -sd, -)
-          object_names_quoted=$(echo "$object_names_quoted" | sed "s/^'//;s/'$//;s/' '/','/g")
+          object_names_quoted=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/.*/'&'/g" | paste -sd, -)
           echo "🔹 Objects prepared for queries: $object_names_quoted"
       
           # === STEP 3: Query Field Definitions ===
@@ -151,6 +149,7 @@ jobs:
           echo "✅ Retrieved $trigger_count triggers."
       
           echo "🎉 Metadata extraction (custom objects + relationships) completed successfully."
+
                     
       - name: Validate Data Availability
         id: check
