@@ -512,12 +512,12 @@ jobs:
           
           echo "✅ PDF generated: $PDF_FILE"
 
-    - name: Prepare Report Artifacts
-      run: |
-        # Copy structured files to root for cleaner artifact
-        cp "$DATA_DIR"/*_structured.json .
-        cp "$DATA_DIR"/statistics.json .
-
+      - name: Prepare Report Artifacts
+        run: |
+          # Copy structured files to root for cleaner artifact
+          cp "$DATA_DIR"/*_structured.json .
+          cp "$DATA_DIR"/statistics.json .
+  
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
