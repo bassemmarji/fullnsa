@@ -493,13 +493,38 @@ jobs:
           echo "✅ AI analysis complete"
           cat "$REPORT_FILE"
 
+      - name: 📄 Convert Report to PDF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-latex-base texlive-fonts-recommended texlive-latex-extra
+          
+          REPORT=$(ls -t data_model_analysis_*.md | head -1)
+          PDF_FILE="${REPORT%.md}.pdf"
+          
+          # Convert with Pandoc
+          pandoc "$REPORT" \
+            -f markdown \
+            -t pdf \
+            -o "$PDF_FILE" \
+            --pdf-engine=pdflatex \
+            -V geometry:margin=1in \
+            -V fontsize=11pt
+          
+          echo "✅ PDF generated: $PDF_FILE"
+
+    - name: Prepare Report Artifacts
+      run: |
+        # Copy structured files to root for cleaner artifact
+        cp "$DATA_DIR"/*_structured.json .
+        cp "$DATA_DIR"/statistics.json .
+
       - uses: actions/upload-artifact@v4
         with:
           name: ai-data-model-report
           path: |
             data_model_analysis_*.md
-            ${{ env.DATA_DIR }}/*_structured.json
-            ${{ env.DATA_DIR }}/statistics.json
+            *_structured.json
+            statistics.json
           retention-days: 14
 
       - name: 📄 Generate GitHub Summary
