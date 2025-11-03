@@ -216,23 +216,7 @@ jobs:
           echo "  - Validation Rules: $vrule_count"
           echo "  - Triggers: $trigger_count"
           echo "  - Record Types: $rt_count"
-          echo "  - Active Flows: $flow_count"                  
-          
-      - name: Validate Data Availability
-        id: check
-        run: |
-          object_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
-          field_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
-          
-          echo "Objects: $object_count, Fields: $field_count"
-          
-          if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
-            echo "✅ Data model metadata available"
-            echo "has_data=true" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️ No metadata found"
-            echo "has_data=false" >> $GITHUB_OUTPUT
-          fi
+          echo "  - Active Flows: $flow_count"                   
     
       - uses: actions/upload-artifact@v4
         if: always()
