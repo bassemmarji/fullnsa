@@ -221,11 +221,11 @@ jobs:
       - name: Validate Data Availability
         id: check
         run: |
-          object_count=$(jq -r '.result.totalSize // .totalSize // 0' "$DATA_DIR/objects.json")
-          field_count=$(jq -r '.result.totalSize // .totalSize // 0' "$DATA_DIR/fields.json")
-          object_len=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
-          field_len=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
-          echo "Objects: count=$object_count (len=$object_len), Fields: count=$field_count (len=$field_len)"
+          object_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
+          field_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
+          
+          echo "Objects: $object_count, Fields: $field_count"
+          
           if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
             echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
@@ -233,7 +233,7 @@ jobs:
             echo "⚠️ No metadata found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
-
+    
       - uses: actions/upload-artifact@v4
         if: always()
         with:
