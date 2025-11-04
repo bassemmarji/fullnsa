@@ -72,13 +72,8 @@ jobs:
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query '
-              SELECT Id, DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel
-              FROM EntityDefinition
-              WHERE QualifiedApiName LIKE "%__c"
-              AND IsCustomizable = true
-              LIMIT 2000
-            ' > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
+            --query "SELECT Id, DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel FROM EntityDefinition WHERE QualifiedApiName LIKE '%__c' AND IsCustomizable = true LIMIT 2000" \
+            > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
               echo "❌ Failed to fetch custom objects"; cat /tmp/query_objects.log; exit 1
           fi
       
@@ -113,14 +108,8 @@ jobs:
               --use-tooling-api \
               --target-org "${{ github.event.inputs.org_alias }}" \
               --result-format json \
-              --query "
-                SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated,
-                       IsNillable, Length, Precision, Scale, ReferenceTo, Label
-                FROM FieldDefinition
-                WHERE EntityDefinition.DeveloperName IN ($batch_quoted)
-                AND QualifiedApiName LIKE '%__c'
-                LIMIT 200
-              " > "$DATA_DIR/fields_batch.json" 2>/tmp/query_fields_batch.log; then
+              --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label FROM FieldDefinition WHERE EntityDefinition.DeveloperName IN ($batch_quoted) AND QualifiedApiName LIKE '%__c' LIMIT 200" \
+              > "$DATA_DIR/fields_batch.json" 2>/tmp/query_fields_batch.log; then
               
               jq -s '.[0].result.records += .[1].result.records | .[0]' \
                 "$DATA_DIR/fields.json" "$DATA_DIR/fields_batch.json" > "$DATA_DIR/fields_temp.json"
@@ -134,13 +123,12 @@ jobs:
           field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
           echo "✅ Retrieved $field_count custom fields from $total_objects objects."
       
+          echo "🔍 Sample fields retrieved:"
           jq -r '.result.records[0:5] | .[] | "\(.EntityDefinition.DeveloperName).\(.QualifiedApiName)"' "$DATA_DIR/fields.json"
       
           echo "🔗 Extracting relationships..."
-          jq '.result.records
-              | map(select(.DataType == "Lookup" or .DataType == "MasterDetail"))
-              | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo, dataType: .DataType, isIndexed: .IsIndexed})
-              ' "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
+          jq '.result.records | map(select(.DataType == "Lookup" or .DataType == "MasterDetail")) | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo, dataType: .DataType, isIndexed: .IsIndexed})' \
+            "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
           
           rel_count=$(jq -r 'length' "$DATA_DIR/relationships.json")
           echo "✅ Extracted $rel_count relationship fields."
@@ -150,13 +138,8 @@ jobs:
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "
-              SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description
-              FROM ValidationRule
-              WHERE Active = true
-              AND EntityDefinition.DeveloperName IN ($object_names_quoted)
-              LIMIT 2000
-            " > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
+            --query "SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description FROM ValidationRule WHERE Active = true AND EntityDefinition.DeveloperName IN ($object_names_quoted) LIMIT 2000" \
+            > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
               echo "❌ Failed to fetch validation rules"; cat /tmp/query_vrules.log; exit 1
           fi
           
@@ -168,12 +151,8 @@ jobs:
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "
-              SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate
-              FROM ApexTrigger
-              WHERE TableEnumOrId IN ($object_names_quoted)
-              LIMIT 2000
-            " > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
+            --query "SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate FROM ApexTrigger WHERE TableEnumOrId IN ($object_names_quoted) LIMIT 2000" \
+            > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
               echo "❌ Failed to fetch triggers"; cat /tmp/query_triggers.log; exit 1
           fi
           
@@ -185,12 +164,8 @@ jobs:
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "
-              SELECT Name, SobjectType, Description, IsActive
-              FROM RecordType
-              WHERE SobjectType IN ($object_names_quoted)
-              LIMIT 2000
-            " > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
+            --query "SELECT Name, SobjectType, Description, IsActive FROM RecordType WHERE SobjectType IN ($object_names_quoted) LIMIT 2000" \
+            > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
               echo "❌ Failed to fetch record types"; cat /tmp/query_recordtypes.log; exit 1
           fi
           
@@ -202,12 +177,8 @@ jobs:
             --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "
-              SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate
-              FROM Flow
-              WHERE Status = 'Active'
-              LIMIT 2000
-            " > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
+            --query "SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate FROM Flow WHERE Status = 'Active' LIMIT 2000" \
+            > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
               echo "❌ Failed to fetch flows"; cat /tmp/query_flows.log; exit 1
           fi
           
@@ -225,6 +196,22 @@ jobs:
           echo "  - Record Types: $rt_count"
           echo "  - Active Flows: $flow_count"
 
+      - name: Validate Data Availability
+        id: check
+        run: |
+          object_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
+          field_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
+          
+          echo "Objects: $object_count, Fields: $field_count"
+          
+          if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
+            echo "✅ Data model metadata available"
+            echo "has_data=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No metadata found"
+            echo "has_data=false" >> $GITHUB_OUTPUT
+          fi          
+          
       - uses: actions/upload-artifact@v4
         if: always()
         with:
