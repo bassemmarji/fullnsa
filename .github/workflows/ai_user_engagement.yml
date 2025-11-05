@@ -58,39 +58,39 @@ jobs:
           # 🔑 Login History (last 30 days)
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query \"SELECT UserId, LoginTime, LoginType, SourceIp, Platform FROM LoginHistory WHERE LoginTime = LAST_N_DAYS:30 LIMIT 10000\" \
-            > \"$DATA_DIR/login_history.json\"
+            --query "SELECT UserId, LoginTime, LoginType, SourceIp, Platform FROM LoginHistory WHERE LoginTime = LAST_N_DAYS:30 LIMIT 10000" \
+            > "$DATA_DIR/login_history.json"
 
-          # 📈 Query Object Interaction Counts (Tasks, Cases, etc.)
-          echo \"📈 Querying key object activities...\"
+          # 📈 Query Object Interaction Counts (Tasks, Cases)
+          echo "📈 Querying key object activities..."
 
-          sf data query --target-org \"${{ github.event.inputs.org_alias }}\" \
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query \"SELECT OwnerId, COUNT(Id) total FROM Task WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId\" \
-            > \"$DATA_DIR/task_activity.json\"
+            --query "SELECT OwnerId, COUNT(Id) total FROM Task WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId" \
+            > "$DATA_DIR/task_activity.json"
 
-          sf data query --target-org \"${{ github.event.inputs.org_alias }}\" \
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query \"SELECT OwnerId, COUNT(Id) total FROM Case WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId\" \
-            > \"$DATA_DIR/case_activity.json\"
+            --query "SELECT OwnerId, COUNT(Id) total FROM Case WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId" \
+            > "$DATA_DIR/case_activity.json"
 
-          # Optionally collect for a few common custom objects dynamically
-          echo \"🔍 Checking for custom object activity...\"
-          CUSTOM_OBJECTS=$(sf data query --target-org \"${{ github.event.inputs.org_alias }}\" \
+          # 🔍 Dynamically Collect Custom Object Activity
+          echo "🔍 Checking for custom object activity..."
+          CUSTOM_OBJECTS=$(sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --use-tooling-api \
             --result-format json \
-            --query \"SELECT QualifiedApiName FROM CustomObject WHERE DeploymentStatus='Deployed' AND ManageableState='unmanaged'\" | jq -r '.result.records[].QualifiedApiName' | head -n 5)
+            --query "SELECT QualifiedApiName FROM CustomObject WHERE DeploymentStatus='Deployed' AND ManageableState='unmanaged'" | jq -r '.result.records[].QualifiedApiName' | head -n 5)
 
           for obj in $CUSTOM_OBJECTS; do
-            echo \"📦 Collecting activity for $obj...\"
-            sf data query --target-org \"${{ github.event.inputs.org_alias }}\" \
+            echo "📦 Collecting activity for $obj..."
+            sf data query --target-org "${{ github.event.inputs.org_alias }}" \
               --result-format json \
-              --query \"SELECT CreatedById, COUNT(Id) total FROM $obj WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY CreatedById\" \
-              > \"$DATA_DIR/${obj}_activity.json\" || echo \"⚠️ Skipped $obj (no CreatedById)\"
+              --query "SELECT CreatedById, COUNT(Id) total FROM $obj WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY CreatedById" \
+              > "$DATA_DIR/${obj}_activity.json" || echo "⚠️ Skipped $obj (no CreatedById)"
           done
 
-          echo \"✅ Data collection completed.\"
-
+          echo "✅ Data collection completed."
+          
       - name: Validate Data Availability
         id: check
         run: |
