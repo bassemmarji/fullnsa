@@ -63,7 +63,6 @@ jobs:
 
           # 📈 Query Object Interaction Counts (Tasks, Cases)
           echo "📈 Querying key object activities..."
-
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT OwnerId, COUNT(Id) total FROM Task WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId" \
@@ -79,7 +78,8 @@ jobs:
           CUSTOM_OBJECTS=$(sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --use-tooling-api \
             --result-format json \
-            --query "SELECT QualifiedApiName FROM CustomObject WHERE DeploymentStatus='Deployed' AND ManageableState='unmanaged'" | jq -r '.result.records[].QualifiedApiName' | head -n 5)
+            --query "SELECT QualifiedApiName FROM EntityDefinition WHERE IsCustomObject = true AND DeploymentStatus = 'Deployed' AND ManageableState = 'unmanaged'" \
+            | jq -r '.result.records[].QualifiedApiName' | head -n 5)
 
           for obj in $CUSTOM_OBJECTS; do
             echo "📦 Collecting activity for $obj..."
