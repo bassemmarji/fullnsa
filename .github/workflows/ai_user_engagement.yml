@@ -52,7 +52,7 @@ jobs:
           # 🧑‍💻 Active Non-Admin Users
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, Name, Username, Profile.Name, IsActive, LastLoginDate FROM User WHERE IsActive = true AND NOT (Profile.Name LIKE '%Admin%')" \
+            --query "SELECT Id, Name, Username, Profile.Name, IsActive, LastLoginDate FROM User WHERE IsActive = true AND Profile.Name NOT LIKE '%Admin%'" \
             > "$DATA_DIR/users.json"
 
           # 🔑 Login Activity (last 30 days)
