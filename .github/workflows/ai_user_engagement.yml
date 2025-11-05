@@ -77,7 +77,7 @@ jobs:
           echo "🔍 Checking for custom object activity..."
           CUSTOM_OBJECTS=$(sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT QualifiedApiName FROM EntityDefinition WHERE DeploymentStatus = 'Deployed' AND ManageableState = 'unmanaged' LIMIT 2000" \
+            --query "SELECT QualifiedApiName FROM EntityDefinition WHERE QualifiedApiName LIKE '%__c' AND IsQueryable = true LIMIT 2000" \
             | jq -r '.result.records[].QualifiedApiName' | grep '__c$' | head -n 5)
 
           for obj in $CUSTOM_OBJECTS; do
