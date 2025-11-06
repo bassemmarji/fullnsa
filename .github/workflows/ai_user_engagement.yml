@@ -11,6 +11,14 @@ on:
         description: "Ollama model to use"
         required: true
         default: "llama3:latest"
+      days_back:
+        description: "Days of historical data"
+        required: false
+        default: "30"
+      custom_object_limit:
+        description: "Number of custom objects to analyze"
+        required: false
+        default: "20"
 
 env:
   NODE_VERSION: "20"
@@ -35,66 +43,187 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq
           npm install -g @salesforce/cli
-
+          
       - name: Authenticate to Salesforce
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
             --alias "${{ github.event.inputs.org_alias }}" \
             --sfdx-url-stdin
-
-      - name: 🚀 Collect Engagement Data
+            
+      - name: 🚀 Collect User Data
         shell: bash
         run: |
           set -e
           mkdir -p "$DATA_DIR"
-          echo "📊 Collecting user + object engagement data..."
-
-          # 🧑‍💻 Active Non-Admin, Non-Integration Users
+          DAYS="${{ github.event.inputs.days_back }}"
+          
+          echo "📊 Collecting user data..."
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, Name, Username, Profile.Name, IsActive, LastLoginDate, CreatedDate FROM User WHERE IsActive = true AND Profile.Name NOT IN ('System Administrator','Integration User','API User')" \
+            --query "SELECT Id, Name, Username, Email, Profile.Name, UserRole.Name, IsActive, LastLoginDate, CreatedDate FROM User WHERE IsActive = true" \
             > "$DATA_DIR/users.json"
+          
+          echo "✅ Users collected: $(jq -r '.result.records | length' "$DATA_DIR/users.json")"
 
-          # 🔑 Login History (last 30 days)
+      - name: 🔑 Collect Login History
+        shell: bash
+        run: |
+          DAYS="${{ github.event.inputs.days_back }}"
+          echo "🔑 Collecting login history (last $DAYS days)..."
+          
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT UserId, LoginTime, LoginType, SourceIp, Platform FROM LoginHistory WHERE LoginTime = LAST_N_DAYS:30 LIMIT 10000" \
-            > "$DATA_DIR/login_history.json"
+            --query "SELECT UserId, LoginTime, LoginType, SourceIp, Platform, Application FROM LoginHistory WHERE LoginTime = LAST_N_DAYS:$DAYS ORDER BY LoginTime DESC" \
+            > "$DATA_DIR/login_history.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/login_history.json"
+          
+          echo "✅ Login records: $(jq -r '.result.records | length' "$DATA_DIR/login_history.json")"
 
-          # 📈 Query Object Interaction Counts (Tasks, Cases)
-          echo "📈 Querying key object activities..."
+      - name: 📈 Collect Standard Object Activity
+        shell: bash
+        run: |
+          DAYS="${{ github.event.inputs.days_back }}"
+          echo "📈 Collecting standard object activity (last $DAYS days)..."
+          
+          # Account activity
+          echo "📊 Accounts..."
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT OwnerId, COUNT(Id) total FROM Task WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId" \
-            > "$DATA_DIR/task_activity.json"
-
+            --query "SELECT OwnerId, COUNT(Id) total FROM Account WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/account_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/account_created.json"
+          
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT OwnerId, COUNT(Id) total FROM Case WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY OwnerId" \
-            > "$DATA_DIR/case_activity.json"
-
-          # 🔍 Dynamically Collect Custom Object Activity
-          echo "🔍 Checking for custom object activity..."
-          CUSTOM_OBJECTS=$(sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Account WHERE LastModifiedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/account_modified.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/account_modified.json"
+          
+          # Contact activity
+          echo "📊 Contacts..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT QualifiedApiName FROM EntityDefinition WHERE QualifiedApiName LIKE '%__c' AND IsQueryable = true LIMIT 2000" \
-            | jq -r '.result.records[].QualifiedApiName' | grep '__c$' | head -n 5)
+            --query "SELECT OwnerId, COUNT(Id) total FROM Contact WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/contact_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/contact_created.json"
+          
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Contact WHERE LastModifiedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/contact_modified.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/contact_modified.json"
+          
+          # Opportunity activity
+          echo "📊 Opportunities..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total, SUM(Amount) totalAmount FROM Opportunity WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/opportunity_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/opportunity_created.json"
+          
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Opportunity WHERE LastModifiedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/opportunity_modified.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/opportunity_modified.json"
+          
+          # Task activity
+          echo "📊 Tasks..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Task WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/task_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/task_created.json"
+          
+          # Event activity
+          echo "📊 Events..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Event WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/event_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/event_created.json"
+          
+          # Case activity
+          echo "📊 Cases..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Case WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/case_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/case_created.json"
+          
+          # Lead activity
+          echo "📊 Leads..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT OwnerId, COUNT(Id) total FROM Lead WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+            > "$DATA_DIR/lead_created.json" || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/lead_created.json"
+          
+          echo "✅ Standard object activity collected"
 
+      - name: 🔍 Collect Custom Object Activity
+        shell: bash
+        run: |
+          DAYS="${{ github.event.inputs.days_back }}"
+          LIMIT="${{ github.event.inputs.custom_object_limit }}"
+          echo "🔍 Discovering custom objects (limit: $LIMIT)..."
+          
+          # Get all queryable custom objects
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT QualifiedApiName, Label FROM EntityDefinition WHERE QualifiedApiName LIKE '%__c' AND IsQueryable = true AND IsCustomizable = true ORDER BY QualifiedApiName" \
+            > "$DATA_DIR/custom_objects.json"
+          
+          CUSTOM_OBJECTS=$(jq -r '.result.records[].QualifiedApiName' "$DATA_DIR/custom_objects.json" | head -n "$LIMIT")
+          
+          echo "Found $(echo "$CUSTOM_OBJECTS" | wc -l) custom objects"
+          
           for obj in $CUSTOM_OBJECTS; do
             echo "📦 Collecting activity for $obj..."
+            
+            # Try CreatedById first (most common)
             sf data query --target-org "${{ github.event.inputs.org_alias }}" \
               --result-format json \
-              --query "SELECT CreatedById, COUNT(Id) total FROM $obj WHERE CreatedDate = LAST_N_DAYS:30 GROUP BY CreatedById" \
-              > "$DATA_DIR/${obj}_activity.json" || echo "⚠️ Skipped $obj (no CreatedById)"
+              --query "SELECT CreatedById, COUNT(Id) total FROM $obj WHERE CreatedDate = LAST_N_DAYS:$DAYS GROUP BY CreatedById" \
+              > "$DATA_DIR/${obj}_created.json" 2>/dev/null || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/${obj}_created.json"
+            
+            # Try OwnerId if available
+            sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+              --result-format json \
+              --query "SELECT OwnerId, COUNT(Id) total FROM $obj WHERE LastModifiedDate = LAST_N_DAYS:$DAYS GROUP BY OwnerId" \
+              > "$DATA_DIR/${obj}_modified.json" 2>/dev/null || echo "{\"result\":{\"records\":[]}}" > "$DATA_DIR/${obj}_modified.json"
+            
+            created_count=$(jq -r '.result.records | length' "$DATA_DIR/${obj}_created.json")
+            modified_count=$(jq -r '.result.records | length' "$DATA_DIR/${obj}_modified.json")
+            echo "  ✓ $obj: $created_count users created, $modified_count users modified"
           done
-
-          echo "✅ Data collection completed."
           
+          echo "✅ Custom object activity collected"
+
+      - name: 📊 Aggregate Report Data
+        shell: bash
+        run: |
+          echo "📊 Creating comprehensive activity report..."
+          
+          # Create activity summary
+          cat > "$DATA_DIR/activity_summary.json" << 'EOF'
+          {
+            "standard_objects": [
+              "Account", "Contact", "Opportunity", "Task", "Event", "Case", "Lead"
+            ],
+            "collection_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "days_analyzed": ${{ github.event.inputs.days_back }}
+          }
+          EOF
+          
+          echo "✅ Activity summary created"
+
       - name: Validate Data Availability
         id: check
         run: |
-          user_count=$(jq -r '.result.records | length' "$DATA_DIR/users.json")
-          echo "Users: $user_count"
+          user_count=$(jq -r '.result.records | length' "$DATA_DIR/users.json" 2>/dev/null || echo "0")
+          echo "📊 Total users found: $user_count"
+          
+          # Count total activity records across all files
+          total_activity=0
+          for file in "$DATA_DIR"/*_created.json "$DATA_DIR"/*_modified.json; do
+            if [ -f "$file" ]; then
+              count=$(jq -r '.result.records | length' "$file" 2>/dev/null || echo "0")
+              total_activity=$((total_activity + count))
+            fi
+          done
+          
+          echo "📊 Total activity records: $total_activity"
+          
           if [ "$user_count" -gt 0 ]; then
             echo "✅ Engagement data available"
             echo "has_data=true" >> $GITHUB_OUTPUT
@@ -102,7 +231,7 @@ jobs:
             echo "⚠️ No engagement data found"
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
-
+          
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -125,87 +254,224 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
-          for i in {1..20}; do
-            if curl -s http://localhost:11434/api/version >/dev/null; then break; fi
+          sleep 5
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
+              echo "✅ Ollama is ready"
+              break
+            fi
+            echo "Waiting for Ollama... ($i/30)"
             sleep 3
           done
           ollama pull "${{ github.event.inputs.model_name }}"
+          
+      - name: Install jq
+        run: sudo apt-get update -y && sudo apt-get install -y jq
 
-      - name: 📊 Pre-Analysis - Aggregate Engagement
+      - name: 📊 Aggregate User Engagement Data
         shell: bash
         run: |
-          echo "🔍 Aggregating user engagement data..."
+          echo "🔍 Aggregating comprehensive user engagement data..."
+          
+          cat > aggregate.jq << 'JQEOF'
+          def recs(x): if x[0].result? and x[0].result.records? then x[0].result.records else [] end;
+          def sumActivity(arr; userId; field): 
+            arr | map(select((.[field] // "") == userId)) | map(.total // "0" | tonumber) | add // 0;
+          
+          ($users | recs(.)) as $u |
+          ($logins | recs(.)) as $l |
+          
+          ($account_created | recs(.)) as $acc_c |
+          ($account_modified | recs(.)) as $acc_m |
+          ($contact_created | recs(.)) as $con_c |
+          ($contact_modified | recs(.)) as $con_m |
+          ($opportunity_created | recs(.)) as $opp_c |
+          ($opportunity_modified | recs(.)) as $opp_m |
+          ($task_created | recs(.)) as $task_c |
+          ($event_created | recs(.)) as $event_c |
+          ($case_created | recs(.)) as $case_c |
+          ($lead_created | recs(.)) as $lead_c |
+          
+          $u | map({
+            userId: .Id,
+            name: .Name,
+            username: .Username,
+            email: .Email,
+            profile: .Profile.Name,
+            role: .UserRole.Name // "No Role",
+            isActive: .IsActive,
+            lastLogin: .LastLoginDate,
+            createdDate: .CreatedDate,
+            
+            loginCount: ($l | map(select(.UserId == .Id)) | length),
+            
+            accountsCreated: sumActivity($acc_c; .Id; "OwnerId"),
+            accountsModified: sumActivity($acc_m; .Id; "OwnerId"),
+            contactsCreated: sumActivity($con_c; .Id; "OwnerId"),
+            contactsModified: sumActivity($con_m; .Id; "OwnerId"),
+            opportunitiesCreated: sumActivity($opp_c; .Id; "OwnerId"),
+            opportunitiesModified: sumActivity($opp_m; .Id; "OwnerId"),
+            tasksCreated: sumActivity($task_c; .Id; "OwnerId"),
+            eventsCreated: sumActivity($event_c; .Id; "OwnerId"),
+            casesCreated: sumActivity($case_c; .Id; "OwnerId"),
+            leadsCreated: sumActivity($lead_c; .Id; "OwnerId"),
+            
+            totalActivity: (
+              sumActivity($acc_c; .Id; "OwnerId") +
+              sumActivity($acc_m; .Id; "OwnerId") +
+              sumActivity($con_c; .Id; "OwnerId") +
+              sumActivity($con_m; .Id; "OwnerId") +
+              sumActivity($opp_c; .Id; "OwnerId") +
+              sumActivity($opp_m; .Id; "OwnerId") +
+              sumActivity($task_c; .Id; "OwnerId") +
+              sumActivity($event_c; .Id; "OwnerId") +
+              sumActivity($case_c; .Id; "OwnerId") +
+              sumActivity($lead_c; .Id; "OwnerId")
+            )
+          }) | sort_by(-.totalActivity)
+          JQEOF
+          
           jq -n \
             --slurpfile users "$DATA_DIR/users.json" \
             --slurpfile logins "$DATA_DIR/login_history.json" \
-            --slurpfile tasks "$DATA_DIR/task_activity.json" \
-            --slurpfile cases "$DATA_DIR/case_activity.json" '
-            def recs(x): if x[0].result? and x[0].result.records? then x[0].result.records else [] end;
-            ($users | recs(.)) as $u |
-            ($logins | recs(.)) as $l |
-            ($tasks | recs(.)) as $t |
-            ($cases | recs(.)) as $c |
-            $u | map({
-              userId: .Id,
-              name: .Name,
-              profile: .Profile.Name,
-              lastLogin: .LastLoginDate,
-              loginCount30d: ($l | map(select(.UserId == .Id)) | length),
-              taskCount30d: ($t | map(select(.OwnerId == .Id)) | map(.total|tonumber) | add // 0),
-              caseCount30d: ($c | map(select(.OwnerId == .Id)) | map(.total|tonumber) | add // 0)
-            })' > "$DATA_DIR/user_engagement.json"
-          echo "✅ Computed per-user engagement statistics."
+            --slurpfile account_created "$DATA_DIR/account_created.json" \
+            --slurpfile account_modified "$DATA_DIR/account_modified.json" \
+            --slurpfile contact_created "$DATA_DIR/contact_created.json" \
+            --slurpfile contact_modified "$DATA_DIR/contact_modified.json" \
+            --slurpfile opportunity_created "$DATA_DIR/opportunity_created.json" \
+            --slurpfile opportunity_modified "$DATA_DIR/opportunity_modified.json" \
+            --slurpfile task_created "$DATA_DIR/task_created.json" \
+            --slurpfile event_created "$DATA_DIR/event_created.json" \
+            --slurpfile case_created "$DATA_DIR/case_created.json" \
+            --slurpfile lead_created "$DATA_DIR/lead_created.json" \
+            -f aggregate.jq \
+            > "$DATA_DIR/user_engagement.json"
+          
+          echo "✅ User engagement data aggregated"
+          echo "📊 Sample of top engaged users:"
+          jq -r '.[:5] | .[] | "\(.name): \(.totalActivity) activities, \(.loginCount) logins"' "$DATA_DIR/user_engagement.json"
 
       - name: 🧠 AI Analysis
         shell: bash
         run: |
           REPORT="user_engagement_report_$(date +%Y%m%d_%H%M%S).md"
           MODEL="${{ github.event.inputs.model_name }}"
-          SYSTEM_PROMPT="You are a Salesforce adoption consultant. Provide a clear, data-driven engagement analysis."
-          USER_PROMPT=$(cat << 'EOP'
-          Generate a Salesforce User Engagement Report including:
-          ## 📊 Summary Metrics
+          DAYS="${{ github.event.inputs.days_back }}"
+          
+          SYSTEM_PROMPT="You are a Salesforce adoption consultant analyzing user engagement data. Provide clear, actionable insights based on the data provided."
+          
+          USER_PROMPT=$(cat << EOP
+          Analyze this Salesforce user engagement data from the last $DAYS days and create a comprehensive report.
+          
+          ## Required Report Structure:
+          
+          ### 📊 Executive Summary
+          - Total active users analyzed
+          - Overall engagement level (high/medium/low)
+          - Key findings (2-3 bullet points)
+          
+          ### 📈 Engagement Metrics
+          Create a metrics table with:
           | Metric | Value |
           |---------|-------|
-          | Active Users | X |
-          | Inactive Users (no login 30d) | X |
-          | Avg Logins per User | X |
-          | Avg Tasks per User | X |
-          | Avg Cases per User | X |
-          ## 🧑‍💻 Top Engaged Users
-          | Name | Logins | Tasks | Cases | Profile |
-          |------|--------|--------|-------|----------|
-          ## ⚠️ Inactive / Low Engagement Users
-          | Name | Last Login | Logins | Tasks | Cases | Profile |
-          |------|-------------|--------|--------|-------|----------|
-          ## 💡 Recommendations
-          - Identify low engagement profiles.
-          - Propose enablement or automation improvements.
-          - Highlight behavioral patterns of top performers.
-          Provide analytical, data-driven commentary (avoid generic advice).
+          | Total Active Users | X |
+          | Users with Logins | X |
+          | Users with Activities | X |
+          | Avg Logins per User | X.X |
+          | Avg Activities per User | X.X |
+          | Total Accounts Created | X |
+          | Total Contacts Created | X |
+          | Total Opportunities Created | X |
+          | Total Tasks Created | X |
+          | Total Cases Created | X |
+          
+          ### 🏆 Top 10 Most Engaged Users
+          Create a table showing top users by total activity:
+          | Rank | Name | Profile | Role | Logins | Activities | Key Strengths |
+          |------|------|---------|------|--------|------------|---------------|
+          
+          ### ⚠️ Low Engagement Users (Bottom 10)
+          | Name | Profile | Role | Last Login | Logins | Activities | Status |
+          |------|---------|------|------------|--------|------------|--------|
+          
+          ### 📊 Engagement by Profile
+          Analyze which profiles are most/least engaged
+          
+          ### 💡 Insights & Recommendations
+          Provide 4-6 specific, data-driven recommendations:
+          1. Training opportunities
+          2. Adoption challenges
+          3. Process improvements
+          4. User enablement strategies
+          5. Potential champions to leverage
+          6. Areas requiring immediate attention
+          
+          Use the actual data provided. Be specific with numbers and patterns observed.
           EOP
           )
+          
+          # Get data summary for context
+          ENGAGEMENT_DATA=$(jq -c 'if length > 50 then .[:50] else . end' "$DATA_DIR/user_engagement.json")
+          
           cat > prompt.json << EOF
           {
             "model": "$MODEL",
             "system": "$SYSTEM_PROMPT",
-            "prompt": "$USER_PROMPT\n\n### USER DATA:\n$(jq -c . "$DATA_DIR/user_engagement.json")",
-            "options": {"temperature": 0.2, "top_p": 0.9, "num_predict": 2000},
+            "prompt": "$USER_PROMPT\n\n### ENGAGEMENT DATA:\n$ENGAGEMENT_DATA",
+            "options": {
+              "temperature": 0.3,
+              "top_p": 0.9,
+              "num_predict": 3000
+            },
             "stream": false
           }
           EOF
+          
+          echo "🧠 Sending data to AI for analysis..."
+          
           ollama_response=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
             -d @prompt.json | jq -r '.response // empty')
-          echo "# 🧠 Salesforce User Engagement Report" > "$REPORT"
-          echo "**Model:** $MODEL  " >> "$REPORT"
-          echo "**Generated:** $(date -u)" >> "$REPORT"
-          echo "" >> "$REPORT"
-          echo "$ollama_response" >> "$REPORT"
+          
+          if [ -z "$ollama_response" ]; then
+            echo "❌ AI analysis failed - no response received"
+            ollama_response="Error: No response from AI model. Check Ollama service status."
+          fi
+          
+          # Create report
+          cat > "$REPORT" << REPORTEOF
+          # 🧠 Salesforce User Engagement Analysis Report
+          
+          **Organization:** ${{ github.event.inputs.org_alias }}  
+          **Analysis Period:** Last $DAYS days  
+          **Model:** $MODEL  
+          **Generated:** $(date -u)  
+          **Total Users Analyzed:** $(jq -r 'length' "$DATA_DIR/user_engagement.json")
+          
+          ---
+          
+          $ollama_response
+          
+          ---
+          
+          ## 📎 Data Files
+          - Full engagement data: \`user_engagement.json\`
+          - Raw Salesforce data available in workflow artifacts
+          
+          **Report generated by AI-Powered User Engagement Analyzer**
+          REPORTEOF
+          
+          echo "✅ Report generated: $REPORT"
           cat "$REPORT"
-
+          
       - uses: actions/upload-artifact@v4
         with:
           name: ai-engagement-report
           path: user_engagement_report_*.md
+          retention-days: 14
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: processed-engagement-data
+          path: ${{ env.DATA_DIR }}/user_engagement.json
           retention-days: 14
