@@ -274,62 +274,62 @@ jobs:
           echo "🔍 Aggregating comprehensive user engagement data..."
           
           cat > aggregate.jq << 'JQEOF'
-def recs(x): if x[0].result? and x[0].result.records? then x[0].result.records else [] end;
-def sumActivity(arr; userId; field): 
-  arr | map(select((.[field] // "") == userId)) | map(.total // "0" | tonumber) | add // 0;
-
-($users | recs(.)) as $u |
-($logins | recs(.)) as $l |
-
-($account_created | recs(.)) as $acc_c |
-($account_modified | recs(.)) as $acc_m |
-($contact_created | recs(.)) as $con_c |
-($contact_modified | recs(.)) as $con_m |
-($opportunity_created | recs(.)) as $opp_c |
-($opportunity_modified | recs(.)) as $opp_m |
-($task_created | recs(.)) as $task_c |
-($event_created | recs(.)) as $event_c |
-($case_created | recs(.)) as $case_c |
-($lead_created | recs(.)) as $lead_c |
-
-$u | map({
-  userId: .Id,
-  name: .Name,
-  username: .Username,
-  email: .Email,
-  profile: .Profile.Name,
-  role: (if .UserRole.Name then .UserRole.Name else "No Role" end),
-  isActive: .IsActive,
-  lastLogin: .LastLoginDate,
-  createdDate: .CreatedDate,
-  
-  loginCount: ($l | map(select(.UserId == .Id)) | length),
-  
-  accountsCreated: sumActivity($acc_c; .Id; "OwnerId"),
-  accountsModified: sumActivity($acc_m; .Id; "OwnerId"),
-  contactsCreated: sumActivity($con_c; .Id; "OwnerId"),
-  contactsModified: sumActivity($con_m; .Id; "OwnerId"),
-  opportunitiesCreated: sumActivity($opp_c; .Id; "OwnerId"),
-  opportunitiesModified: sumActivity($opp_m; .Id; "OwnerId"),
-  tasksCreated: sumActivity($task_c; .Id; "OwnerId"),
-  eventsCreated: sumActivity($event_c; .Id; "OwnerId"),
-  casesCreated: sumActivity($case_c; .Id; "OwnerId"),
-  leadsCreated: sumActivity($lead_c; .Id; "OwnerId"),
-  
-  totalActivity: (
-    sumActivity($acc_c; .Id; "OwnerId") +
-    sumActivity($acc_m; .Id; "OwnerId") +
-    sumActivity($con_c; .Id; "OwnerId") +
-    sumActivity($con_m; .Id; "OwnerId") +
-    sumActivity($opp_c; .Id; "OwnerId") +
-    sumActivity($opp_m; .Id; "OwnerId") +
-    sumActivity($task_c; .Id; "OwnerId") +
-    sumActivity($event_c; .Id; "OwnerId") +
-    sumActivity($case_c; .Id; "OwnerId") +
-    sumActivity($lead_c; .Id; "OwnerId")
-  )
-}) | sort_by(-.totalActivity)
-JQEOF
+          def recs(x): if x[0].result? and x[0].result.records? then x[0].result.records else [] end;
+          def sumActivity(arr; userId; field): 
+            arr | map(select((.[field] // "") == userId)) | map(.total // "0" | tonumber) | add // 0;
+          
+          ($users | recs(.)) as $u |
+          ($logins | recs(.)) as $l |
+          
+          ($account_created | recs(.)) as $acc_c |
+          ($account_modified | recs(.)) as $acc_m |
+          ($contact_created | recs(.)) as $con_c |
+          ($contact_modified | recs(.)) as $con_m |
+          ($opportunity_created | recs(.)) as $opp_c |
+          ($opportunity_modified | recs(.)) as $opp_m |
+          ($task_created | recs(.)) as $task_c |
+          ($event_created | recs(.)) as $event_c |
+          ($case_created | recs(.)) as $case_c |
+          ($lead_created | recs(.)) as $lead_c |
+          
+          $u | map({
+            userId: .Id,
+            name: .Name,
+            username: .Username,
+            email: .Email,
+            profile: .Profile.Name,
+            role: (if .UserRole.Name then .UserRole.Name else "No Role" end),
+            isActive: .IsActive,
+            lastLogin: .LastLoginDate,
+            createdDate: .CreatedDate,
+            
+            loginCount: ($l | map(select(.UserId == .Id)) | length),
+            
+            accountsCreated: sumActivity($acc_c; .Id; "OwnerId"),
+            accountsModified: sumActivity($acc_m; .Id; "OwnerId"),
+            contactsCreated: sumActivity($con_c; .Id; "OwnerId"),
+            contactsModified: sumActivity($con_m; .Id; "OwnerId"),
+            opportunitiesCreated: sumActivity($opp_c; .Id; "OwnerId"),
+            opportunitiesModified: sumActivity($opp_m; .Id; "OwnerId"),
+            tasksCreated: sumActivity($task_c; .Id; "OwnerId"),
+            eventsCreated: sumActivity($event_c; .Id; "OwnerId"),
+            casesCreated: sumActivity($case_c; .Id; "OwnerId"),
+            leadsCreated: sumActivity($lead_c; .Id; "OwnerId"),
+            
+            totalActivity: (
+              sumActivity($acc_c; .Id; "OwnerId") +
+              sumActivity($acc_m; .Id; "OwnerId") +
+              sumActivity($con_c; .Id; "OwnerId") +
+              sumActivity($con_m; .Id; "OwnerId") +
+              sumActivity($opp_c; .Id; "OwnerId") +
+              sumActivity($opp_m; .Id; "OwnerId") +
+              sumActivity($task_c; .Id; "OwnerId") +
+              sumActivity($event_c; .Id; "OwnerId") +
+              sumActivity($case_c; .Id; "OwnerId") +
+              sumActivity($lead_c; .Id; "OwnerId")
+            )
+          }) | sort_by(-.totalActivity)
+          JQEOF
           
           jq -n \
             --slurpfile users "$DATA_DIR/users.json" \
