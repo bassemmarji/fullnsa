@@ -239,48 +239,60 @@ jobs:
           path: ${{ env.DATA_DIR }}
           retention-days: 7
 
+
   analyze-ai:
     name: Analyze Engagement with AI
     runs-on: ubuntu-latest
     needs: collect-engagement-data
     if: needs.collect-engagement-data.outputs.has_data == 'true'
+  
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: engagement-data
           path: ${{ env.DATA_DIR }}
-
+  
       - name: Setup Ollama
+        shell: bash
         run: |
+          echo "⚙️ Installing and starting Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
-          sleep 5
-          for i in {1..30}; do
+          nohup ollama serve > ollama.log 2>&1 &
+          
+          echo "⏳ Waiting for Ollama to start..."
+          for i in {1..60}; do
             if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
-              echo "✅ Ollama is ready"
+              echo "✅ Ollama API is online."
               break
             fi
-            echo "Waiting for Ollama... ($i/30)"
+            echo "⌛ Ollama not ready yet ($i/60)..."
             sleep 3
           done
-          ollama pull "${{ github.event.inputs.model_name }}"
           
+          echo "⬇️ Pulling model: ${{ github.event.inputs.model_name }}"
+          if ! ollama pull "${{ github.event.inputs.model_name }}"; then
+            echo "❌ Failed to pull model. Check model name or network connection."
+            exit 1
+          fi
+          
+          sleep 10
+          ollama list
+          echo "✅ Ollama setup complete."
+  
       - name: Install jq
         run: sudo apt-get update -y && sudo apt-get install -y jq
-
+  
       - name: 📊 Aggregate User Engagement Data
         shell: bash
         run: |
-          echo "🔍 Aggregating comprehensive user engagement data..."
-          
+          echo "🔍 Aggregating user engagement data..."
           cat > aggregate.jq << 'JQEOF'
           def recs(x): if x[0].result? and x[0].result.records? then x[0].result.records else [] end;
           def sumActivity(arr; userId; field): 
             arr | map(select((.[field] // "") == userId)) | map(.total // "0" | tonumber) | add // 0;
-          
+  
           ($users | recs(.)) as $u |
           ($logins | recs(.)) as $l |
-          
           ($account_created | recs(.)) as $acc_c |
           ($account_modified | recs(.)) as $acc_m |
           ($contact_created | recs(.)) as $con_c |
@@ -291,7 +303,7 @@ jobs:
           ($event_created | recs(.)) as $event_c |
           ($case_created | recs(.)) as $case_c |
           ($lead_created | recs(.)) as $lead_c |
-          
+  
           $u | map({
             userId: .Id,
             name: .Name,
@@ -302,9 +314,7 @@ jobs:
             isActive: .IsActive,
             lastLogin: .LastLoginDate,
             createdDate: .CreatedDate,
-            
             loginCount: ($l | map(select(.UserId == .Id)) | length),
-            
             accountsCreated: sumActivity($acc_c; .Id; "OwnerId"),
             accountsModified: sumActivity($acc_m; .Id; "OwnerId"),
             contactsCreated: sumActivity($con_c; .Id; "OwnerId"),
@@ -315,7 +325,6 @@ jobs:
             eventsCreated: sumActivity($event_c; .Id; "OwnerId"),
             casesCreated: sumActivity($case_c; .Id; "OwnerId"),
             leadsCreated: sumActivity($lead_c; .Id; "OwnerId"),
-            
             totalActivity: (
               sumActivity($acc_c; .Id; "OwnerId") +
               sumActivity($acc_m; .Id; "OwnerId") +
@@ -330,7 +339,7 @@ jobs:
             )
           }) | sort_by(-.totalActivity)
           JQEOF
-          
+  
           jq -n \
             --slurpfile users "$DATA_DIR/users.json" \
             --slurpfile logins "$DATA_DIR/login_history.json" \
@@ -346,78 +355,38 @@ jobs:
             --slurpfile lead_created "$DATA_DIR/lead_created.json" \
             -f aggregate.jq \
             > "$DATA_DIR/user_engagement.json"
-          
-          echo "✅ User engagement data aggregated"
-          echo "📊 Sample of top engaged users:"
+  
+          echo "✅ Engagement data aggregated"
           jq -r '.[:5] | .[] | "\(.name): \(.totalActivity) activities, \(.loginCount) logins"' "$DATA_DIR/user_engagement.json"
-
+  
       - name: 🧠 AI Analysis
         shell: bash
         run: |
           REPORT="user_engagement_report_$(date +%Y%m%d_%H%M%S).md"
           MODEL="${{ github.event.inputs.model_name }}"
           DAYS="${{ github.event.inputs.days_back }}"
-          
           SYSTEM_PROMPT="You are a Salesforce adoption consultant analyzing user engagement data. Provide clear, actionable insights based on the data provided."
-          
+  
           USER_PROMPT=$(cat << EOP
           Analyze this Salesforce user engagement data from the last $DAYS days and create a comprehensive report.
-          
+  
           ## Required Report Structure:
-          
-          ### 📊 Executive Summary
-          - Total active users analyzed
-          - Overall engagement level (high/medium/low)
-          - Key findings (2-3 bullet points)
-          
-          ### 📈 Engagement Metrics
-          Create a metrics table with:
-          | Metric | Value |
-          |---------|-------|
-          | Total Active Users | X |
-          | Users with Logins | X |
-          | Users with Activities | X |
-          | Avg Logins per User | X.X |
-          | Avg Activities per User | X.X |
-          | Total Accounts Created | X |
-          | Total Contacts Created | X |
-          | Total Opportunities Created | X |
-          | Total Tasks Created | X |
-          | Total Cases Created | X |
-          
-          ### 🏆 Top 10 Most Engaged Users
-          Create a table showing top users by total activity:
-          | Rank | Name | Profile | Role | Logins | Activities | Key Strengths |
-          |------|------|---------|------|--------|------------|---------------|
-          
-          ### ⚠️ Low Engagement Users (Bottom 10)
-          | Name | Profile | Role | Last Login | Logins | Activities | Status |
-          |------|---------|------|------------|--------|------------|--------|
-          
-          ### 📊 Engagement by Profile
-          Analyze which profiles are most/least engaged
-          
-          ### 💡 Insights & Recommendations
-          Provide 4-6 specific, data-driven recommendations:
-          1. Training opportunities
-          2. Adoption challenges
-          3. Process improvements
-          4. User enablement strategies
-          5. Potential champions to leverage
-          6. Areas requiring immediate attention
-          
-          Use the actual data provided. Be specific with numbers and patterns observed.
+          - 📊 Executive Summary
+          - 📈 Engagement Metrics
+          - 🏆 Top 10 Most Engaged Users
+          - ⚠️ Low Engagement Users
+          - 📊 Engagement by Profile
+          - 💡 Insights & Recommendations
           EOP
           )
-          
-          # Get data summary for context
+  
           ENGAGEMENT_DATA=$(jq -c 'if length > 50 then .[:50] else . end' "$DATA_DIR/user_engagement.json")
-          
+  
           cat > prompt.json << EOF
           {
             "model": "$MODEL",
             "system": "$SYSTEM_PROMPT",
-            "prompt": "$USER_PROMPT\n\n### ENGAGEMENT DATA:\n$ENGAGEMENT_DATA",
+            "prompt": "$USER_PROMPT\\n\\n### ENGAGEMENT DATA:\\n$ENGAGEMENT_DATA",
             "options": {
               "temperature": 0.3,
               "top_p": 0.9,
@@ -426,52 +395,60 @@ jobs:
             "stream": false
           }
           EOF
-          
-          echo "🧠 Sending data to AI for analysis..."
-          
-          ollama_response=$(curl -s http://localhost:11434/api/generate \
+  
+          echo "🧠 Sending data to Ollama..."
+          RESPONSE_FILE="ollama_response.json"
+          if ! curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d @prompt.json | jq -r '.response // empty')
-          
-          if [ -z "$ollama_response" ]; then
-            echo "❌ AI analysis failed - no response received"
-            ollama_response="Error: No response from AI model. Check Ollama service status."
+            -d @prompt.json > "$RESPONSE_FILE"; then
+            echo "❌ Ollama API call failed."
+            exit 1
           fi
-          
-          # Create report
+  
+          # Improved parsing — handle errors or missing .response
+          ollama_response=$(jq -r '.response // .error // empty' "$RESPONSE_FILE")
+  
+          if [ -z "$ollama_response" ]; then
+            echo "❌ No response text received from Ollama. Dumping full response:"
+            cat "$RESPONSE_FILE"
+            ollama_response="Error: No valid text output received from AI model. Check Ollama logs."
+          fi
+  
+          # Create the report file
           cat > "$REPORT" << REPORTEOF
           # 🧠 Salesforce User Engagement Analysis Report
-          
+  
           **Organization:** ${{ github.event.inputs.org_alias }}  
           **Analysis Period:** Last $DAYS days  
           **Model:** $MODEL  
           **Generated:** $(date -u)  
           **Total Users Analyzed:** $(jq -r 'length' "$DATA_DIR/user_engagement.json")
-          
+  
           ---
-          
+  
           $ollama_response
-          
+  
           ---
-          
+  
           ## 📎 Data Files
           - Full engagement data: \`user_engagement.json\`
           - Raw Salesforce data available in workflow artifacts
-          
+  
           **Report generated by AI-Powered User Engagement Analyzer**
           REPORTEOF
-          
+  
           echo "✅ Report generated: $REPORT"
           cat "$REPORT"
-          
+  
       - uses: actions/upload-artifact@v4
         with:
           name: ai-engagement-report
           path: user_engagement_report_*.md
           retention-days: 14
-          
+  
       - uses: actions/upload-artifact@v4
         with:
           name: processed-engagement-data
           path: ${{ env.DATA_DIR }}/user_engagement.json
           retention-days: 14
+
