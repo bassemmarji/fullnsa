@@ -398,23 +398,33 @@ jobs:
   
           echo "🧠 Sending data to Ollama..."
           RESPONSE_FILE="ollama_response.json"
-          if ! curl -s http://localhost:11434/api/generate \
+  
+          # Call API safely and capture response or error
+          if ! curl -sS http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d @prompt.json > "$RESPONSE_FILE"; then
-            echo "❌ Ollama API call failed."
+            -d @prompt.json > "$RESPONSE_FILE" 2>curl_error.log; then
+            echo "❌ Ollama API call failed:"
+            cat curl_error.log
             exit 1
           fi
   
-          # Improved parsing — handle errors or missing .response
-          ollama_response=$(jq -r '.response // .error // empty' "$RESPONSE_FILE")
-  
-          if [ -z "$ollama_response" ]; then
-            echo "❌ No response text received from Ollama. Dumping full response:"
+          # Detect non-JSON content
+          if ! jq empty "$RESPONSE_FILE" >/dev/null 2>&1; then
+            echo "⚠️ Non-JSON response received from Ollama. Dumping raw content:"
             cat "$RESPONSE_FILE"
-            ollama_response="Error: No valid text output received from AI model. Check Ollama logs."
+            ollama_response=$(cat "$RESPONSE_FILE")
+          else
+            ollama_response=$(jq -r '.response // .error // empty' "$RESPONSE_FILE")
           fi
   
-          # Create the report file
+          # Clean invalid or empty response
+          if [ -z "$ollama_response" ]; then
+            ollama_response="⚠️ No valid text output received from AI model. Check Ollama logs or model availability."
+          fi
+  
+          # Clean any stray control characters
+          ollama_response=$(echo "$ollama_response" | tr -d '\000-\031')
+  
           cat > "$REPORT" << REPORTEOF
           # 🧠 Salesforce User Engagement Analysis Report
   
