@@ -22,7 +22,7 @@ env:
   PROJECT_DIR: ./deployment-project
 
 jobs:
-  deploy_with_dependencies:
+  migrate_with_dependencies:
     runs-on: ubuntu-latest
 
     steps:
