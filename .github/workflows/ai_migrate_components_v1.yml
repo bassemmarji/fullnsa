@@ -1,0 +1,126 @@
+name: Deploy Component with Dependencies v1
+
+on:
+  workflow_dispatch:
+    inputs:
+      SRC_ORG_ALIAS:
+        description: "Alias for the Source Salesforce org"
+        required: true
+        default: "SrcOrgAlias"
+      DST_ORG_ALIAS:
+        description: "Alias for the Destination Salesforce org"
+        required: true
+        default: "DstOrgAlias"
+      COMPONENT_NAME:
+        description: "API name of the component to deploy (e.g., MyTrigger, MyLWCComponent)"
+        required: true
+      DRY_RUN:
+        description: "Set to true to only list dependencies without retrieval or deployment"
+        required: false
+        default: "false"
+      VALIDATE_ONLY:
+        description: "Set to true for validation-only deployment (no changes applied)"
+        required: false
+        default: "false"
+
+env:
+  SRC_ORG_ALIAS: ${{ github.event.inputs.SRC_ORG_ALIAS }}
+  DST_ORG_ALIAS: ${{ github.event.inputs.DST_ORG_ALIAS }}
+  COMPONENT_NAME: ${{ github.event.inputs.COMPONENT_NAME }}
+  DRY_RUN: ${{ github.event.inputs.DRY_RUN }}
+  VALIDATE_ONLY: ${{ github.event.inputs.VALIDATE_ONLY }}
+  PROJECT_DIR: ./deployment-project
+
+jobs:
+  deploy_with_dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 'Install Salesforce CLI'
+        run: npm install @salesforce/cli --global
+
+      - name: 'Verify Salesforce CLI and Plugins'
+        run: |
+          npm update --global @salesforce/cli
+          sf plugins:update
+          sf --version
+          sf plugins --core
+
+      - name: 'Authenticate Source & Destination Orgs'
+        run: |
+          echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
+          echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
+          sf org list
+
+      - name: 'Create Project and Manifest'
+        run: |
+          sf project generate --name "deployment-project" --manifest
+          cd $PROJECT_DIR
+          echo "Generating package.xml for component $COMPONENT_NAME ..."
+          sf project generate manifest --metadata "$COMPONENT_NAME"
+
+      - name: 'Collect Dependencies for Selected Component'
+        run: |
+          cd $PROJECT_DIR
+          echo "Collecting dependencies for $COMPONENT_NAME ..."
+          sf dependency:list --source-dir force-app --json > dependencies.json || echo "{}" > dependencies.json
+          echo "## Dependencies for $COMPONENT_NAME" >> $GITHUB_STEP_SUMMARY
+          cat dependencies.json | jq '.result.components[] | "- " + .fullName' >> $GITHUB_STEP_SUMMARY || echo "No dependencies found."
+
+      - name: 'Dry Run Check'
+        if: ${{ env.DRY_RUN == 'true' }}
+        run: |
+          echo "🧩 Dry Run mode enabled. Listing components that would be retrieved and deployed..."
+          echo "### Components to Deploy:" >> $GITHUB_STEP_SUMMARY
+          cat $PROJECT_DIR/dependencies.json | jq '.result.components[] | "- " + .fullName' >> $GITHUB_STEP_SUMMARY || echo "No dependencies."
+          echo "⏹️ Dry run complete. No metadata was retrieved or deployed."
+          exit 0
+
+      - name: 'Retrieve Component and Dependencies'
+        run: |
+          cd $PROJECT_DIR
+          echo "Retrieving component and dependencies from $SRC_ORG_ALIAS ..."
+          sf project retrieve start --target-org $SRC_ORG_ALIAS --manifest manifest/package.xml
+          echo "Retrieval complete."
+
+      - name: 'Deploy to Destination Org'
+        run: |
+          cd $PROJECT_DIR
+          echo "Deploying to $DST_ORG_ALIAS ..."
+          if [ "$VALIDATE_ONLY" == "true" ]; then
+            echo "Validation-only mode enabled. Performing deployment preview..."
+            sf project deploy start --target-org $DST_ORG_ALIAS --source-dir force-app --dry-run --json > deploy-result.json
+          else
+            sf project deploy start --target-org $DST_ORG_ALIAS --source-dir force-app --json > deploy-result.json
+          fi
+          echo "Deployment complete."
+          echo "## Deployment Results" >> $GITHUB_STEP_SUMMARY
+          cat deploy-result.json | jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' >> $GITHUB_STEP_SUMMARY || echo "No deployed components."
+
+      - name: 'Generate Deployment Report'
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "### Component: $COMPONENT_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "### Source Org: $SRC_ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
+          echo "### Destination Org: $DST_ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
+          echo "### Mode: $([ "$VALIDATE_ONLY" == "true" ] && echo "Validation Only" || echo "Full Deploy")" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details:" >> $GITHUB_STEP_SUMMARY
+          cat $PROJECT_DIR/deploy-result.json | jq '.result.details.componentSuccesses[] | "- " + .componentType + ": " + .fullName + " ✅"' >> $GITHUB_STEP_SUMMARY || echo "No success details."
+          echo "### Failures (if any):" >> $GITHUB_STEP_SUMMARY
+          cat $PROJECT_DIR/deploy-result.json | jq '.result.details.componentFailures[] | "- " + .componentType + ": " + .fullName + " ❌ (" + .problem + ")"' >> $GITHUB_STEP_SUMMARY || echo "No failures."
+
+      - name: 'Upload Artifacts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-artifacts
+          path: |
+            ${{ env.PROJECT_DIR }}/dependencies.json
+            ${{ env.PROJECT_DIR }}/deploy-result.json
