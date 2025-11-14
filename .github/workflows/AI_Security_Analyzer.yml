@@ -1,258 +1,197 @@
-name: AI Security & Permissions Analyzer
+name: Salesforce Security Audit
 
 on:
   workflow_dispatch:
-    inputs:
-      org_alias:
-        description: "Salesforce org alias"
-        required: true
-        default: "dev"
-        type: string
-
-      model_name:
-        description: "Ollama model"
-        type: choice
-        options:
-          - llama3:latest
-          - gemma2:27b
-          - mistral-large
-        default: llama3:latest
-
-env:
-  ORG_ALIAS: ${{ github.event.inputs.org_alias }}
-  MODEL_NAME: ${{ github.event.inputs.model_name }}
-  DATA_DIR: "security-data"
-  NODE_VERSION: "20"
 
 jobs:
-
-  # --------------------------------------------------------------------------
-  # 1. COLLECT SECURITY & PERMISSIONS METADATA
-  # --------------------------------------------------------------------------
-  collect-data:
-    name: Collect Salesforce Security Metadata
+  collect-security-metadata:
     runs-on: ubuntu-latest
-    outputs:
-      has_data: ${{ steps.validate.outputs.has_data }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Setup Environment
+      - name: Install Salesforce CLI
         run: |
-          npm install --global @salesforce/cli
-          sf plugins:update
-          sudo apt-get update && sudo apt-get install -y jq
+          npm install --global sfdx-cli
+          echo "SF_CLI_EXE=sfdx" >> $GITHUB_ENV
 
-      - name: Authenticate Org
+      - name: Authenticate to Org
         run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" \
-            | sf org login sfdx-url --alias "$ORG_ALIAS" --set-default --sfdx-url-stdin
+          echo "${{ secrets.SFDX_AUTH_URL }}" > auth.txt
+          sfdx auth:sfdxurl:store -f auth.txt -a audit_org
+          rm auth.txt
 
-      - name: Query Security Metadata
+      # -------------------------------------------------------
+      # 1️⃣ QUERY ALL METADATA REQUIRED FOR SECURITY ANALYSIS
+      # -------------------------------------------------------
+
+      - name: Query Profiles
         run: |
-          mkdir -p $DATA_DIR
+          sfdx force:data:soql:query \
+            -q "SELECT Id, Name, UserLicenseId, PermissionsModifyAllData, PermissionsViewAllData FROM Profile" \
+            -r json > profiles.json
 
-          declare -A QUERIES=(
-            ["profiles"]="SELECT Id, Name, UserLicense.Name, Description FROM Profile"
-            ["permission_sets"]="SELECT Id, Name, Label, Description, IsOwnedByProfile FROM PermissionSet"
-            ["profile_object_permissions"]="SELECT Parent.Profile.Name, SobjectType, PermissionsRead, PermissionsEdit, PermissionsDelete, PermissionsModifyAllRecords, PermissionsViewAllRecords FROM ObjectPermissions WHERE Parent.Profile.Name != null"
-            ["permset_object_permissions"]="SELECT Parent.Name, SobjectType, PermissionsRead, PermissionsEdit, PermissionsDelete, PermissionsModifyAllRecords, PermissionsViewAllRecords FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = false"
-            ["permission_set_assignments"]="SELECT Assignee.Name, PermissionSet.Name FROM PermissionSetAssignment WHERE Assignee.IsActive = true"
-          )
-
-          for file in "${!QUERIES[@]}"; do
-            echo "⏳ Querying $file..."
-            sf data query \
-              --target-org "$ORG_ALIAS" \
-              --result-format json \
-              --query "${QUERIES[$file]}" \
-              > "$DATA_DIR/$file.json" \
-              || echo '{"result":{"records":[]}}' > "$DATA_DIR/$file.json"
-          done
-
-      - name: Validate Data
-        id: validate
+      - name: Query User Licenses
         run: |
-          profiles=$(jq '.result.records | length' $DATA_DIR/profiles.json)
-          psets=$(jq '.result.records | length' $DATA_DIR/permission_sets.json)
+          sfdx force:data:soql:query \
+            -q "SELECT Id, Name, LicenseDefinitionKey FROM UserLicense" \
+            -r json > user_licenses.json
 
-          if [ $((profiles + psets)) -gt 0 ]; then
-            echo "has_data=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_data=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Query Permission Sets
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, Name, Label, Description, LicenseId FROM PermissionSet" \
+            -r json > permission_sets.json
 
-      - name: Upload Raw Data
+      - name: Query Permission Set Assignments
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, AssigneeId, PermissionSetId FROM PermissionSetAssignment" \
+            -r json > permission_set_assignments.json
+
+      - name: Query Permission Set Groups
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, DeveloperName, MasterLabel FROM PermissionSetGroup" \
+            -r json > psg.json
+
+      - name: Query Permission Set Group Components
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, ParentId, PermissionSetId FROM PermissionSetGroupComponent" \
+            -r json > psg_components.json
+
+      - name: Query Muting Permission Set Assignments
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, PermissionSetGroupId, MutingPermissionSetId FROM MutingPermissionSet" \
+            -r json > muting_ps.json
+
+      # -----------------------------
+      # OBJECT-LEVEL PERMISSIONS
+      # -----------------------------
+
+      - name: Query Profile Object Permissions
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, ParentId, SObjectType, PermissionsCreate, PermissionsRead, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions" \
+            -r json > object_permissions.json
+
+      - name: Query Permission Set Object Permissions
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, ParentId, SObjectType, PermissionsCreate, PermissionsRead, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM PermissionSetObjectPermissions" \
+            -r json > ps_object_permissions.json
+
+      # -----------------------------
+      # FIELD-LEVEL SECURITY (OPTIONAL)
+      # -----------------------------
+      - name: Query Field Permissions (optional)
+        run: |
+          sfdx force:data:soql:query \
+            -q "SELECT Id, ParentId, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions" \
+            -r json > field_permissions.json
+
+      - name: Upload metadata for LLM
         uses: actions/upload-artifact@v4
         with:
-          name: security-data
-          path: ${{ env.DATA_DIR }}
+          name: security-metadata
+          path: |
+            profiles.json
+            user_licenses.json
+            permission_sets.json
+            permission_set_assignments.json
+            psg.json
+            psg_components.json
+            muting_ps.json
+            object_permissions.json
+            ps_object_permissions.json
+            field_permissions.json
 
-  # --------------------------------------------------------------------------
-  # 2. PROCESS + PREPARE DATA FOR AI ANALYSIS
-  # --------------------------------------------------------------------------
-  prepare-analysis:
-    name: Prepare Data for AI Analysis
+  # -------------------------------------------------------
+  # 2️⃣ LLM ANALYSIS JOB (ZERO-HALLUCINATION MODE)
+  # -------------------------------------------------------
+  analyze-security:
+    needs: collect-security-metadata
     runs-on: ubuntu-latest
-    needs: collect-data
-    if: needs.collect-data.outputs.has_data == 'true'
 
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: security-data
-          path: data
+          name: security-metadata
 
-      - name: Build Analysis Context
+      - name: Run LLM Analysis
+        id: audit
+        uses: openai/openai-assistant-action@v1
+        with:
+          model: gpt-5.1
+          reasoning: enabled
+          file_globs: "profiles.json, user_licenses.json, permission_sets.json, permission_set_assignments.json, psg*.json, *object_permissions.json, field_permissions.json"
+          instructions: |
+            You are a Salesforce Security Architect.
+
+            You MUST operate in ZERO-HALLUCINATION MODE:
+
+            ❗ If data is missing, state:
+            “Not available in dataset — cannot analyze.”
+
+            ❗ You must base EVERYTHING on the provided JSON files.
+
+            YOUR REQUIRED OUTPUT (MANDATORY):
+
+            # 1. Unused Permission Sets
+            - Permission sets with 0 assignments.
+
+            # 2. Permission Sets with Modify-All or View-All Records
+            - Determine based on ps_object_permissions.json.
+
+            # 3. Profiles with Modify-All or View-All Data
+            - From profiles.json + object_permissions.json.
+
+            # 4. Community / External Profiles with Excess Permissions
+            A profile counts as external if UserLicense.Name contains:
+            - Customer Community
+            - Customer Community Plus
+            - Partner Community
+            - Authenticated Website
+            - High Volume Customer
+
+            External profiles should NOT have:
+            - Edit/Delete on internal objects
+            - View-All / Modify-All on any object
+
+            # 5. Full Object Permission Matrix Summary
+            For each profile and permission set:
+            - List CRUD + View-All + Modify-All for each SObject.
+
+            # 6. Permission Set Group Expansion & Muting Analysis
+            - Compute final effective access per user:
+              PSGs → Permission Sets → Muting → Assignments
+
+            # 7. High-Risk Findings (Evidence-Based Only)
+            Examples:
+            - Internal profiles with Modify-All on sensitive objects
+            - Community profiles with Edit/Delete
+            - Permission sets granting Modify-All without business context
+            - Autogenerated permission sets with powerful permissions
+
+            # 8. Recommendations (Evidence-Based Only)
+            - Must directly relate to the detected findings
+            - No generic governance or password advice
+
+            # RULES
+            - NO hallucinated objects, settings, or assumptions.
+            - NO password policy comments.
+            - NO unused user or login analysis.
+            - NO security settings unless present in dataset.
+
+      - name: Save report
         run: |
-          mkdir -p analysis
+          echo "${{ steps.audit.outputs.response }}" > SECURITY_REPORT.md
 
-          jq -s '
-            {
-              profiles: .[0].result.records,
-              permission_sets: .[1].result.records,
-              profile_object_permissions: .[2].result.records,
-              permset_object_permissions: .[3].result.records,
-              permission_assignments: .[4].result.records
-            }
-          ' \
-          data/profiles.json \
-          data/permission_sets.json \
-          data/profile_object_permissions.json \
-          data/permset_object_permissions.json \
-          data/permission_set_assignments.json \
-          > analysis/context.json
-
-      - name: Upload Analysis Context
+      - name: Upload Report
         uses: actions/upload-artifact@v4
         with:
-          name: analysis-context
-          path: analysis
-
-  # --------------------------------------------------------------------------
-  # 3. RUN AI SECURITY ANALYSIS
-  # --------------------------------------------------------------------------
-  ai-analysis:
-    name: AI Security Audit
-    runs-on: ubuntu-latest
-    needs: prepare-analysis
-
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: analysis-context
-          path: analysis
-
-      - name: Install Ollama
-        run: |
-          curl -fsSL https://ollama.com/install.sh -o install.sh
-          chmod +x install.sh && ./install.sh
-          ollama serve & sleep 5
-          ollama pull "${{ env.MODEL_NAME }}"
-
-      - name: Run AI Report
-        run: |
-          REPORT="security_report.md"
-
-          prompt=$(cat <<'EOF'
-          You are a Salesforce Security Architect.
-          
-          Your task is to perform a **strictly evidence-based**, **comprehensive security audit**
-          using ONLY the Salesforce metadata provided in the JSON.
-          
-          ❗ IMPORTANT RULES:
-          - DO NOT hallucinate.
-          - DO NOT mention password policies, file sharing, login hours, unused users,
-            or system settings — they are NOT in the dataset.
-          - ONLY analyze the metadata provided.
-          
-          The JSON contains:
-          - Profiles
-          - Permission Sets
-          - Profile Object Permissions
-          - Permission Set Object Permissions
-          - Permission Set Assignments
-          
-          You MUST produce all of the following sections:
-          
-          # 1. Unused Permission Sets
-          Definition: A permission set is unused if it has **zero entries** in permission_set_assignments.
-          For each unused permission set include:
-          - Name
-          - Label
-          - Description
-          - Reason: “No active user assignments found”
-          
-          # 2. Profiles With Modify-All or View-All Permissions
-          Using profile_object_permissions:
-          List each profile that has:
-          - PermissionsModifyAllRecords = true
-          - OR PermissionsViewAllRecords = true
-          
-          For each, include:
-          - Profile Name
-          - A list of affected SObjects
-          - Security risk justification
-          
-          # 3. Community / External / Portal Profiles With Excess Permissions
-          A profile is considered "external" if:
-          - Its Name contains: “Community”, “Customer”, “Partner”, “Portal”
-          - OR the UserLicense.Name indicates a community or portal license.
-          
-          For these profiles:
-          List any SObject where they have:
-          - Edit
-          - Delete
-          - Modify-All
-          - View-All
-          
-          Explain why these permissions may be excessive for external users.
-          
-          # 4. Object Access Anomalies
-          Identify:
-          - Profiles with full CRUD on many objects
-          - Permission sets with broad access
-          - Any inconsistent access patterns across profiles or sets
-          
-          # 5. Top Risks (Ranked)
-          Summarize the most critical risks detected.
-          
-          # 6. Remediation Recommendations
-          Based ONLY on the detected issues, provide:
-          - Actionable fixes
-          - Prioritization
-          - No generic boilerplate
-          
-          Output strictly in MARKDOWN.
-          
-          Now process the following JSON data:
-          EOF
-          )
-
-          {
-            echo "$prompt"
-            cat analysis/context.json
-          } | ollama run "${{ env.MODEL_NAME }}" > "$REPORT"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ai-security-report
-          path: security_report.md
-
-  # --------------------------------------------------------------------------
-  # 4. SUMMARY
-  # --------------------------------------------------------------------------
-  summary:
-    name: Final Summary
-    runs-on: ubuntu-latest
-    needs: ai-analysis
-
-    steps:
-      - name: Build Summary
-        run: |
-          echo "## 🔒 AI Security Analysis Completed" >> $GITHUB_STEP_SUMMARY
-          echo "**Model:** $MODEL_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "**Org:** $ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
-          echo "- Raw metadata exported" >> $GITHUB_STEP_SUMMARY
-          echo "- AI report generated (strict, Salesforce-specific)" >> $GITHUB_STEP_SUMMARY
+          name: SECURITY_REPORT
+          path: SECURITY_REPORT.md
