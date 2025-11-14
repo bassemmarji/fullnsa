@@ -48,9 +48,7 @@ jobs:
 
       - name: Authenticate to Salesforce Org
         run: |
-          echo "${{ secrets.SF_AUTH_URL }}" > authfile.txt
-          sf auth sfdxurl store --file authfile.txt --alias $ORG_ALIAS --set-default
-          rm authfile.txt
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
           sf org list
 
       - name: Query Profiles
