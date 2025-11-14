@@ -80,20 +80,31 @@ jobs:
       - name: Validate Collected Data
         id: check-data
         run: |
-          profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo 0)
-          permset_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo 0)
-          object_perms_count=$(jq -r '.result.records | length' "$DATA_DIR/profile_object_permissions.json" 2>/dev/null || echo 0)
-          total=$((profile_count + permset_count + object_perms_count))
-          
-          if [ "$total" -gt 0 ]; then
-            echo "✅ Security data collected"
-            echo "has_data=true" >> $GITHUB_OUTPUT
-            echo "profile_count=$profile_count" >> $GITHUB_OUTPUT
-            echo "permset_count=$permset_count" >> $GITHUB_OUTPUT
-            echo "object_perms_count=$object_perms_count" >> $GITHUB_OUTPUT
-          else
-            echo "❌ No security data found"
-            echo "has_data=false" >> $GITHUB_OUTPUT
+            profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo 0)
+            permset_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo 0)
+            object_perms_count=$(jq -r '.result.records | length' "$DATA_DIR/profile_object_permissions.json" 2>/dev/null || echo 0)
+            assignments_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_set_assignments.json" 2>/dev/null || echo 0)
+            critical_count=$(jq -r '.result.records | length' "$DATA_DIR/critical_object_access.json" 2>/dev/null || echo 0)
+            
+            echo "📊 Data Collection Summary:"
+            echo "  - Profiles: $profile_count"
+            echo "  - Permission Sets: $permset_count"
+            echo "  - Object Permissions: $object_perms_count"
+            echo "  - Active Assignments: $assignments_count"
+            echo "  - Critical Object Permissions: $critical_count"
+            
+            total=$((profile_count + permset_count + object_perms_count))
+            
+            if [ "$total" -gt 0 ]; then
+              echo "✅ Found security configuration data"
+              echo "has_data=true" >> $GITHUB_OUTPUT
+              echo "profile_count=$profile_count" >> $GITHUB_OUTPUT
+              echo "permset_count=$permset_count" >> $GITHUB_OUTPUT
+              echo "object_perms_count=$object_perms_count" >> $GITHUB_OUTPUT
+            else
+              echo "❌ No security data found"
+              echo "has_data=false" >> $GITHUB_OUTPUT
+            fi
 
       - name: Upload Security Data
         uses: actions/upload-artifact@v4
