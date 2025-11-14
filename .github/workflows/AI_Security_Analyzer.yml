@@ -56,8 +56,8 @@ jobs:
           declare -A QUERIES=(
             ["profiles"]="SELECT Id, Name, UserLicense.Name, Description FROM Profile"
             ["permission_sets"]="SELECT Id, Name, Label, Description, IsOwnedByProfile FROM PermissionSet"
-            ["profile_object_permissions"]="SELECT Parent.Profile.Name, SobjectType, PermissionsRead, PermissionsEdit, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.Profile.Name != null"
-            ["permset_object_permissions"]="SELECT Parent.Name, SobjectType, PermissionsRead, PermissionsEdit, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = false"
+            ["profile_object_permissions"]="SELECT Parent.Profile.Name, SobjectType, PermissionsRead, PermissionsEdit, PermissionsDelete, PermissionsModifyAllRecords, PermissionsViewAllRecords FROM ObjectPermissions WHERE Parent.Profile.Name != null"
+            ["permset_object_permissions"]="SELECT Parent.Name, SobjectType, PermissionsRead, PermissionsEdit, PermissionsDelete, PermissionsModifyAllRecords, PermissionsViewAllRecords FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = false"
             ["permission_set_assignments"]="SELECT Assignee.Name, PermissionSet.Name FROM PermissionSetAssignment WHERE Assignee.IsActive = true"
           )
 
@@ -158,26 +158,75 @@ jobs:
           prompt=$(cat <<'EOF'
           You are a Salesforce Security Architect.
           
-          Perform a **comprehensive security audit** using ONLY the Salesforce metadata
-          provided in JSON below. Do not fabricate or assume anything that is not in
-          the dataset.
+          Your task is to perform a **strictly evidence-based**, **comprehensive security audit**
+          using ONLY the Salesforce metadata provided in the JSON.
           
-          Provide a structured Markdown report that includes:
+          ❗ IMPORTANT RULES:
+          - DO NOT hallucinate.
+          - DO NOT mention password policies, file sharing, login hours, unused users,
+            or system settings — they are NOT in the dataset.
+          - ONLY analyze the metadata provided.
           
-          # Security Audit Report
-          1. **Critical Security Risks**
-          2. **High-risk Profiles & Justification**
-          3. **Permission Set Evaluation**
-          4. **Object-level Access Concerns**
-          5. **Assignment Misconfigurations**
-          6. **Least Privilege Violations**
-          7. **Compliance Concerns (HIPAA, SOX, GDPR — based on access patterns)**
-          8. **Top 10 Recommended Fixes** (ranked)
-          9. **Summary & Next Steps**
+          The JSON contains:
+          - Profiles
+          - Permission Sets
+          - Profile Object Permissions
+          - Permission Set Object Permissions
+          - Permission Set Assignments
           
-          Your analysis must be strictly fact-based.
+          You MUST produce all of the following sections:
           
-          JSON DATA:
+          # 1. Unused Permission Sets
+          Definition: A permission set is unused if it has **zero entries** in permission_set_assignments.
+          For each unused permission set include:
+          - Name
+          - Label
+          - Description
+          - Reason: “No active user assignments found”
+          
+          # 2. Profiles With Modify-All or View-All Permissions
+          Using profile_object_permissions:
+          List each profile that has:
+          - PermissionsModifyAllRecords = true
+          - OR PermissionsViewAllRecords = true
+          
+          For each, include:
+          - Profile Name
+          - A list of affected SObjects
+          - Security risk justification
+          
+          # 3. Community / External / Portal Profiles With Excess Permissions
+          A profile is considered "external" if:
+          - Its Name contains: “Community”, “Customer”, “Partner”, “Portal”
+          - OR the UserLicense.Name indicates a community or portal license.
+          
+          For these profiles:
+          List any SObject where they have:
+          - Edit
+          - Delete
+          - Modify-All
+          - View-All
+          
+          Explain why these permissions may be excessive for external users.
+          
+          # 4. Object Access Anomalies
+          Identify:
+          - Profiles with full CRUD on many objects
+          - Permission sets with broad access
+          - Any inconsistent access patterns across profiles or sets
+          
+          # 5. Top Risks (Ranked)
+          Summarize the most critical risks detected.
+          
+          # 6. Remediation Recommendations
+          Based ONLY on the detected issues, provide:
+          - Actionable fixes
+          - Prioritization
+          - No generic boilerplate
+          
+          Output strictly in MARKDOWN.
+          
+          Now process the following JSON data:
           EOF
           )
 
@@ -206,4 +255,4 @@ jobs:
           echo "**Model:** $MODEL_NAME" >> $GITHUB_STEP_SUMMARY
           echo "**Org:** $ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
           echo "- Raw metadata exported" >> $GITHUB_STEP_SUMMARY
-          echo "- AI report generated" >> $GITHUB_STEP_SUMMARY
+          echo "- AI report generated (strict, Salesforce-specific)" >> $GITHUB_STEP_SUMMARY
