@@ -190,6 +190,14 @@ jobs:
       
           # Run Ollama with a prompt file
           ollama run "$MODEL" < analysis/unused_permission_sets.prompt > "$OUTPUT_MD"
+
+      - name: Prepare Partial Report
+        run: |
+          mkdir -p analysis
+          # Create empty partial report if it doesn't exist
+          if [ ! -f analysis/partial_report.md ]; then
+            echo "" > analysis/partial_report.md
+          fi
     
       - name: Generate Executive Summary
         run: |
@@ -217,7 +225,7 @@ jobs:
       
           # Run Ollama
           ollama run "$MODEL" < analysis/executive_summary.prompt > analysis/executive_summary.md
-          
+    
       - name: Compile Final Report
         run: |
           cat analysis/executive_summary.md > security_analysis_report.md
