@@ -185,77 +185,62 @@ jobs:
       - name: Analyze Unused Permission Sets
         run: |
           MODEL="${{ inputs.model_name }}"
-
-          PERMSETS=$(jq -c '.permission_sets' analysis/context.json)
-          ASSIGNMENTS=$(jq -c '.assignments' analysis/context.json)
-
-          cat <<EOF > prompt_unused.txt
-          You are analyzing Salesforce permission sets to identify unused ones.
+      
+          UNUSED_PS=$(jq -c '[.unused_permission_sets[]?]' analysis/context.json)
+      
+          # Escape JSON safely for embedding
+          ESCAPED_UNUSED_PS=$(printf "%s" "$UNUSED_PS" | jq -Rs .)
+      
+          # Build prompt as a single shell-safe variable
+          PROMPT=$(jq -Rs . <<EOF
+          You are analyzing unused Salesforce Permission Sets.
           
-          PERMISSION SETS DATA:
-          $PERMSETS
+          UNUSED PERMISSION SETS (JSON):
+          $ESCAPED_UNUSED_PS
           
-          ASSIGNMENTS DATA:
-          $ASSIGNMENTS
+          TASK:
+          Identify permission sets that are not assigned to any users and may safely be deactivated or removed.
           
-          TASK: Identify permission sets with zero assignments.
+          OUTPUT FORMAT (Markdown):
           
+          ## Unused Permission Sets Analysis
+          
+          | Permission Set | Description | Usage Notes |
+          |----------------|-------------|-------------|
+          Add a concise explanation.
           EOF
-          
-                    ollama run "$MODEL" < prompt_unused.txt > analysis/unused_permsets.md
-                    echo "### Unused Permission Sets" >> analysis/partial_report.md
-                    cat analysis/unused_permsets.md >> analysis/partial_report.md
-                    echo "" >> analysis/partial_report.md
-          
-                - name: Analyze Profiles with Elevated Permissions
-                  run: |
-                    MODEL="${{ inputs.model_name }}"
-          
-                    PROFILES=$(jq -c '.profiles' analysis/context.json)
-                    USER_STATS=$(jq -c '.user_stats' analysis/context.json)
-          
-                    cat <<EOF > prompt_elevated.txt
-          You are analyzing Salesforce profiles for elevated permissions.
-          
-          PROFILES:
-          $PROFILES
-          
-          USER STATISTICS:
-          $USER_STATS
-          
-          Identify profiles with ModifyAllData or ViewAllData.
-          
-          EOF
-
-          ollama run "$MODEL" < prompt_elevated.txt > analysis/elevated_perms.md
-          echo "### Profiles with Elevated Permissions" >> analysis/partial_report.md
-          cat analysis/elevated_perms.md >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-
+          )
+      
+          # Run Ollama (no spinner, no malformed JSON)
+          ollama run "$MODEL" --prompt "$PROMPT" > analysis/unused_permission_sets.md
+      
+          echo "### Unused Permission Sets" >> analysis/partial_report.md
+          cat analysis/unused_permission_sets.md >> analysis/partial_report.md
+  
       - name: Analyze Community Profile Permissions
-        run: |
-          MODEL="${{ inputs.model_name }}"
-
-          PROFILES=$(jq -c '[.profiles[]? | select((.Name // "") | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json)
-          CRITICAL_ACCESS=$(jq -c '[.critical_access[]? | select((.["Parent.Profile.Name"] // "") | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json)
-
-          cat <<EOF > prompt_community.txt
-          You are analyzing Salesforce community profiles.
-          
-          COMMUNITY PROFILES:
-          $PROFILES
-          
-          CRITICAL ACCESS:
-          $CRITICAL_ACCESS
-          
-          Identify risks.
-          
-          EOF
-          
-                    ollama run "$MODEL" < prompt_community.txt > analysis/community_risks.md
-                    echo "### Community Profile Security" >> analysis/partial_report.md
-                    cat analysis/community_risks.md >> analysis/partial_report.md
-                    echo "" >> analysis/partial_report.md
+         run: |
+            MODEL="${{ inputs.model_name }}"
+  
+            PROFILES=$(jq -c '[.profiles[]? | select((.Name // "") | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json)
+            CRITICAL_ACCESS=$(jq -c '[.critical_access[]? | select((.["Parent.Profile.Name"] // "") | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json)
+  
+            cat <<EOF > prompt_community.txt
+            You are analyzing Salesforce community profiles.
+            
+            COMMUNITY PROFILES:
+            $PROFILES
+            
+            CRITICAL ACCESS:
+            $CRITICAL_ACCESS
+            
+            Identify risks.
+            
+            EOF
+            
+                      ollama run "$MODEL" < prompt_community.txt > analysis/community_risks.md
+                      echo "### Community Profile Security" >> analysis/partial_report.md
+                      cat analysis/community_risks.md >> analysis/partial_report.md
+                      echo "" >> analysis/partial_report.md
           
                 - name: Generate Executive Summary
                   run: |
