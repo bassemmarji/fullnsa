@@ -135,17 +135,16 @@ jobs:
             data/critical_object_access.json \
             data/user_stats.json \
             > analysis/context.json
-          # Identify unused permission sets
-          jq -n --slurpfile ctx analysis/context.json \
-            '{ unused_permission_sets: ($ctx[0].permission_sets | map(select(.Id as $id | index($ctx[0].assignments[].PermissionSetId; $id) | not))) }' \
-            > analysis/unused_permission_sets.json
-          # Compute enhanced stats (including unused count and community stats)
+          # Identify unused permission sets (fixed jq: compute assigned IDs array and use index)
+          jq '{ unused_permission_sets: (.permission_sets | map(select( (.assignments | map(.PermissionSetId) | index(.Id)) == null ))) }' \
+            analysis/context.json > analysis/unused_permission_sets.json
+          # Compute enhanced stats (fixed unused count similarly)
           jq '{
             total_profiles: (.profiles | length),
             community_profiles: (.community_profiles | length),
             total_permission_sets: (.permission_sets | length),
             total_assignments: (.assignments | length),
-            unused_permission_sets: (.permission_sets | map(select(.Id as $id | index(.assignments[].PermissionSetId; $id) | not)) | length),
+            unused_permission_sets: ( (.permission_sets | map(select( (.assignments | map(.PermissionSetId) | index(.Id)) == null ))) | length ),
             profiles_with_modify_all: ([.profiles[]? | select(.PermissionsModifyAllData == true)] | length),
             profiles_with_view_all: ([.profiles[]? | select(.PermissionsViewAllData == true)] | length)
           }' analysis/context.json > analysis/stats.json
@@ -176,7 +175,6 @@ jobs:
           |---------------------|-------|-------------|----------------|
           [Rows here]
           EOF
-          
           # Run Ollama
           ollama run "$MODEL" < analysis/unused_permission_sets.prompt > "$OUTPUT_MD"
           # Append to partial report
@@ -204,7 +202,6 @@ jobs:
           |--------------|-------------|--------------|-------------|-----------------|----------------|
           [Rows here]
           EOF
-          
           ollama run "$MODEL" < analysis/community_profiles.prompt > "$OUTPUT_MD"
           # Append to partial report
           cat "$OUTPUT_MD" >> analysis/partial_report.md
@@ -218,7 +215,7 @@ jobs:
           CONTEXT_JSON="analysis/context.json"
           OUTPUT_MD="analysis/overprivileged_profiles.md"
           # Extract overprivileged data (ModifyAll/ViewAll + high user counts)
-          OVERPRIV_DATA=$(jq '{ overpriv_profiles: [.profiles[]? | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)], user_stats: .user_stats }' "$CONTEXT_JSON")
+          OVERPRIV_DATA=$(jq '{ overpriv_profiles: [.profiles[]? | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)], user_stats: .user_stats, critical_access: .critical_access }' "$CONTEXT_JSON")
           OVERPRIV_ESCAPED=$(jq -Rs . <<< "$OVERPRIV_DATA")
           cat <<EOF > analysis/overprivileged_profiles.prompt
           You are analyzing overprivileged Salesforce Profiles.
@@ -231,7 +228,6 @@ jobs:
           |--------------|------------------|--------------|-----------------------|----------------|
           [Rows here]
           EOF
-          
           ollama run "$MODEL" < analysis/overprivileged_profiles.prompt > "$OUTPUT_MD"
           # Append to partial report
           cat "$OUTPUT_MD" >> analysis/partial_report.md
@@ -257,7 +253,6 @@ jobs:
           |---------|--------|-------------------|----------------|----------------|
           [Rows here]
           EOF
-          
           ollama run "$MODEL" < analysis/risky_access.prompt > "$OUTPUT_MD"
           # Append to partial report
           cat "$OUTPUT_MD" >> analysis/partial_report.md
@@ -278,7 +273,6 @@ jobs:
           TASK: Summarize key risks, stats, and recommendations. Highlight community profiles and overprivileged ones if present. Reference detailed sections.
           OUTPUT FORMAT (Markdown): Use ## for sections, bullet points for insights.
           EOF
-          
           ollama run "$MODEL" < analysis/executive_summary.prompt > analysis/executive_summary.md
 
       - name: Compile Final Report
