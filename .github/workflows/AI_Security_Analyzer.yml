@@ -194,11 +194,30 @@ jobs:
       - name: Generate Executive Summary
         run: |
           MODEL="${{ env.MODEL_NAME }}"
-          jq -Rs --slurpfile partial analysis/partial_report.md '{
-            prompt: "You are creating a Salesforce security executive summary.\n\nSTATISTICS:\n" + input + "\n\nDETAILED FINDINGS (escaped markdown):\n" + $partial[0]
-          }' analysis/stats.json > analysis/executive_summary.json.request
-          ollama run -f analysis/executive_summary.json.request > analysis/executive_summary.md
-
+          
+          # Escape JSON stats
+          STATS=$(jq -Rs . analysis/stats.json)
+      
+          # Escape Markdown safely
+          PARTIAL=$(jq -Rs . < analysis/partial_report.md)
+      
+          # Build prompt
+          cat <<EOF > analysis/executive_summary.prompt
+          You are creating a Salesforce security executive summary.
+          
+          STATISTICS:
+          $STATS
+          
+          DETAILED FINDINGS (escaped markdown):
+          $PARTIAL
+          
+          TASK:
+          Summarize the findings in a concise executive report in Markdown format.
+          EOF
+      
+          # Run Ollama
+          ollama run "$MODEL" < analysis/executive_summary.prompt > analysis/executive_summary.md
+          
       - name: Compile Final Report
         run: |
           cat analysis/executive_summary.md > security_analysis_report.md
