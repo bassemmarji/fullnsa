@@ -202,59 +202,31 @@ jobs:
             profiles_with_modify_all: ([.profiles[]? | select(.PermissionsModifyAllData == true)] | length),
             profiles_with_view_all: ([.profiles[]? | select(.PermissionsViewAllData == true)] | length)
           }' analysis/context.json > analysis/stats.json
-
+          
       - name: Analyze Unused Permission Sets
         run: |
           set -euo pipefail
-          MODEL="$MODEL_NAME"
-
-          # Compute unused permission sets by comparing permission_sets[].Name to assignments[]."PermissionSet.Name"
-          UNUSED_PS=$(jq -c '
-            # build array of assignment permission set names (handles nulls)
-            ( [ .assignments[]? | ( .["PermissionSet.Name"] // .PermissionSet?.Name // empty ) ] ) as $assigned |
-            [ .permission_sets[]? |
-              # skip permission sets that are owned by profile
-              select((.IsOwnedByProfile // false) == false) |
-              # include permission set if its Name is not in $assigned
-              select( ($assigned | index(.Name)) | not )
-            ]
-          ' analysis/context.json)
-
-          # ensure we always have a JSON string (empty array when none)
-          UNUSED_PS="${UNUSED_PS:-[]}"
-
-          # Escape for safe embedding in prompt
-          ESCAPED_UNUSED_PS=$(printf "%s" "$UNUSED_PS" | jq -Rs .)
-
-          # Build safe single-string prompt (no temporary JSON files required)
-          PROMPT=$(jq -Rs . <<'EOF'
-          You are analyzing unused Salesforce Permission Sets.
+      
+          # This handles ANY of the following structures:
+          # 1) { "result": { "records": [ ... ] } }
+          # 2) { "records": [ ... ] }
+          # 3) [ ... ]   (array root)
+          # 4) nested or merged context JSON
+      
+          jq '
+            # Normalize all possible roots to a stream of records
+            ( .result.records? // .records? // .[]? // empty ) 
+            | select(type == "object")
+            | {
+                name: (.Name // .name // .DeveloperName // "UNKNOWN"),
+                assigned: (
+                  (.Assignments // .assignments // [] )
+                  | length
+                )
+              }
+            | select(.assigned == 0)
+          ' analysis/context.json > analysis/unused_permissionsets.json
           
-          UNUSED PERMISSION SETS (JSON):
-          PLACEHOLDER_UNUSED_PS
-          
-          TASK:
-          Identify permission sets that are not assigned to any users and may safely be deactivated or removed.
-          
-          OUTPUT FORMAT (Markdown):
-          
-          ## Unused Permission Sets Analysis
-          
-          | Permission Set | Label | Created By | Created Date | Notes |
-          |----------------|-------|------------|--------------|-------|
-          Provide concise explanation for each unused permission set and a final summary count.
-          EOF
-          )
-
-          # replace placeholder in PROMPT with the escaped JSON (safe string replacement)
-          PROMPT=$(printf "%s" "$PROMPT" | sed "s/PLACEHOLDER_UNUSED_PS/$(printf '%s' "$ESCAPED_UNUSED_PS" | sed 's/[&/]/\\&/g')/")
-
-          # Run Ollama in deterministic mode passing a prompt string (avoid -f JSON files)
-          ollama run "$MODEL" --prompt "$PROMPT" > analysis/unused_permission_sets.md 2>/dev/null || echo "Ollama run failed for unused permission sets" > analysis/unused_permission_sets.md
-
-          echo "### Unused Permission Sets" >> analysis/partial_report.md
-          cat analysis/unused_permission_sets.md >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
 
       - name: Analyze Profiles with Elevated Permissions
         run: |
