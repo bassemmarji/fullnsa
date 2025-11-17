@@ -163,22 +163,34 @@ jobs:
       - name: Analyze Unused Permission Sets
         run: |
           MODEL="${{ env.MODEL_NAME }}"
-          PROMPT_FILE=analysis/unused_permission_sets.prompt
-          jq -Rs '{
-            prompt: "You are analyzing unused Salesforce Permission Sets.\n\nUNUSED PERMISSION SETS (JSON):\n" + . + "\n\nTASK:\nIdentify permission sets that are not assigned to any users and may safely be deactivated or removed.\n\nOUTPUT FORMAT (Markdown):\n## Unused Permission Sets Analysis\n| Permission Set | Description | Usage Notes |\n|----------------|-------------|-------------|\nAdd a concise explanation."
-          }' analysis/unused_permission_sets.json > analysis/unused_permission_sets.json.request
-          ollama run -f analysis/unused_permission_sets.json.request > analysis/unused_permission_sets.md
-
-      - name: Analyze Community Profiles
-        run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          jq -c '[.profiles[]? | select((.Name // "") | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json > analysis/community_profiles.json
-          jq -c '[.critical_access[]? | select((.["Parent.ProfileId"] // "") | IN (map(.Id) | .[]))]' analysis/context.json > analysis/community_access.json
-          jq -Rs '{
-            prompt: "You are analyzing Salesforce community profiles.\n\nCOMMUNITY PROFILES:\n" + . + "\n\nCRITICAL ACCESS:\n" + input + "\n\nIdentify risks and summarize in Markdown."
-          }' analysis/community_profiles.json analysis/community_access.json > analysis/community_risks.json.request
-          ollama run -f analysis/community_risks.json.request > analysis/community_risks.md
-
+          UNUSED_PS_JSON="analysis/unused_permission_sets.json"
+          OUTPUT_MD="analysis/unused_permission_sets.md"
+      
+          # Read and escape JSON safely
+          UNUSED_PS_ESCAPED=$(jq -Rs . < "$UNUSED_PS_JSON")
+      
+          # Create a proper Ollama prompt file
+          cat <<EOF > analysis/unused_permission_sets.prompt
+          You are analyzing unused Salesforce Permission Sets.
+          
+          UNUSED PERMISSION SETS (JSON):
+          $UNUSED_PS_ESCAPED
+          
+          TASK:
+          Identify permission sets that are not assigned to any users and may safely be deactivated or removed.
+          
+          OUTPUT FORMAT (Markdown):
+          
+          ## Unused Permission Sets Analysis
+          
+          | Permission Set | Description | Usage Notes |
+          |----------------|-------------|-------------|
+          Add a concise explanation.
+          EOF
+      
+          # Run Ollama with a prompt file
+          ollama run "$MODEL" < analysis/unused_permission_sets.prompt > "$OUTPUT_MD"
+    
       - name: Generate Executive Summary
         run: |
           MODEL="${{ env.MODEL_NAME }}"
