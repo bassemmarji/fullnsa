@@ -16,6 +16,13 @@ on:
           - gemma2:27b
           - mistral-large
         default: llama3:latest
+      analysis_depth:
+        type: choice
+        description: "Analysis depth"
+        options:
+          - quick
+          - comprehensive
+        default: comprehensive
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
@@ -58,11 +65,11 @@ jobs:
 
       - name: Query Permission Sets
         run: |
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, Label, Description, IsOwnedByProfile, CreatedBy.Name FROM PermissionSet ORDER BY Name" --json > "$DATA_DIR/permission_sets.json"
+          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, Label, Description, IsOwnedByProfile, CreatedBy.Name, CreatedDate, LastModifiedDate FROM PermissionSet ORDER BY Name" --json > "$DATA_DIR/permission_sets.json"
 
       - name: Query Permission Set Assignments
         run: |
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Assignee.Name, Assignee.Username, Assignee.Profile.Name, Assignee.IsActive, PermissionSet.Name FROM PermissionSetAssignment WHERE Assignee.IsActive = true" --json > "$DATA_DIR/permission_set_assignments.json"
+          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Assignee.Name, Assignee.Username, Assignee.Profile.Name, Assignee.IsActive, PermissionSet.Name, PermissionSet.Label FROM PermissionSetAssignment WHERE Assignee.IsActive = true" --json > "$DATA_DIR/permission_set_assignments.json"
 
       - name: Query Object Permissions (Profiles)
         run: |
@@ -76,6 +83,10 @@ jobs:
         run: |
           CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity','User','Profile','PermissionSet','PermissionSetAssignment','PermissionSetGroup')"
           sf data query --target-org $ORG_ALIAS --query "SELECT Parent.Profile.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.Profile.Name != null AND SObjectType IN $CRITICAL_OBJECTS ORDER BY Parent.Profile.Name, SObjectType" --json > "$DATA_DIR/critical_object_access.json"
+
+      - name: Query User Statistics
+        run: |
+          sf data query --target-org $ORG_ALIAS --query "SELECT Profile.Name, COUNT(Id) UserCount FROM User WHERE IsActive = true GROUP BY Profile.Name" --json > "$DATA_DIR/user_stats.json"
 
       - name: Validate Collected Data
         id: check-data
@@ -140,55 +151,265 @@ jobs:
       - name: Download Model
         run: |
           MODEL="${{ inputs.model_name }}"
+          echo "Downloading model: $MODEL"
           ollama pull "$MODEL"
+          ollama list
 
       - name: Prepare Analysis Context
         run: |
           mkdir -p analysis
+          
+          # Combine all data with statistics
           jq -s '{
             profiles: .[0].result.records,
             permission_sets: .[1].result.records,
             assignments: .[2].result.records,
             profile_object_permissions: .[3].result.records,
             permset_object_permissions: .[4].result.records,
-            critical_access: .[5].result.records
-          }' data/profiles.json data/permission_sets.json data/permission_set_assignments.json data/profile_object_permissions.json data/permset_object_permissions.json data/critical_object_access.json > analysis/context.json
+            critical_access: .[5].result.records,
+            user_stats: .[6].result.records
+          }' data/profiles.json \
+             data/permission_sets.json \
+             data/permission_set_assignments.json \
+             data/profile_object_permissions.json \
+             data/permset_object_permissions.json \
+             data/critical_object_access.json \
+             data/user_stats.json > analysis/context.json
+          
+          # Create summary statistics
+          jq '{
+            total_profiles: (.profiles | length),
+            total_permission_sets: (.permission_sets | length),
+            total_assignments: (.assignments | length),
+            profiles_with_modify_all: ([.profiles[] | select(.PermissionsModifyAllData == true)] | length),
+            profiles_with_view_all: ([.profiles[] | select(.PermissionsViewAllData == true)] | length)
+          }' analysis/context.json > analysis/stats.json
+          
+          echo "📊 Analysis Context Summary:"
+          cat analysis/stats.json
 
-      - name: Run AI Security Analysis
+      - name: Analyze Unused Permission Sets
         run: |
           MODEL="${{ inputs.model_name }}"
-          REPORT_FILE="security_analysis_report.md"
-
-          cat <<EOF > prompt.txt
-          You are a Salesforce Security Architect performing a COMPREHENSIVE and strictly evidence-based security audit.
           
-          ❌ ZERO HALLUCINATION MODE: Only report findings present in the data.
+          # Extract permission sets and assignments
+          PERMSETS=$(jq -c '.permission_sets' analysis/context.json)
+          ASSIGNMENTS=$(jq -c '.assignments' analysis/context.json)
           
-          Data provided:
-          - Profiles
-          - Permission Sets
-          - Permission Set Assignments
-          - Profile Object Permissions
-          - Permission Set Object Permissions
-          - Critical Object Access
+          cat <<EOF > prompt_unused.txt
+          You are analyzing Salesforce permission sets to identify unused ones.
           
-          Analysis required:
-          1. List unused permission sets
-          2. Identify profiles with Modify All / View All permissions
-          3. Check community profiles for excess permissions
-          4. Summarize object-level permissions per profile and permission set
-          5. Generate actionable recommendations based only on actual data
+          PERMISSION SETS DATA:
+          $PERMSETS
           
-          Output format: Markdown report with sections:
-          - Executive Summary
-          - Security Risks
-          - Recommendations
-          - Profiles with Modify-All / View-All
-          - Unused Permission Sets
-          - Community Profiles with Excess Permissions
+          ASSIGNMENTS DATA:
+          $ASSIGNMENTS
+          
+          TASK: Identify permission sets that have ZERO assignments (not used by any users).
+          
+          INSTRUCTIONS:
+          1. Compare permission set Names/Labels in both datasets
+          2. List only permission sets with NO matches in assignments
+          3. Exclude profile-related permission sets (IsOwnedByProfile = true)
+          
+          OUTPUT FORMAT (Markdown):
+          ## Unused Permission Sets
+          
+          | Permission Set Name | Label | Created By | Created Date |
+          |---------------------|-------|------------|--------------|
+          | [actual name] | [actual label] | [creator] | [date] |
+          
+          **Count**: [number]
+          
+          CRITICAL: Only report permission sets that actually exist in the data with zero assignments.
+          If all permission sets are in use, respond with: "All permission sets are currently assigned."
           EOF
+          
+          ollama run "$MODEL" < prompt_unused.txt > analysis/unused_permsets.md
+          
+          echo "### Unused Permission Sets Analysis" >> analysis/partial_report.md
+          cat analysis/unused_permsets.md >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
 
-          ollama run "$MODEL" < prompt.txt > "$REPORT_FILE"
+      - name: Analyze Profiles with Elevated Permissions
+        run: |
+          MODEL="${{ inputs.model_name }}"
+          
+          PROFILES=$(jq -c '.profiles' analysis/context.json)
+          USER_STATS=$(jq -c '.user_stats' analysis/context.json)
+          
+          cat <<EOF > prompt_elevated.txt
+          You are analyzing Salesforce profiles for elevated permissions.
+          
+          PROFILES DATA:
+          $PROFILES
+          
+          USER STATISTICS:
+          $USER_STATS
+          
+          TASK: Identify profiles with PermissionsModifyAllData = true OR PermissionsViewAllData = true
+          
+          OUTPUT FORMAT (Markdown):
+          ## Profiles with Elevated Permissions
+          
+          ### 🔴 Critical Risk - Modify All Data
+          | Profile Name | License Type | Active Users | Risk Level |
+          |--------------|--------------|--------------|------------|
+          | [actual name] | [license] | [count] | HIGH/MEDIUM |
+          
+          ### 🟡 High Risk - View All Data  
+          | Profile Name | License Type | Active Users | Risk Level |
+          |--------------|--------------|--------------|------------|
+          | [actual name] | [license] | [count] | MEDIUM/LOW |
+          
+          **Recommendations**:
+          - List specific actions for each high-risk profile
+          
+          CRITICAL: Only report profiles that actually have these permissions set to true.
+          If no profiles have elevated permissions, respond with: "No profiles with Modify All or View All permissions detected."
+          EOF
+          
+          ollama run "$MODEL" < prompt_elevated.txt > analysis/elevated_perms.md
+          
+          echo "### Profiles with Elevated Permissions" >> analysis/partial_report.md
+          cat analysis/elevated_perms.md >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+
+      - name: Analyze Community Profile Permissions
+        run: |
+          MODEL="${{ inputs.model_name }}"
+          
+          PROFILES=$(jq -c '[.profiles[] | select(.Name | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json)
+          CRITICAL_ACCESS=$(jq -c '[.critical_access[] | select(.["Parent.Profile.Name"] | test("Community|Customer|Partner|Guest"; "i"))]' analysis/context.json)
+          
+          cat <<EOF > prompt_community.txt
+          You are analyzing Salesforce community profiles for security risks.
+          
+          COMMUNITY PROFILES:
+          $PROFILES
+          
+          CRITICAL OBJECT ACCESS:
+          $CRITICAL_ACCESS
+          
+          TASK: Identify community profiles with access to sensitive objects (User, Profile, PermissionSet, etc.)
+          
+          OUTPUT FORMAT (Markdown):
+          ## Community Profile Security Review
+          
+          | Profile Name | Object Access | Permissions | Risk Assessment |
+          |--------------|---------------|-------------|-----------------|
+          | [name] | [object] | [R/C/E/D] | [risk level + explanation] |
+          
+          **Risk Definitions**:
+          - 🔴 HIGH: Write access to User/Profile/PermissionSet objects
+          - 🟡 MEDIUM: Read access to sensitive admin objects
+          - 🟢 LOW: Standard business object access
+          
+          CRITICAL: Only report actual findings from the data. If no community profiles exist or they have appropriate permissions, state that clearly.
+          EOF
+          
+          ollama run "$MODEL" < prompt_community.txt > analysis/community_risks.md
+          
+          echo "### Community Profile Security" >> analysis/partial_report.md
+          cat analysis/community_risks.md >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+
+      - name: Generate Executive Summary
+        run: |
+          MODEL="${{ inputs.model_name }}"
+          
+          STATS=$(cat analysis/stats.json)
+          PARTIAL_FINDINGS=$(cat analysis/partial_report.md)
+          
+          cat <<EOF > prompt_summary.txt
+          You are creating an executive summary for a Salesforce security audit.
+          
+          STATISTICS:
+          $STATS
+          
+          DETAILED FINDINGS:
+          $PARTIAL_FINDINGS
+          
+          TASK: Create a concise executive summary and risk-prioritized recommendations.
+          
+          OUTPUT FORMAT (Markdown):
+          # 🔒 Salesforce Security Analysis Report
+          **Generated**: $(date -u +"%Y-%m-%d %H:%M UTC")
+          **Organization**: ${{ inputs.org_alias }}
+          **Model**: ${{ inputs.model_name }}
+          
+          ---
+          
+          ## Executive Summary
+          
+          [2-3 paragraph summary of overall security posture and key findings]
+          
+          ### Key Metrics
+          - Total Profiles: [number]
+          - Total Permission Sets: [number]
+          - Elevated Permission Profiles: [number]
+          - Unused Permission Sets: [number]
+          - High-Risk Community Profiles: [number]
+          
+          ### Risk Score: [LOW/MEDIUM/HIGH/CRITICAL]
+          [Brief justification]
+          
+          ---
+          
+          ## 🎯 Prioritized Recommendations
+          
+          ### Priority 1 - Immediate Action Required
+          1. [Specific action based on findings]
+          2. [Another specific action]
+          
+          ### Priority 2 - Short Term (30 days)
+          1. [Action item]
+          
+          ### Priority 3 - Long Term (90 days)
+          1. [Strategic improvement]
+          
+          ---
+          
+          CRITICAL: Base recommendations ONLY on actual findings. Be specific and actionable.
+          EOF
+          
+          ollama run "$MODEL" < prompt_summary.txt > analysis/executive_summary.md
+
+      - name: Compile Final Report
+        run: |
+          cat analysis/executive_summary.md > security_analysis_report.md
+          echo "" >> security_analysis_report.md
+          echo "---" >> security_analysis_report.md
+          echo "" >> security_analysis_report.md
+          cat analysis/partial_report.md >> security_analysis_report.md
+          
+          echo "" >> security_analysis_report.md
+          echo "---" >> security_analysis_report.md
+          echo "## Appendix: Raw Data Summary" >> security_analysis_report.md
+          echo '```json' >> security_analysis_report.md
+          cat analysis/stats.json >> security_analysis_report.md
+          echo '```' >> security_analysis_report.md
+          
+          echo "✅ Final report generated"
+          wc -l security_analysis_report.md
+
+      - name: Validate Report Quality
+        run: |
+          # Check if report contains placeholder text
+          if grep -q "\[insert" security_analysis_report.md; then
+            echo "⚠️  WARNING: Report contains placeholder text"
+            grep "\[insert" security_analysis_report.md || true
+          else
+            echo "✅ Report validation passed"
+          fi
+          
+          # Check minimum length
+          WORD_COUNT=$(wc -w < security_analysis_report.md)
+          if [ "$WORD_COUNT" -lt 200 ]; then
+            echo "⚠️  WARNING: Report seems too short ($WORD_COUNT words)"
+          else
+            echo "✅ Report has adequate content ($WORD_COUNT words)"
+          fi
 
       - name: Upload Analysis Artifacts
         uses: actions/upload-artifact@v4
@@ -202,4 +423,20 @@ jobs:
       - name: Post Analysis Summary
         run: |
           echo "## 🔒 Salesforce Security Analysis Complete" >> $GITHUB_STEP_SUMMARY
-          echo "- Analysis report saved as security_analysis_report.md" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary Statistics" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat analysis/stats.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "- 📄 security_analysis_report.md - Full analysis report" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 analysis/stats.json - Security metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 analysis/context.json - Raw data context" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Preview first section of report
+          echo "### Report Preview" >> $GITHUB_STEP_SUMMARY
+          echo '```markdown' >> $GITHUB_STEP_SUMMARY
+          head -n 30 security_analysis_report.md >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
