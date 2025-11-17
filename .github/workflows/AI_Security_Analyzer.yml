@@ -157,16 +157,16 @@ jobs:
           UNUSED_PS_ESCAPED=$(jq -Rs . < "$UNUSED_PS_JSON")
           # Prompt (always comprehensive)
           cat <<EOF > analysis/unused_permission_sets.prompt
-You are analyzing unused Salesforce Permission Sets.
-UNUSED PERMISSION SETS (JSON): $UNUSED_PS_ESCAPED
-DEPTH: comprehensive
-TASK: If unused sets exist, list them in a table with recommendations (e.g., deactivate if safe). If none, note "No unused sets found - good hygiene." For comprehensive depth, suggest audit queries.
-OUTPUT FORMAT (Markdown):
-### Unused Permission Sets
-| Permission Set Name | Label | Description | Recommendation |
-|---------------------|-------|-------------|----------------|
-[Rows here]
-EOF
+          You are analyzing unused Salesforce Permission Sets.
+          UNUSED PERMISSION SETS (JSON): $UNUSED_PS_ESCAPED
+          DEPTH: comprehensive
+          TASK: If unused sets exist, list them in a table with recommendations (e.g., deactivate if safe). If none, note "No unused sets found - good hygiene." For comprehensive depth, suggest audit queries.
+          OUTPUT FORMAT (Markdown):
+          ### Unused Permission Sets
+          | Permission Set Name | Label | Description | Recommendation |
+          |---------------------|-------|-------------|----------------|
+          [Rows here]
+          EOF
           # Run Ollama
           ollama run "$MODEL" < analysis/unused_permission_sets.prompt > "$OUTPUT_MD"
           # Append to partial report
@@ -183,16 +183,16 @@ EOF
           COMMUNITY_DATA=$(jq '{ community_profiles: .community_profiles // [], assignments: .assignments // [], user_stats: .user_stats // [] }' "$CONTEXT_JSON")
           COMMUNITY_ESCAPED=$(jq -Rs . <<< "$COMMUNITY_DATA")
           cat <<EOF > analysis/community_profiles.prompt
-You are analyzing Salesforce Community Profiles (e.g., for Experience Cloud).
-COMMUNITY DATA (JSON): $COMMUNITY_ESCAPED
-DEPTH: comprehensive
-TASK: Review community profiles for assignments, user counts, and permissions. Flag if they have excessive access (e.g., ModifyAllData). Recommend portal-specific hardening like guest user limits.
-OUTPUT FORMAT (Markdown):
-### Community Profiles Analysis
-| Profile Name | UserLicense | Active Users | Assignments | Key Permissions | Recommendation |
-|--------------|-------------|--------------|-------------|-----------------|----------------|
-[Rows here]
-EOF
+          You are analyzing Salesforce Community Profiles (e.g., for Experience Cloud).
+          COMMUNITY DATA (JSON): $COMMUNITY_ESCAPED
+          DEPTH: comprehensive
+          TASK: Review community profiles for assignments, user counts, and permissions. Flag if they have excessive access (e.g., ModifyAllData). Recommend portal-specific hardening like guest user limits.
+          OUTPUT FORMAT (Markdown):
+          ### Community Profiles Analysis
+          | Profile Name | UserLicense | Active Users | Assignments | Key Permissions | Recommendation |
+          |--------------|-------------|--------------|-------------|-----------------|----------------|
+          [Rows here]
+          EOF
           ollama run "$MODEL" < analysis/community_profiles.prompt > "$OUTPUT_MD"
           # Append to partial report
           cat "$OUTPUT_MD" >> analysis/partial_report.md
@@ -208,16 +208,16 @@ EOF
           OVERPRIV_DATA=$(jq '{ overpriv_profiles: [.profiles[]? | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)], user_stats: (.user_stats // []), critical_access: (.critical_access // []) }' "$CONTEXT_JSON")
           OVERPRIV_ESCAPED=$(jq -Rs . <<< "$OVERPRIV_DATA")
           cat <<EOF > analysis/overprivileged_profiles.prompt
-You are analyzing overprivileged Salesforce Profiles.
-OVERPRIVILEGED DATA (JSON): $OVERPRIV_ESCAPED
-DEPTH: comprehensive
-TASK: List profiles with system-level perms (ModifyAllData, ViewAllData). Include user counts and object perms on critical objects. Recommend demotion to role-based access or perm sets.
-OUTPUT FORMAT (Markdown):
-### Overprivileged Profiles
-| Profile Name | Key System Perms | Active Users | Critical Object Risks | Recommendation |
-|--------------|------------------|--------------|-----------------------|----------------|
-[Rows here]
-EOF
+          You are analyzing overprivileged Salesforce Profiles.
+          OVERPRIVILEGED DATA (JSON): $OVERPRIV_ESCAPED
+          DEPTH: comprehensive
+          TASK: List profiles with system-level perms (ModifyAllData, ViewAllData). Include user counts and object perms on critical objects. Recommend demotion to role-based access or perm sets.
+          OUTPUT FORMAT (Markdown):
+          ### Overprivileged Profiles
+          | Profile Name | Key System Perms | Active Users | Critical Object Risks | Recommendation |
+          |--------------|------------------|--------------|-----------------------|----------------|
+          [Rows here]
+          EOF
           ollama run "$MODEL" < analysis/overprivileged_profiles.prompt > "$OUTPUT_MD"
           # Append to partial report
           cat "$OUTPUT_MD" >> analysis/partial_report.md
@@ -233,16 +233,16 @@ EOF
           RISKY_ACCESS=$(jq '{ risky: (.critical_access // [] | map(select(.PermissionsModifyAllRecords == true or .PermissionsViewAllRecords == true))) }' "$CRITICAL_JSON")
           RISKY_ESCAPED=$(jq -Rs . <<< "$RISKY_ACCESS")
           cat <<EOF > analysis/risky_access.prompt
-You are analyzing risky access on critical Salesforce objects.
-RISKY ACCESS (JSON): $RISKY_ESCAPED
-DEPTH: comprehensive
-TASK: Identify profiles with excessive perms. Recommend least-privilege fixes.
-OUTPUT FORMAT (Markdown):
-### Risky Critical Object Access
-| Profile | Object | Risky Permissions | Users Affected | Recommendation |
-|---------|--------|-------------------|----------------|----------------|
-[Rows here]
-EOF
+          You are analyzing risky access on critical Salesforce objects.
+          RISKY ACCESS (JSON): $RISKY_ESCAPED
+          DEPTH: comprehensive
+          TASK: Identify profiles with excessive perms. Recommend least-privilege fixes.
+          OUTPUT FORMAT (Markdown):
+          ### Risky Critical Object Access
+          | Profile | Object | Risky Permissions | Users Affected | Recommendation |
+          |---------|--------|-------------------|----------------|----------------|
+          [Rows here]
+          EOF
           ollama run "$MODEL" < analysis/risky_access.prompt > "$OUTPUT_MD"
           # Append to partial report
           cat "$OUTPUT_MD" >> analysis/partial_report.md
@@ -256,13 +256,13 @@ EOF
           STATS_ESCAPED=$(jq -Rs . analysis/stats.json)
           PARTIAL_ESCAPED=$(jq -Rs . < analysis/partial_report.md)
           cat <<EOF > analysis/executive_summary.prompt
-You are creating a Salesforce security executive summary.
-STATISTICS: $STATS_ESCAPED
-DETAILED FINDINGS (Markdown): $PARTIAL_ESCAPED
-DEPTH: comprehensive
-TASK: Summarize key risks, stats, and recommendations. Highlight community profiles and overprivileged ones if present. Reference detailed sections.
-OUTPUT FORMAT (Markdown): Use ## for sections, bullet points for insights.
-EOF
+          You are creating a Salesforce security executive summary.
+          STATISTICS: $STATS_ESCAPED
+          DETAILED FINDINGS (Markdown): $PARTIAL_ESCAPED
+          DEPTH: comprehensive
+          TASK: Summarize key risks, stats, and recommendations. Highlight community profiles and overprivileged ones if present. Reference detailed sections.
+          OUTPUT FORMAT (Markdown): Use ## for sections, bullet points for insights.
+          EOF
           ollama run "$MODEL" < analysis/executive_summary.prompt > analysis/executive_summary.md
 
       - name: Compile Final Report
