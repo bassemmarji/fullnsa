@@ -1,5 +1,4 @@
 name: AI Security & Permissions Analyzer
-
 on:
   workflow_dispatch:
     inputs:
@@ -39,7 +38,6 @@ jobs:
       profile_count: ${{ steps.check-data.outputs.profile_count }}
       permset_count: ${{ steps.check-data.outputs.permset_count }}
       object_perms_count: ${{ steps.check-data.outputs.object_perms_count }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,8 +60,10 @@ jobs:
       - name: Collect Salesforce Data
         run: |
           mkdir -p "$DATA_DIR"
-          # Profiles
+          # Profiles (all)
           sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData FROM Profile ORDER BY Name" --json > "$DATA_DIR/profiles.json"
+          # Community Profiles
+          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData FROM Profile WHERE UserLicense.Name LIKE '%Community%' ORDER BY Name" --json > "$DATA_DIR/community_profiles.json"
           # Permission Sets
           sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, Label, Description, IsOwnedByProfile FROM PermissionSet ORDER BY Name" --json > "$DATA_DIR/permission_sets.json"
           # Permission Set Assignments
@@ -72,10 +72,10 @@ jobs:
           sf data query --target-org $ORG_ALIAS --query "SELECT Id, Parent.ProfileId, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId != null" --json > "$DATA_DIR/profile_object_permissions.json"
           # Object Permissions (Permission Sets)
           sf data query --target-org $ORG_ALIAS --query "SELECT Id, ParentId, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = false" --json > "$DATA_DIR/permset_object_permissions.json"
-          # Critical Objects
+          # Critical Objects (Profiles only)
           CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity','User','Profile','PermissionSet','PermissionSetAssignment','PermissionSetGroup')"
           sf data query --target-org $ORG_ALIAS --query "SELECT Parent.ProfileId, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId != null AND SObjectType IN $CRITICAL_OBJECTS" --json > "$DATA_DIR/critical_object_access.json"
-          # Active Users
+          # Active Users (with Profile)
           sf data query --target-org $ORG_ALIAS --query "SELECT ProfileId, COUNT(Id) UserCount FROM User WHERE IsActive = true GROUP BY ProfileId" --json > "$DATA_DIR/user_stats.json"
 
       - name: Validate Collected Data
@@ -109,7 +109,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: collect-security-data
     if: needs.collect-security-data.outputs.has_data == 'true'
-
     steps:
       - name: Download Security Artifacts
         uses: actions/download-artifact@v4
@@ -119,24 +118,16 @@ jobs:
 
       - name: Install Ollama
         run: |
-          curl -fsSL https://ollama.com/install.sh -o install.sh
-          chmod +x install.sh && ./install.sh
+          curl -fsSL https://ollama.com/install.sh | sh
           echo "$HOME/.ollama/bin" >> $GITHUB_PATH
-          export PATH="$HOME/.ollama/bin:$PATH"
 
       - name: Prepare Analysis Context
         run: |
           mkdir -p analysis
-          jq -s '{
-            profiles: .[0].result.records,
-            permission_sets: .[1].result.records,
-            assignments: .[2].result.records,
-            profile_object_permissions: .[3].result.records,
-            permset_object_permissions: .[4].result.records,
-            critical_access: .[5].result.records,
-            user_stats: .[6].result.records
-          }' \
+          # Combine all data into context (now including community_profiles)
+          jq -s '{ profiles: .[0].result.records, community_profiles: .[1].result.records, permission_sets: .[2].result.records, assignments: .[3].result.records, profile_object_permissions: .[4].result.records, permset_object_permissions: .[5].result.records, critical_access: .[6].result.records, user_stats: .[7].result.records }' \
             data/profiles.json \
+            data/community_profiles.json \
             data/permission_sets.json \
             data/permission_set_assignments.json \
             data/profile_object_permissions.json \
@@ -144,96 +135,163 @@ jobs:
             data/critical_object_access.json \
             data/user_stats.json \
             > analysis/context.json
-
           # Identify unused permission sets
-          jq -n --slurpfile ps analysis/context.json '
-            {
-              unused_permission_sets: ($ps[0].permission_sets - ($ps[0].assignments | map(.PermissionSetId) ))
-            }' > analysis/unused_permission_sets.json
-
-          # Compute stats
+          jq -n --slurpfile ctx analysis/context.json \
+            '{ unused_permission_sets: ($ctx[0].permission_sets | map(select(.Id as $id | index($ctx[0].assignments[].PermissionSetId; $id) | not))) }' \
+            > analysis/unused_permission_sets.json
+          # Compute enhanced stats (including unused count and community stats)
           jq '{
             total_profiles: (.profiles | length),
+            community_profiles: (.community_profiles | length),
             total_permission_sets: (.permission_sets | length),
             total_assignments: (.assignments | length),
+            unused_permission_sets: (.permission_sets | map(select(.Id as $id | index(.assignments[].PermissionSetId; $id) | not)) | length),
             profiles_with_modify_all: ([.profiles[]? | select(.PermissionsModifyAllData == true)] | length),
             profiles_with_view_all: ([.profiles[]? | select(.PermissionsViewAllData == true)] | length)
           }' analysis/context.json > analysis/stats.json
 
+      - name: Initialize Partial Report
+        run: |
+          mkdir -p analysis
+          echo "# Detailed Security Findings" > analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+
       - name: Analyze Unused Permission Sets
         run: |
           MODEL="${{ env.MODEL_NAME }}"
+          DEPTH="${{ github.event.inputs.analysis_depth }}"
           UNUSED_PS_JSON="analysis/unused_permission_sets.json"
           OUTPUT_MD="analysis/unused_permission_sets.md"
-      
-          # Read and escape JSON safely
+          # Escape JSON for prompt
           UNUSED_PS_ESCAPED=$(jq -Rs . < "$UNUSED_PS_JSON")
-      
-          # Create a proper Ollama prompt file
+          # Prompt with depth-aware instructions
           cat <<EOF > analysis/unused_permission_sets.prompt
           You are analyzing unused Salesforce Permission Sets.
-          
-          UNUSED PERMISSION SETS (JSON):
-          $UNUSED_PS_ESCAPED
-          
-          TASK:
-          Identify permission sets that are not assigned to any users and may safely be deactivated or removed.
-          
+          UNUSED PERMISSION SETS (JSON): $UNUSED_PS_ESCAPED
+          DEPTH: $DEPTH
+          TASK: If unused sets exist, list them in a table with recommendations (e.g., deactivate if safe). If none, note "No unused sets found - good hygiene." For comprehensive depth, suggest audit queries.
           OUTPUT FORMAT (Markdown):
-          
-          ## Unused Permission Sets Analysis
-          
-          | Permission Set | Description | Usage Notes |
-          |----------------|-------------|-------------|
-          Add a concise explanation.
+          ### Unused Permission Sets
+          | Permission Set Name | Label | Description | Recommendation |
+          |---------------------|-------|-------------|----------------|
+          [Rows here]
           EOF
-      
-          # Run Ollama with a prompt file
+          
+          # Run Ollama
           ollama run "$MODEL" < analysis/unused_permission_sets.prompt > "$OUTPUT_MD"
+          # Append to partial report
+          cat "$OUTPUT_MD" >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+          echo "---" >> analysis/partial_report.md
 
-      - name: Prepare Partial Report
+      - name: Analyze Community Profiles
+        if: github.event.inputs.analysis_depth == 'comprehensive'
         run: |
-          mkdir -p analysis
-          # Create empty partial report if it doesn't exist
-          if [ ! -f analysis/partial_report.md ]; then
-            echo "" > analysis/partial_report.md
-          fi
-    
+          MODEL="${{ env.MODEL_NAME }}"
+          CONTEXT_JSON="analysis/context.json"
+          OUTPUT_MD="analysis/community_profiles.md"
+          # Extract community data
+          COMMUNITY_DATA=$(jq '{ community_profiles: .community_profiles, assignments: .assignments, user_stats: .user_stats }' "$CONTEXT_JSON")
+          COMMUNITY_ESCAPED=$(jq -Rs . <<< "$COMMUNITY_DATA")
+          cat <<EOF > analysis/community_profiles.prompt
+          You are analyzing Salesforce Community Profiles (e.g., for Experience Cloud).
+          COMMUNITY DATA (JSON): $COMMUNITY_ESCAPED
+          DEPTH: comprehensive
+          TASK: Review community profiles for assignments, user counts, and permissions. Flag if they have excessive access (e.g., ModifyAllData). Recommend portal-specific hardening like guest user limits.
+          OUTPUT FORMAT (Markdown):
+          ### Community Profiles Analysis
+          | Profile Name | UserLicense | Active Users | Assignments | Key Permissions | Recommendation |
+          |--------------|-------------|--------------|-------------|-----------------|----------------|
+          [Rows here]
+          EOF
+          
+          ollama run "$MODEL" < analysis/community_profiles.prompt > "$OUTPUT_MD"
+          # Append to partial report
+          cat "$OUTPUT_MD" >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+          echo "---" >> analysis/partial_report.md
+
+      - name: Analyze Overprivileged Profiles
+        if: github.event.inputs.analysis_depth == 'comprehensive'
+        run: |
+          MODEL="${{ env.MODEL_NAME }}"
+          CONTEXT_JSON="analysis/context.json"
+          OUTPUT_MD="analysis/overprivileged_profiles.md"
+          # Extract overprivileged data (ModifyAll/ViewAll + high user counts)
+          OVERPRIV_DATA=$(jq '{ overpriv_profiles: [.profiles[]? | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)], user_stats: .user_stats }' "$CONTEXT_JSON")
+          OVERPRIV_ESCAPED=$(jq -Rs . <<< "$OVERPRIV_DATA")
+          cat <<EOF > analysis/overprivileged_profiles.prompt
+          You are analyzing overprivileged Salesforce Profiles.
+          OVERPRIVILEGED DATA (JSON): $OVERPRIV_ESCAPED
+          DEPTH: comprehensive
+          TASK: List profiles with system-level perms (ModifyAllData, ViewAllData). Include user counts and object perms on critical objects. Recommend demotion to role-based access or perm sets.
+          OUTPUT FORMAT (Markdown):
+          ### Overprivileged Profiles
+          | Profile Name | Key System Perms | Active Users | Critical Object Risks | Recommendation |
+          |--------------|------------------|--------------|-----------------------|----------------|
+          [Rows here]
+          EOF
+          
+          ollama run "$MODEL" < analysis/overprivileged_profiles.prompt > "$OUTPUT_MD"
+          # Append to partial report
+          cat "$OUTPUT_MD" >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+          echo "---" >> analysis/partial_report.md
+
+      - name: Analyze Risky Critical Object Access
+        if: github.event.inputs.analysis_depth == 'comprehensive'
+        run: |
+          MODEL="${{ env.MODEL_NAME }}"
+          CRITICAL_JSON="analysis/context.json"
+          OUTPUT_MD="analysis/risky_access.md"
+          # Extract risky access
+          RISKY_ACCESS=$(jq '{ risky: [.critical_access[]? | select(.PermissionsModifyAllRecords == true or .PermissionsViewAllRecords == true)] }' "$CRITICAL_JSON")
+          RISKY_ESCAPED=$(jq -Rs . <<< "$RISKY_ACCESS")
+          cat <<EOF > analysis/risky_access.prompt
+          You are analyzing risky access on critical Salesforce objects.
+          RISKY ACCESS (JSON): $RISKY_ESCAPED
+          TASK: Identify profiles with excessive perms. Recommend least-privilege fixes.
+          OUTPUT FORMAT (Markdown):
+          ### Risky Critical Object Access
+          | Profile | Object | Risky Permissions | Users Affected | Recommendation |
+          |---------|--------|-------------------|----------------|----------------|
+          [Rows here]
+          EOF
+          
+          ollama run "$MODEL" < analysis/risky_access.prompt > "$OUTPUT_MD"
+          # Append to partial report
+          cat "$OUTPUT_MD" >> analysis/partial_report.md
+          echo "" >> analysis/partial_report.md
+          echo "---" >> analysis/partial_report.md
+
       - name: Generate Executive Summary
         run: |
           MODEL="${{ env.MODEL_NAME }}"
-          
-          # Escape JSON stats
-          STATS=$(jq -Rs . analysis/stats.json)
-      
-          # Escape Markdown safely
-          PARTIAL=$(jq -Rs . < analysis/partial_report.md)
-      
-          # Build prompt
+          # Escape stats and partial report
+          STATS_ESCAPED=$(jq -Rs . analysis/stats.json)
+          PARTIAL_ESCAPED=$(jq -Rs . < analysis/partial_report.md)
           cat <<EOF > analysis/executive_summary.prompt
           You are creating a Salesforce security executive summary.
-          
-          STATISTICS:
-          $STATS
-          
-          DETAILED FINDINGS (escaped markdown):
-          $PARTIAL
-          
-          TASK:
-          Summarize the findings in a concise executive report in Markdown format.
+          STATISTICS: $STATS_ESCAPED
+          DETAILED FINDINGS (Markdown): $PARTIAL_ESCAPED
+          DEPTH: ${{ github.event.inputs.analysis_depth }}
+          TASK: Summarize key risks, stats, and recommendations. Highlight community profiles and overprivileged ones if present. Reference detailed sections.
+          OUTPUT FORMAT (Markdown): Use ## for sections, bullet points for insights.
           EOF
-      
-          # Run Ollama
+          
           ollama run "$MODEL" < analysis/executive_summary.prompt > analysis/executive_summary.md
-    
+
       - name: Compile Final Report
         run: |
+          # Start with summary
           cat analysis/executive_summary.md > security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
+          # Add detailed findings
           cat analysis/partial_report.md >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
+          # Appendix
           echo "## Appendix: Raw Statistics" >> security_analysis_report.md
           echo '```json' >> security_analysis_report.md
           cat analysis/stats.json >> security_analysis_report.md
@@ -246,3 +304,4 @@ jobs:
           path: |
             security_analysis_report.md
             analysis/
+          retention-days: 7
