@@ -168,14 +168,25 @@ jobs:
             ORDER BY SObjectType, Field
           " --json > "$DATA_DIR/field_permissions.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/field_permissions.json"
 
-          echo "📌 Collecting OWD (Using EntityDefinition)"
+          echo "📌 Collecting OWD (Via CustomObject)"
           sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT QualifiedApiName,
-            DefaultSharingAccess
-            FROM EntityDefinition
-            WHERE DurableId != null
-            AND QualifiedApiName IN ('Account','Contact','Lead','Opportunity','Case','Contract')
-          " --json > "$DATA_DIR/owd_settings.json"
+            SELECT DeveloperName, SharingModel
+            FROM CustomObject
+            WHERE DeveloperName != null
+            LIMIT 500
+          " --json > "$DATA_DIR/owd_custom_objects.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_custom_objects.json"
+          
+          echo "📌 Collecting OWD (Via Organization Object)"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT
+              Name,
+              AccountSharingModel,
+              ContactSharingModel,
+              CaseSharingModel,
+              OpportunitySharingModel,
+              LeadSharingModel
+            FROM Organization
+          " --json > "$DATA_DIR/owd_org.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_org.json"
 
           echo "📌 Collecting Custom Object Sharing Model"
           sf data query --target-org "$ORG_ALIAS" --query "
