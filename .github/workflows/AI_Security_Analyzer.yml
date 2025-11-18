@@ -53,9 +53,6 @@ jobs:
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias ${{ env.ORG_ALIAS }} --set-default --sfdx-url-stdin
           sf org list
 
-      - name: Create Data Directory
-        run: mkdir -p security-data
-
       - name: Collect Salesforce Data
         env:
           ORG_ALIAS: ${{ env.ORG_ALIAS }}
@@ -307,7 +304,7 @@ jobs:
           # Salesforce Security Analysis Report
           ## Executive Summary
           This report provides an overview of the security configuration in your Salesforce org.
-          For detailed AI-powered analysis, see the sections below.
+          For detailed AI-powered analysis, see the sections below:
           EOF
 
           # Add basic statistics to the report
@@ -342,7 +339,7 @@ jobs:
           OVERPRIV_ESCAPED=$(jq -Rs . <<< "$OVERPRIV_DATA")
           
           cat <<EOF > analysis/overprivileged_profiles.prompt
-          You are analyzing overprivileged Salesforce Profiles.
+          Analyzing overprivileged Salesforce Profiles.
           
           OVERPRIVILEGED DATA (JSON): $OVERPRIV_ESCAPED
           
@@ -385,7 +382,7 @@ jobs:
             UNUSED_PS_ESCAPED=$(jq -Rs . < "$UNUSED_PS_JSON")
             
             cat <<EOF > analysis/unused_permission_sets.prompt
-          You are analyzing unused Salesforce Permission Sets.
+          Analyzing unused Salesforce Permission Sets.
           
           UNUSED PERMISSION SETS (JSON): $UNUSED_PS_ESCAPED
           
