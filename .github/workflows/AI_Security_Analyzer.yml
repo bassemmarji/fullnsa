@@ -59,53 +59,147 @@ jobs:
           ORG_ALIAS: ${{ env.ORG_ALIAS }}
         run: |
           DATA_DIR="security-data"
-          
-          # Profiles (all) - Enhanced with more permission fields
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData, PermissionsViewSetup, PermissionsManageUsers FROM Profile ORDER BY Name" --json > "$DATA_DIR/profiles.json"
-          
-          # Community Profiles
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData FROM Profile WHERE UserLicense.Name LIKE '%Community%' ORDER BY Name" --json > "$DATA_DIR/community_profiles.json"
-          
-          # Permission Sets
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, Label, Description, IsOwnedByProfile, PermissionsModifyAllData, PermissionsViewAllData FROM PermissionSet ORDER BY Name" --json > "$DATA_DIR/permission_sets.json"
-          
-          # Permission Set Assignments
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, AssigneeId, PermissionSetId, PermissionSet.Name, Assignee.Name, Assignee.Username FROM PermissionSetAssignment WHERE Assignee.IsActive = true" --json > "$DATA_DIR/permission_set_assignments.json"
-          
-          # Object Permissions (Profiles) - WITH PARENT NAME
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Parent.Profile.Id, Parent.Profile.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId != null" --json > "$DATA_DIR/profile_object_permissions.json"
-          
-          # Object Permissions (Permission Sets) - WITH PARENT NAME
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, ParentId, Parent.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = false" --json > "$DATA_DIR/permset_object_permissions.json"
-          
-          # Critical Objects (Profiles only) - WITH PROFILE NAME
+          mkdir -p "$DATA_DIR"
+
+          echo "📌 Collecting Profiles"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, Name, UserLicense.Name,
+            PermissionsModifyAllData, PermissionsViewAllData,
+            PermissionsViewSetup, PermissionsManageUsers
+            FROM Profile ORDER BY Name
+          " --json > "$DATA_DIR/profiles.json"
+
+          echo "📌 Collecting Community Profiles"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, Name, UserLicense.Name,
+            PermissionsModifyAllData, PermissionsViewAllData
+            FROM Profile
+            WHERE UserLicense.Name LIKE '%Community%'
+            ORDER BY Name
+          " --json > "$DATA_DIR/community_profiles.json"
+
+          echo "📌 Collecting Permission Sets"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, Name, Label, Description,
+            IsOwnedByProfile,
+            PermissionsModifyAllData, PermissionsViewAllData
+            FROM PermissionSet ORDER BY Name
+          " --json > "$DATA_DIR/permission_sets.json"
+
+          echo "📌 Collecting Permission Set Assignments"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, AssigneeId, PermissionSetId,
+            PermissionSet.Name,
+            Assignee.Name, Assignee.Username
+            FROM PermissionSetAssignment
+            WHERE Assignee.IsActive = true
+          " --json > "$DATA_DIR/psa.json"
+
+          echo "📌 Collecting Profile Object Permissions"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id,
+            Parent.Profile.Id,
+            Parent.Profile.Name,
+            SObjectType,
+            PermissionsRead, PermissionsCreate, PermissionsEdit,
+            PermissionsDelete, PermissionsViewAllRecords,
+            PermissionsModifyAllRecords
+            FROM ObjectPermissions
+            WHERE Parent.ProfileId != null
+          " --json > "$DATA_DIR/profile_object_permissions.json"
+
+          echo "📌 Collecting Permission Set Object Permissions"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id,
+            ParentId,
+            Parent.Name,
+            SObjectType,
+            PermissionsRead, PermissionsCreate, PermissionsEdit,
+            PermissionsDelete, PermissionsViewAllRecords,
+            PermissionsModifyAllRecords
+            FROM ObjectPermissions
+            WHERE Parent.IsOwnedByProfile = false
+          " --json > "$DATA_DIR/permset_object_permissions.json"
+
+          echo "📌 Collecting Critical Object Access"
           CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity','User','Profile','PermissionSet','PermissionSetAssignment','PermissionSetGroup')"
-          sf data query --target-org $ORG_ALIAS --query "SELECT Parent.Profile.Id, Parent.Profile.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId != null AND SObjectType IN $CRITICAL_OBJECTS" --json > "$DATA_DIR/critical_object_access.json"
-          
-          # Active Users (with Profile info)
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Username, Name, ProfileId, Profile.Name, IsActive, LastLoginDate FROM User WHERE IsActive = true ORDER BY Profile.Name" --json > "$DATA_DIR/active_users.json"
-          
-          # User count by profile
-          sf data query --target-org $ORG_ALIAS --query "SELECT ProfileId, Profile.Name, COUNT(Id) UserCount FROM User WHERE IsActive = true GROUP BY ProfileId, Profile.Name" --json > "$DATA_DIR/user_stats.json"
-          
-          # NEW: Field-Level Security (Critical Fields)
-          # Query field permissions for sensitive/critical fields
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, ParentId, Parent.Profile.Name, Parent.Name, SObjectType, Field, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE (Field LIKE '%SSN%' OR Field LIKE '%Tax%' OR Field LIKE '%Salary%' OR Field LIKE '%Password%' OR Field LIKE '%Credit%' OR SObjectType IN ('Account','Contact','Lead','Opportunity','User')) ORDER BY SObjectType, Field" --json > "$DATA_DIR/field_permissions.json"
-          
-          # NEW: Organization-Wide Defaults
-          sf data query --target-org $ORG_ALIAS --query "SELECT EntityDefinition.QualifiedApiName, DefaultAccessLevel FROM EntityParticle WHERE EntityDefinition.QualifiedApiName IN ('Account','Contact','Lead','Opportunity','Case','Contract') GROUP BY EntityDefinition.QualifiedApiName, DefaultAccessLevel" --json > "$DATA_DIR/owd_settings.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_settings.json"
-          
-          # Alternative OWD query via CustomObject metadata
-          sf data query --target-org $ORG_ALIAS --query "SELECT DeveloperName, SharingModel FROM CustomObject WHERE DeveloperName != null LIMIT 200" --json > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
-          
-          # NEW: Sharing Rules
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, SobjectType, AccessLevel, Description FROM SharingRules ORDER BY SobjectType, Name" --json > "$DATA_DIR/sharing_rules.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
-          
-          # NEW: Sharing Criteria Rules (if accessible)
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, EntityDefinition.QualifiedApiName, AccessLevel FROM SharingCriteriaRule ORDER BY EntityDefinition.QualifiedApiName" --json > "$DATA_DIR/sharing_criteria_rules.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_criteria_rules.json"
-          
-          # NEW: Sharing Owner Rules
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, EntityDefinition.QualifiedApiName, AccessLevel FROM SharingOwnerRule ORDER BY EntityDefinition.QualifiedApiName" --json > "$DATA_DIR/sharing_owner_rules.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_owner_rules.json"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Parent.Profile.Id,
+            Parent.Profile.Name,
+            SObjectType,
+            PermissionsRead, PermissionsCreate, PermissionsEdit,
+            PermissionsDelete, PermissionsViewAllRecords,
+            PermissionsModifyAllRecords
+            FROM ObjectPermissions
+            WHERE Parent.ProfileId != null
+            AND SObjectType IN $CRITICAL_OBJECTS
+          " --json > "$DATA_DIR/critical_object_access.json"
+
+          echo "📌 Collecting Active Users"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, Username, Name, ProfileId, Profile.Name,
+            IsActive, LastLoginDate
+            FROM User
+            WHERE IsActive = true
+            ORDER BY Profile.Name
+          " --json > "$DATA_DIR/active_users.json"
+
+          echo "📌 Collecting User Stats by Profile"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT ProfileId, Profile.Name, COUNT(Id) UserCount
+            FROM User
+            WHERE IsActive = true
+            GROUP BY ProfileId, Profile.Name
+          " --json > "$DATA_DIR/user_stats.json"
+
+          echo "📌 Collecting Field Permissions (Critical Fields)"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, ParentId, Parent.Name, Parent.Profile.Name,
+            SObjectType, Field,
+            PermissionsRead, PermissionsEdit
+            FROM FieldPermissions
+            WHERE Field LIKE '%SSN%' OR
+                  Field LIKE '%Tax%' OR
+                  Field LIKE '%Salary%' OR
+                  Field LIKE '%Password%' OR
+                  Field LIKE '%Credit%' OR
+                  SObjectType IN ('Account','Contact','Lead','Opportunity','User')
+            ORDER BY SObjectType, Field
+          " --json > "$DATA_DIR/field_permissions.json"
+
+          echo "📌 Collecting OWD (Using EntityDefinition)"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT QualifiedApiName,
+            DefaultSharingAccess
+            FROM EntityDefinition
+            WHERE DurableId != null
+            AND QualifiedApiName IN ('Account','Contact','Lead','Opportunity','Case','Contract')
+          " --json > "$DATA_DIR/owd_settings.json"
+
+          echo "📌 Collecting Custom Object Sharing Model"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT DeveloperName, SharingModel
+            FROM CustomObject
+            WHERE DeveloperName != null
+          " --json > "$DATA_DIR/custom_object_sharing.json"
+
+          echo "📌 Collecting Criteria-Based Sharing Rules"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, Name, AccessLevel,
+            EntityDefinition.QualifiedApiName,
+            Description
+            FROM CriteriaBasedSharingRule
+            ORDER BY EntityDefinition.QualifiedApiName, Name
+          " --json > "$DATA_DIR/sharing_criteria_rules.json"
+
+          echo "📌 Collecting Owner Sharing Rules"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT Id, Name, AccessLevel,
+            EntityDefinition.QualifiedApiName,
+            Description
+            FROM OwnerSharingRule
+            ORDER BY EntityDefinition.QualifiedApiName, Name
+          " --json > "$DATA_DIR/sharing_owner_rules.json"
 
       - name: Validate Collected Data
         id: check-data
