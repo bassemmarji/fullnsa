@@ -109,6 +109,7 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           echo "$HOME/.ollama/bin" >> $GITHUB_PATH
+
       - name: Prepare Analysis Context
         run: |
           mkdir -p analysis
@@ -132,22 +133,24 @@ jobs:
             data/critical_object_access.json \
             data/user_stats.json \
             > analysis/context.json
-          # Identify unused permission sets (robust: filter objects, has keys, safe index)
+      
+          # Identify unused permission sets with corrected jq logic
           jq '{
             unused_permission_sets: (
-              .permission_sets // [] | map(
-                select(type == "object" and has("Id")) |
-                select(
-                  (.assignments // [] | map(
-                    select(type == "object" and has("PermissionSetId")) |
-                    .PermissionSetId
-                  )) | index(.Id) == null
+              .permission_sets // []
+              | map(select(type == "object" and has("Id")))
+              | map(
+                  select(
+                    (.assignments // []
+                     | map(select(type == "object" and has("PermissionSetId")) | .PermissionSetId)
+                     | index(.Id) == null
+                    )
+                  )
                 )
-              )
             )
-          }' \
-            analysis/context.json > analysis/unused_permission_sets.json
-          # Compute enhanced stats (similar robust logic)
+          }' analysis/context.json > analysis/unused_permission_sets.json
+      
+          # Compute enhanced stats as before
           jq '{
             total_profiles: (.profiles // [] | length),
             community_profiles: (.community_profiles // [] | length),
@@ -167,6 +170,7 @@ jobs:
             profiles_with_modify_all: (.profiles // [] | map(select(type == "object" and (.PermissionsModifyAllData == true or .PermissionsModifyAllData? == true))) | length),
             profiles_with_view_all: (.profiles // [] | map(select(type == "object" and (.PermissionsViewAllData == true or .PermissionsViewAllData? == true))) | length)
           }' analysis/context.json > analysis/stats.json
+          
       - name: Initialize Partial Report
         run: |
           mkdir -p analysis
