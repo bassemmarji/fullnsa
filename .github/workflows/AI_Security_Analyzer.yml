@@ -134,42 +134,25 @@ jobs:
             data/user_stats.json \
             > analysis/context.json
       
-          # Identify unused permission sets with corrected jq logic
-          jq '{
-            unused_permission_sets: (
-              .permission_sets // []
-              | map(select(type == "object" and has("Id")))
-              | map(
-                  select(
-                    (.assignments // []
-                     | map(select(type == "object" and has("PermissionSetId")) | .PermissionSetId)
-                     | index(.Id) == null
-                    )
-                  )
-                )
-            )
-          }' analysis/context.json > analysis/unused_permission_sets.json
+          # Identify unused permission sets with safer logic
+          # First, get the list of assigned PermissionSet IDs
+          jq -r '
+            (.assignments // [] | map(.PermissionSetId) | map(select(type == "string")) | unique) as $assigned_ids
+            | (.permission_sets // [] | map(select(has("Id") and (.Id | type == "string")))) as $all_perm_sets
+            | $all_perm_sets | map(select(.Id as $ps_id | $assigned_ids | index($ps_id) | not))
+          ' analysis/context.json > analysis/unused_permission_sets.json
       
           # Compute enhanced stats as before
-          jq '{
+          jq --argjson unused_ps "$(cat analysis/unused_permission_sets.json)" '{
             total_profiles: (.profiles // [] | length),
             community_profiles: (.community_profiles // [] | length),
             total_permission_sets: (.permission_sets // [] | length),
             total_assignments: (.assignments // [] | length),
-            unused_permission_sets: (
-              (.permission_sets // [] | map(
-                select(type == "object" and has("Id")) |
-                select(
-                  (.assignments // [] | map(
-                    select(type == "object" and has("PermissionSetId")) |
-                    .PermissionSetId
-                  )) | index(.Id) == null
-                )
-              ) | length)
-            ),
+            unused_permission_sets: ($unused_ps | length),
             profiles_with_modify_all: (.profiles // [] | map(select(type == "object" and (.PermissionsModifyAllData == true or .PermissionsModifyAllData? == true))) | length),
             profiles_with_view_all: (.profiles // [] | map(select(type == "object" and (.PermissionsViewAllData == true or .PermissionsViewAllData? == true))) | length)
           }' analysis/context.json > analysis/stats.json
+          
           
       - name: Initialize Partial Report
         run: |
