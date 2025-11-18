@@ -154,18 +154,19 @@ jobs:
 
           echo "📌 Collecting Field Permissions (Critical Fields)"
           sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT Id, ParentId, Parent.Name, Parent.Profile.Name,
-            SObjectType, Field,
+            SELECT Id, ParentId, SObjectType, Field,
             PermissionsRead, PermissionsEdit
             FROM FieldPermissions
-            WHERE Field LIKE '%SSN%' OR
-                  Field LIKE '%Tax%' OR
-                  Field LIKE '%Salary%' OR
-                  Field LIKE '%Password%' OR
-                  Field LIKE '%Credit%' OR
-                  SObjectType IN ('Account','Contact','Lead','Opportunity','User')
+            WHERE
+              (Field LIKE '%SSN%' OR
+               Field LIKE '%Tax%' OR
+               Field LIKE '%Salary%' OR
+               Field LIKE '%Password%' OR
+               Field LIKE '%Credit%')
+              OR
+              SObjectType IN ('Account','Contact','Lead','Opportunity','User')
             ORDER BY SObjectType, Field
-          " --json > "$DATA_DIR/field_permissions.json"
+          " --json > "$DATA_DIR/field_permissions.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/field_permissions.json"
 
           echo "📌 Collecting OWD (Using EntityDefinition)"
           sf data query --target-org "$ORG_ALIAS" --query "
