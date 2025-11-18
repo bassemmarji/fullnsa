@@ -52,7 +52,8 @@ jobs:
       
       - name: Collect Salesforce Data
         run: |
-          mkdir -p "$DATA_DIR"
+          mkdir -p security-data
+          DATA_DIR="security-data"
           
           # Profiles (all) - Enhanced with more permission fields
           sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData, PermissionsViewSetup, PermissionsManageUsers, PermissionsAuthorApex FROM Profile ORDER BY Name" --json > "$DATA_DIR/profiles.json"
@@ -104,6 +105,7 @@ jobs:
       - name: Validate Collected Data
         id: check-data
         run: |
+          DATA_DIR="security-data"
           profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo 0)
           permset_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo 0)
           object_perms_count=$(jq -r '.result.records | length' "$DATA_DIR/profile_object_permissions.json" 2>/dev/null || echo 0)
@@ -126,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: security-data
-          path: ${{ env.DATA_DIR }}
+          path: security-data
           retention-days: 7
 
   analyze-security-config:
