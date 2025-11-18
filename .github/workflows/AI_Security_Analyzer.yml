@@ -53,7 +53,7 @@ jobs:
       
       - name: Create Data Directory
         run: mkdir -p security-data
-      
+
       - name: Collect Salesforce Data
         env:
           ORG_ALIAS: ${{ env.ORG_ALIAS }}
@@ -86,14 +86,14 @@ jobs:
             FROM PermissionSet ORDER BY Name
           " --json > "$DATA_DIR/permission_sets.json"
 
-          echo "📌 Collecting Permission Set Assignments"
+          echo "📌 Collecting Permission Set Assignments (Corrected Name)"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, AssigneeId, PermissionSetId,
             PermissionSet.Name,
             Assignee.Name, Assignee.Username
             FROM PermissionSetAssignment
             WHERE Assignee.IsActive = true
-          " --json > "$DATA_DIR/psa.json"
+          " --json > "$DATA_DIR/permission_set_assignments.json" # Changed from psa.json
 
           echo "📌 Collecting Profile Object Permissions"
           sf data query --target-org "$ORG_ALIAS" --query "
@@ -168,14 +168,7 @@ jobs:
             ORDER BY SObjectType, Field
           " --json > "$DATA_DIR/field_permissions.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/field_permissions.json"
 
-          echo "📌 Collecting OWD (Via CustomObject)"
-          sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT DeveloperName, SharingModel
-            FROM CustomObject
-            WHERE DeveloperName != null
-            LIMIT 500
-          " --json > "$DATA_DIR/owd_custom_objects.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_custom_objects.json"
-          
+          # Combine OWD data into the expected owd_settings.json file
           echo "📌 Collecting OWD (Via Organization Object)"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT
@@ -186,18 +179,28 @@ jobs:
               OpportunitySharingModel,
               LeadSharingModel
             FROM Organization
-          " --json > "$DATA_DIR/owd_org.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_org.json"
+          " --json > "$DATA_DIR/owd_org_part.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_org_part.json"
 
-          {
-            echo "📌 Collecting Custom Object Sharing Model"
-            sf data query --target-org "$ORG_ALIAS" --query "
-              SELECT DeveloperName, SharingModel
-              FROM CustomObject
-              WHERE DeveloperName != null
-              LIMIT 200
-            " --json
-          } > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
+          echo "📌 Collecting Custom Object Sharing Model"
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT DeveloperName, SharingModel
+            FROM CustomObject
+            WHERE DeveloperName != null
+            LIMIT 500
+          " --json > "$DATA_DIR/owd_custom_objects_part.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_custom_objects_part.json"
 
+          # Combine the two OWD parts into the expected owd_settings.json
+          jq -s '{"result": {"records": ([.[][] | .result.records] | add)}}' "$DATA_DIR/owd_org_part.json" "$DATA_DIR/owd_custom_objects_part.json" > "$DATA_DIR/owd_settings.json"
+
+          # Note: Sharing Rules query was removed in this version. Add it back if needed.
+          # echo "📌 Collecting Sharing Rules"
+          # sf data query --target-org "$ORG_ALIAS" --query "SELECT Id, Name, SobjectType, AccessLevel, Description FROM SharingRules ORDER BY SobjectType, Name" --json > "$DATA_DIR/sharing_rules.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
+
+          # If you don't want sharing rules, create an empty file to prevent the error, or remove the reference in the analysis step.
+          echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
+
+          # Clean up temporary files
+          rm -f "$DATA_DIR/owd_org_part.json" "$DATA_DIR/owd_custom_objects_part.json"
 
       - name: Validate Collected Data
         id: check-data
