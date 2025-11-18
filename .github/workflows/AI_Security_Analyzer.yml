@@ -700,4 +700,4 @@ jobs:
           echo "" >> security_analysis_report.md
           echo '```json' >> security_analysis_report.md
           cat analysis/stats.json >> security_analysis_report.md
-          echo '```' >>
+          echo '```' >> security_analysis_report.md  # This line was missing the '.md'
