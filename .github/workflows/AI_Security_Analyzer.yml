@@ -62,19 +62,21 @@ jobs:
           mkdir -p "$DATA_DIR"
 
           echo "📌 Collecting Profiles"
+          # Removed UserLicense.Name which is not directly accessible via standard SOQL
           sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT Id, Name, UserLicense.Name,
+            SELECT Id, Name,
             PermissionsModifyAllData, PermissionsViewAllData,
             PermissionsViewSetup, PermissionsManageUsers
             FROM Profile ORDER BY Name
           " --json > "$DATA_DIR/profiles.json"
 
-          echo "📌 Collecting Community Profiles"
+          echo "📌 Collecting Community Profiles (Filtering by Name)"
+          # Removed UserLicense.Name and filtering by Profile Name instead
           sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT Id, Name, UserLicense.Name,
+            SELECT Id, Name,
             PermissionsModifyAllData, PermissionsViewAllData
             FROM Profile
-            WHERE UserLicense.Name LIKE '%Community%'
+            WHERE Name LIKE '%Community%'
             ORDER BY Name
           " --json > "$DATA_DIR/community_profiles.json"
 
@@ -86,14 +88,15 @@ jobs:
             FROM PermissionSet ORDER BY Name
           " --json > "$DATA_DIR/permission_sets.json"
 
-          echo "📌 Collecting Permission Set Assignments (Corrected Name)"
+          echo "📌 Collecting Permission Set Assignments"
+          # File name corrected to match analysis expectation
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, AssigneeId, PermissionSetId,
             PermissionSet.Name,
             Assignee.Name, Assignee.Username
             FROM PermissionSetAssignment
             WHERE Assignee.IsActive = true
-          " --json > "$DATA_DIR/permission_set_assignments.json" # Changed from psa.json
+          " --json > "$DATA_DIR/permission_set_assignments.json"
 
           echo "📌 Collecting Profile Object Permissions"
           sf data query --target-org "$ORG_ALIAS" --query "
@@ -168,8 +171,7 @@ jobs:
             ORDER BY SObjectType, Field
           " --json > "$DATA_DIR/field_permissions.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/field_permissions.json"
 
-          # Combine OWD data into the expected owd_settings.json file
-          echo "📌 Collecting OWD (Via Organization Object)"
+          echo "📌 Collecting OWD (Via Organization Object) - Part 1"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT
               Name,
@@ -181,7 +183,7 @@ jobs:
             FROM Organization
           " --json > "$DATA_DIR/owd_org_part.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_org_part.json"
 
-          echo "📌 Collecting Custom Object Sharing Model"
+          echo "📌 Collecting Custom Object Sharing Model - Part 2"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT DeveloperName, SharingModel
             FROM CustomObject
@@ -189,18 +191,27 @@ jobs:
             LIMIT 500
           " --json > "$DATA_DIR/owd_custom_objects_part.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_custom_objects_part.json"
 
-          # Combine the two OWD parts into the expected owd_settings.json
+          echo "📌 Combining OWD data into owd_settings.json"
+          # Combine the two OWD parts into the expected owd_settings.json file
           jq -s '{"result": {"records": ([.[][] | .result.records] | add)}}' "$DATA_DIR/owd_org_part.json" "$DATA_DIR/owd_custom_objects_part.json" > "$DATA_DIR/owd_settings.json"
 
-          # Note: Sharing Rules query was removed in this version. Add it back if needed.
-          # echo "📌 Collecting Sharing Rules"
-          # sf data query --target-org "$ORG_ALIAS" --query "SELECT Id, Name, SobjectType, AccessLevel, Description FROM SharingRules ORDER BY SobjectType, Name" --json > "$DATA_DIR/sharing_rules.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
+          echo "📌 Collecting Custom Object Sharing Model for custom_object_sharing.json"
+          # Create the file expected by the analysis step
+          sf data query --target-org "$ORG_ALIAS" --query "
+            SELECT DeveloperName, SharingModel
+            FROM CustomObject
+            WHERE DeveloperName != null
+            LIMIT 200
+          " --json > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
 
-          # If you don't want sharing rules, create an empty file to prevent the error, or remove the reference in the analysis step.
+          # Note: Sharing Rules query was removed previously. Creating an empty file to prevent analysis error.
+          echo "📌 Creating empty sharing_rules.json (as query was removed)"
           echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
 
-          # Clean up temporary files
+          # Clean up temporary files used for combining OWD
           rm -f "$DATA_DIR/owd_org_part.json" "$DATA_DIR/owd_custom_objects_part.json"
+
+          echo "✅ All Salesforce data collection steps completed."
 
       - name: Validate Collected Data
         id: check-data
