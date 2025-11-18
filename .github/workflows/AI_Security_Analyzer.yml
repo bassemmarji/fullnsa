@@ -11,10 +11,11 @@ on:
         type: choice
         description: "Ollama model to use"
         options:
+          - llama3:8b
           - llama3:latest
           - gemma2:27b
           - mistral-large
-        default: llama3:latest
+        default: llama3:8b  # Use a smaller, faster model by default
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
@@ -26,6 +27,7 @@ jobs:
   collect-security-data:
     name: Collect Salesforce Security Data
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Set a reasonable timeout for data collection
     outputs:
       has_data: ${{ steps.check-data.outputs.has_data }}
       profile_count: ${{ steps.check-data.outputs.profile_count }}
@@ -39,18 +41,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      
+
       - name: Install Salesforce CLI and jq
         run: |
           npm install --global @salesforce/cli
-          sudo apt-get update && sudo apt-get install -y jq # Add this line
-          sf version
-      
+          sudo apt-get update && sudo apt-get install -y jq curl  
+          sf version  
+
       - name: Authenticate to Salesforce Org
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias ${{ env.ORG_ALIAS }} --set-default --sfdx-url-stdin
           sf org list
-      
+
       - name: Create Data Directory
         run: mkdir -p security-data
 
@@ -62,7 +64,6 @@ jobs:
           mkdir -p "$DATA_DIR"
 
           echo "📌 Collecting Profiles"
-          # Removed UserLicense.Name which is not directly accessible via standard SOQL
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, Name,
             PermissionsModifyAllData, PermissionsViewAllData,
@@ -71,7 +72,6 @@ jobs:
           " --json > "$DATA_DIR/profiles.json"
 
           echo "📌 Collecting Community Profiles (Filtering by Name)"
-          # Removed UserLicense.Name and filtering by Profile Name instead
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, Name,
             PermissionsModifyAllData, PermissionsViewAllData
@@ -89,7 +89,6 @@ jobs:
           " --json > "$DATA_DIR/permission_sets.json"
 
           echo "📌 Collecting Permission Set Assignments"
-          # File name corrected to match analysis expectation
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, AssigneeId, PermissionSetId,
             PermissionSet.Name,
@@ -171,7 +170,7 @@ jobs:
             ORDER BY SObjectType, Field
           " --json > "$DATA_DIR/field_permissions.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/field_permissions.json"
 
-          echo "📌 Collecting OWD (Via Organization Object) - Part 1"
+          echo "📌 Collecting OWD (Via Organization Object)"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT
               Name,
@@ -181,22 +180,9 @@ jobs:
               OpportunitySharingModel,
               LeadSharingModel
             FROM Organization
-          " --json > "$DATA_DIR/owd_org_part.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_org_part.json"
+          " --json > "$DATA_DIR/owd_settings.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_settings.json"
 
-          echo "📌 Collecting Custom Object Sharing Model - Part 2"
-          sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT DeveloperName, SharingModel
-            FROM CustomObject
-            WHERE DeveloperName != null
-            LIMIT 500
-          " --json > "$DATA_DIR/owd_custom_objects_part.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_custom_objects_part.json"
-
-          echo "📌 Combining OWD data into owd_settings.json"
-          # Combine the two OWD parts into the expected owd_settings.json file
-          jq -s '{"result": {"records": ([.[][] | .result.records] | add)}}' "$DATA_DIR/owd_org_part.json" "$DATA_DIR/owd_custom_objects_part.json" > "$DATA_DIR/owd_settings.json"
-
-          echo "📌 Collecting Custom Object Sharing Model for custom_object_sharing.json"
-          # Create the file expected by the analysis step
+          echo "📌 Collecting Custom Object Sharing Model"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT DeveloperName, SharingModel
             FROM CustomObject
@@ -204,12 +190,8 @@ jobs:
             LIMIT 200
           " --json > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
 
-          # Note: Sharing Rules query was removed previously. Creating an empty file to prevent analysis error.
-          echo "📌 Creating empty sharing_rules.json (as query was removed)"
+          echo "📌 Creating empty sharing_rules.json"
           echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
-
-          # Clean up temporary files used for combining OWD
-          rm -f "$DATA_DIR/owd_org_part.json" "$DATA_DIR/owd_custom_objects_part.json"
 
           echo "✅ All Salesforce data collection steps completed."
 
@@ -220,11 +202,11 @@ jobs:
           profile_count=$(jq -r '.result.records | length' "$DATA_DIR/profiles.json" 2>/dev/null || echo 0)
           permset_count=$(jq -r '.result.records | length' "$DATA_DIR/permission_sets.json" 2>/dev/null || echo 0)
           object_perms_count=$(jq -r '.result.records | length' "$DATA_DIR/profile_object_permissions.json" 2>/dev/null || echo 0)
-          
+
           echo "Profiles: $profile_count"
           echo "Permission Sets: $permset_count"
           echo "Object Permissions: $object_perms_count"
-          
+
           total=$((profile_count + permset_count + object_perms_count))
           if [ "$total" -gt 0 ]; then
             echo "has_data=true" >> $GITHUB_OUTPUT
@@ -234,7 +216,7 @@ jobs:
           else
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Upload Security Data
         uses: actions/upload-artifact@v4
         with:
@@ -247,6 +229,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: collect-security-data
     if: needs.collect-security-data.outputs.has_data == 'true'
+    timeout-minutes: 45  # Set a timeout for the analysis job
     steps:
       - name: Download Security Artifacts
         uses: actions/download-artifact@v4
@@ -262,7 +245,7 @@ jobs:
       - name: Prepare Analysis Context
         run: |
           mkdir -p analysis
-          
+
           # Combine all data into context with null coalescing and filter to objects
           jq -s '{
             profiles: (.[0].result.records // [] | map(select(type == "object"))),
@@ -293,14 +276,14 @@ jobs:
             data/custom_object_sharing.json \
             data/sharing_rules.json \
             > analysis/context.json
-      
+
           # Identify unused permission sets with safer logic
           jq -r '
             (.assignments // [] | map(.PermissionSetId) | map(select(type == "string")) | unique) as $assigned_ids
             | (.permission_sets // [] | map(select(has("Id") and (.Id | type == "string")))) as $all_perm_sets
             | $all_perm_sets | map(select(.Id as $ps_id | $assigned_ids | index($ps_id) | not))
           ' analysis/context.json > analysis/unused_permission_sets.json
-      
+
           # Compute enhanced stats with ACCURATE counting
           jq --argjson unused_ps "$(cat analysis/unused_permission_sets.json)" '{
             total_profiles: (.profiles // [] | length),
@@ -317,224 +300,39 @@ jobs:
             total_field_permissions: (.field_permissions // [] | length),
             total_sharing_rules: (.sharing_rules // [] | length)
           }' analysis/context.json > analysis/stats.json
-          
-      - name: Initialize Partial Report
-        run: |
-          mkdir -p analysis
-          echo "# Detailed Security Findings" > analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
 
-      - name: Analyze Unused Permission Sets
+      - name: Generate Basic Report (Non-AI)
         run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          UNUSED_PS_JSON="analysis/unused_permission_sets.json"
-          OUTPUT_MD="analysis/unused_permission_sets.md"
-          
-          # Check if file has content
-          COUNT=$(jq 'length' "$UNUSED_PS_JSON")
-          
-          if [ "$COUNT" -eq 0 ]; then
-            cat <<EOF > "$OUTPUT_MD"
-          ### Unused Permission Sets
-          
-          ✅ **No unused permission sets found** - Excellent permission set hygiene! All permission sets are actively assigned to users.
-          
-          **Recommendation:** Continue monitoring permission set assignments quarterly to maintain this clean state.
+          cat << 'EOF' > security_analysis_report.md
+          # Salesforce Security Analysis Report
+          ## Executive Summary
+          This report provides an overview of the security configuration in your Salesforce org.
+          For detailed AI-powered analysis, see the sections below.
           EOF
-          else
-            UNUSED_PS_ESCAPED=$(jq -Rs . < "$UNUSED_PS_JSON")
-            
-            cat <<EOF > analysis/unused_permission_sets.prompt
-          You are analyzing unused Salesforce Permission Sets.
-          
-          UNUSED PERMISSION SETS (JSON): $UNUSED_PS_ESCAPED
-          
-          TASK: 
-          1. Create a table listing each unused permission set with its Name, Label, Description, and ID
-          2. Provide specific recommendations for each (e.g., "Deactivate if no longer needed" or "Archive for compliance")
-          3. Include a summary count at the top
-          4. Suggest audit queries to verify these are truly unused
-          
-          CRITICAL: Use the EXACT Name and Label values from the JSON. Do not make up placeholder names.
-          
-          OUTPUT FORMAT (Markdown):
-          ### Unused Permission Sets
-          
-          **Total Unused:** [count]
-          
-          | Permission Set Name | Label | Description | ID | Recommendation |
-          |---------------------|-------|-------------|-----|----------------|
-          [Use actual values from JSON - one row per permission set]
-          
-          **Audit Queries:**
-          - [Specific SOQL queries to verify]
-          EOF
-            
-            ollama run "$MODEL" < analysis/unused_permission_sets.prompt > "$OUTPUT_MD"
-          fi
-          
-          cat "$OUTPUT_MD" >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-          echo "---" >> analysis/partial_report.md
 
-      - name: Analyze Field-Level Security
+          # Add basic statistics to the report
+          jq -r '
+            "### Statistics\n\n" +
+            "- Total Profiles: \(.total_profiles)\n" +
+            "- Community Profiles: \(.community_profiles)\n" +
+            "- Total Permission Sets: \(.total_permission_sets)\n" +
+            "- Total Assignments: \(.total_assignments)\n" +
+            "- Unused Permission Sets: \(.unused_permission_sets)\n" +
+            "- Profiles with ModifyAllData: \(.profiles_with_modify_all)\n" +
+            "- Profiles with ViewAllData: \(.profiles_with_view_all)\n" +
+            "- Profiles with either all data permission: \(.profiles_with_either_all_data_perm)\n" +
+            "- Total Active Users: \(.total_active_users)\n" +
+            "- Total Field Permissions Analyzed: \(.total_field_permissions)\n" +
+            "- Total Sharing Rules: \(.total_sharing_rules)\n"
+          ' analysis/stats.json >> security_analysis_report.md
+
+      - name: Analyze High-Priority Risks (AI)
         run: |
           MODEL="${{ env.MODEL_NAME }}"
           CONTEXT_JSON="analysis/context.json"
-          OUTPUT_MD="analysis/field_level_security.md"
           
-          # Extract FLS data
-          FLS_DATA=$(jq '{
-            field_permissions: (.field_permissions // [] | map(select(type == "object"))),
-            profiles: (.profiles // [] | map(select(type == "object")) | map({Id, Name}))
-          }' "$CONTEXT_JSON")
-          
-          FLS_ESCAPED=$(jq -Rs . <<< "$FLS_DATA")
-          
-          cat <<EOF > analysis/field_level_security.prompt
-          You are analyzing Field-Level Security (FLS) in Salesforce.
-          
-          FIELD PERMISSIONS DATA (JSON): $FLS_ESCAPED
-          
-          TASK:
-          1. Identify sensitive fields (SSN, Tax, Salary, Password, Credit Card, etc.) with overly permissive access
-          2. Group findings by object and field
-          3. Show which profiles/permission sets have Edit access to sensitive fields
-          4. Recommend restricting edit access where appropriate
-          5. Flag fields that should be read-only or hidden for most users
-          
-          CRITICAL: Use EXACT profile names and field names from the JSON data. Include both the profile/permission set Name and the Parent name where available.
-          
-          OUTPUT FORMAT (Markdown):
-          ### Field-Level Security Analysis
-          
-          **Summary:** [Brief overview of FLS posture]
-          
-          #### Sensitive Fields with Excessive Access
-          
-          | Object | Field | Profile/PermSet Name | Read Access | Edit Access | Risk Level | Recommendation |
-          |--------|-------|---------------------|-------------|-------------|------------|----------------|
-          [Use actual values from JSON]
-          
-          #### Key Recommendations:
-          - [Specific actionable recommendations]
-          EOF
-          
-          ollama run "$MODEL" < analysis/field_level_security.prompt > "$OUTPUT_MD"
-          
-          cat "$OUTPUT_MD" >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-          echo "---" >> analysis/partial_report.md
-
-      - name: Analyze Sharing Settings
-        run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          CONTEXT_JSON="analysis/context.json"
-          OUTPUT_MD="analysis/sharing_settings.md"
-          
-          # Extract sharing data
-          SHARING_DATA=$(jq '{
-            owd_settings: (.owd_settings // [] | map(select(type == "object"))),
-            custom_object_sharing: (.custom_object_sharing // [] | map(select(type == "object"))),
-            sharing_rules: (.sharing_rules // [] | map(select(type == "object"))),
-          }' "$CONTEXT_JSON")
-          
-          SHARING_ESCAPED=$(jq -Rs . <<< "$SHARING_DATA")
-          
-          cat <<EOF > analysis/sharing_settings.prompt
-          You are analyzing Salesforce Organization-Wide Defaults (OWD) and Sharing Rules.
-          
-          SHARING SETTINGS DATA (JSON): $SHARING_ESCAPED
-          
-          TASK:
-          1. Review OWD settings for standard and custom objects
-          2. Identify overly permissive defaults (Public Read/Write when Private would be safer)
-          3. Analyze sharing rules that may grant excessive access
-          4. Flag objects with Public access that contain sensitive data
-          5. Recommend tightening sharing model where appropriate
-          
-          CRITICAL: Use EXACT object names and sharing rule names from the JSON data.
-          
-          OUTPUT FORMAT (Markdown):
-          ### Organization-Wide Defaults & Sharing Rules Analysis
-          
-          **Summary:** [Brief overview of sharing posture]
-          
-          #### Organization-Wide Defaults
-          
-          | Object | Sharing Model | Risk Assessment | Recommendation |
-          |--------|---------------|-----------------|----------------|
-          [Use actual values from JSON]
-          
-          #### Active Sharing Rules
-          
-          | Rule Name | Object | Access Level | Type | Risk Level | Recommendation |
-          |-----------|--------|--------------|------|------------|----------------|
-          [Use actual values from JSON]
-          
-          #### Key Recommendations:
-          - [Specific actionable recommendations for tightening sharing]
-          EOF
-          
-          ollama run "$MODEL" < analysis/sharing_settings.prompt > "$OUTPUT_MD"
-          
-          cat "$OUTPUT_MD" >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-          echo "---" >> analysis/partial_report.md
-
-      - name: Analyze Community Profiles
-        run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          CONTEXT_JSON="analysis/context.json"
-          OUTPUT_MD="analysis/community_profiles.md"
-          
-          COMMUNITY_DATA=$(jq '{
-            community_profiles: (.community_profiles // [] | map(select(type == "object"))),
-            assignments: (.assignments // [] | map(select(type == "object"))),
-            user_stats: (.user_stats // [] | map(select(type == "object")))
-          }' "$CONTEXT_JSON")
-          
-          COMMUNITY_ESCAPED=$(jq -Rs . <<< "$COMMUNITY_DATA")
-          
-          cat <<EOF > analysis/community_profiles.prompt
-          You are analyzing Salesforce Community Profiles (Experience Cloud).
-          
-          COMMUNITY DATA (JSON): $COMMUNITY_ESCAPED
-          
-          TASK: 
-          1. Review each community profile's permissions and user counts
-          2. Flag profiles with ModifyAllData or ViewAllData (critical security issue)
-          3. Recommend portal-specific hardening (guest user limits, IP restrictions)
-          4. Identify unused community licenses
-          
-          CRITICAL: Use EXACT profile names from the JSON data (the "Name" field). Include ID for reference.
-          
-          OUTPUT FORMAT (Markdown):
-          ### Community Profiles Analysis
-          
-          **Total Community Profiles:** [count]
-          
-          | Profile Name | ID | UserLicense | Active Users | ModifyAllData | ViewAllData | Risk Level | Recommendation |
-          |--------------|-----|-------------|--------------|---------------|-------------|------------|----------------|
-          [Use actual profile names and values from JSON]
-          
-          #### Key Recommendations:
-          - [Specific recommendations for community security]
-          EOF
-          
-          ollama run "$MODEL" < analysis/community_profiles.prompt > "$OUTPUT_MD"
-          
-          cat "$OUTPUT_MD" >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-          echo "---" >> analysis/partial_report.md
-
-      - name: Analyze Overprivileged Profiles
-        run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          CONTEXT_JSON="analysis/context.json"
-          OUTPUT_MD="analysis/overprivileged_profiles.md"
-          
-          # Extract overprivileged profiles with their ACTUAL NAMES
+          # Analyze only the most critical issues with AI
+          # 1. Overprivileged profiles
           OVERPRIV_DATA=$(jq '{
             overpriv_profiles: (.profiles // [] | map(select(type == "object" and (.PermissionsModifyAllData == true or .PermissionsViewAllData == true)))),
             user_stats: (.user_stats // [] | map(select(type == "object"))),
@@ -577,127 +375,74 @@ jobs:
           1. [Specific steps to reduce privileges]
           EOF
           
-          ollama run "$MODEL" < analysis/overprivileged_profiles.prompt > "$OUTPUT_MD"
-          
-          cat "$OUTPUT_MD" >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-          echo "---" >> analysis/partial_report.md
+          ollama run "$MODEL" < analysis/overprivileged_profiles.prompt > analysis/overprivileged_profiles.md
 
-      - name: Analyze Risky Critical Object Access
-        run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          CRITICAL_JSON="analysis/context.json"
-          OUTPUT_MD="analysis/risky_access.md"
+          # 2. Unused Permission Sets
+          UNUSED_PS_JSON="analysis/unused_permission_sets.json"
+          COUNT=$(jq 'length' "$UNUSED_PS_JSON")
           
-          RISKY_ACCESS=$(jq '{
-            risky: (.critical_access // [] | map(select(type == "object" and (.PermissionsModifyAllRecords == true or .PermissionsViewAllRecords == true)))),
-            user_stats: (.user_stats // [] | map(select(type == "object")))
-          }' "$CRITICAL_JSON")
+          if [ "$COUNT" -gt 0 ]; then
+            UNUSED_PS_ESCAPED=$(jq -Rs . < "$UNUSED_PS_JSON")
+            
+            cat <<EOF > analysis/unused_permission_sets.prompt
+          You are analyzing unused Salesforce Permission Sets.
           
-          RISKY_ESCAPED=$(jq -Rs . <<< "$RISKY_ACCESS")
-          
-          cat <<EOF > analysis/risky_access.prompt
-          You are analyzing risky access on critical Salesforce objects.
-          
-          RISKY ACCESS (JSON): $RISKY_ESCAPED
+          UNUSED PERMISSION SETS (JSON): $UNUSED_PS_ESCAPED
           
           TASK: 
-          1. Identify profiles with ModifyAllRecords or ViewAllRecords on critical objects
-          2. Show the EXACT profile name (Parent.Profile.Name field) for each entry
-          3. Group by profile and list which critical objects they can modify/view all records
-          4. Calculate users affected by cross-referencing with user_stats
-          5. Provide specific least-privilege remediation steps
+          1. Create a table listing each unused permission set with its Name, Label, Description, and ID
+          2. Provide specific recommendations for each (e.g., "Deactivate if no longer needed" or "Archive for compliance")
+          3. Include a summary count at the top
+          4. Suggest audit queries to verify these are truly unused
           
-          CRITICAL: Extract and use the actual profile names from Parent.Profile.Name in the JSON data.
-          
-          OUTPUT FORMAT (Markdown):
-          ### Risky Critical Object Access
-          
-          **Summary:** [Count of profiles with excessive access to critical objects]
-          
-          | Profile Name | Profile ID | Critical Objects | ModifyAllRecords | ViewAllRecords | Users Affected | Recommendation |
-          |--------------|------------|------------------|------------------|----------------|----------------|----------------|
-          [Use actual profile names from Parent.Profile.Name]
-          
-          #### Remediation Plan:
-          - [Specific steps to implement least privilege]
-          EOF
-          
-          ollama run "$MODEL" < analysis/risky_access.prompt > "$OUTPUT_MD"
-          
-          cat "$OUTPUT_MD" >> analysis/partial_report.md
-          echo "" >> analysis/partial_report.md
-          echo "---" >> analysis/partial_report.md
-
-      - name: Generate Executive Summary
-        run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          
-          # Read actual statistics
-          STATS_ESCAPED=$(jq -Rs . analysis/stats.json)
-          PARTIAL_ESCAPED=$(jq -Rs . < analysis/partial_report.md)
-          
-          cat <<EOF > analysis/executive_summary.prompt
-          You are creating a Salesforce security executive summary.
-          
-          STATISTICS (JSON): $STATS_ESCAPED
-          DETAILED FINDINGS (Markdown): $PARTIAL_ESCAPED
-          
-          TASK: 
-          1. Create an executive summary highlighting:
-             - Total profiles, permission sets, and users analyzed
-             - ACCURATE count of overprivileged profiles (use profiles_with_either_all_data_perm from stats)
-             - Count of unused permission sets
-             - Field-level security issues found
-             - Organization-wide defaults risks
-             - Community profile concerns
-          2. Prioritize top 5 security risks with specific remediation steps
-          3. Reference the detailed sections for more info
-          4. Use ONLY the statistics provided in the JSON - do not make up numbers
-          
-          CRITICAL: 
-          - Use profiles_with_either_all_data_perm for the count of overprivileged profiles
-          - profiles_with_modify_all shows only ModifyAllData count
-          - profiles_with_view_all shows only ViewAllData count  
-          - Some profiles may have BOTH permissions, so don't add these numbers
-          - Be consistent with the actual data in the detailed findings
+          CRITICAL: Use the EXACT Name and Label values from the JSON. Do not make up placeholder names.
           
           OUTPUT FORMAT (Markdown):
-          ## Executive Summary
+          ### Unused Permission Sets
           
-          ### Security Posture Overview
-          [Statistics paragraph using EXACT numbers from stats.json]
+          **Total Unused:** [count]
           
-          ### Top Security Risks
-          1. **[Risk Name]** - [Brief description] - Affects [X] users/profiles
-          2. [Continue for top 5]
+          | Permission Set Name | Label | Description | ID | Recommendation |
+          |---------------------|-------|-------------|-----|----------------|
+          [Use actual values from JSON - one row per permission set]
           
-          ### Critical Recommendations
-          - [Prioritized list of actions]
-          
-          ### Analysis Scope
-          - [What was analyzed]
+          **Audit Queries:**
+          - [Specific SOQL queries to verify]
           EOF
-          
-          ollama run "$MODEL" < analysis/executive_summary.prompt > analysis/executive_summary.md
+            
+            ollama run "$MODEL" < analysis/unused_permission_sets.prompt > analysis/unused_permission_sets.md
+          else
+            echo "### Unused Permission Sets" > analysis/unused_permission_sets.md
+            echo "" >> analysis/unused_permission_sets.md
+            echo "✅ **No unused permission sets found** - Excellent permission set hygiene! All permission sets are actively assigned to users." >> analysis/unused_permission_sets.md
+            echo "" >> analysis/unused_permission_sets.md
+            echo "**Recommendation:** Continue monitoring permission set assignments quarterly to maintain this clean state." >> analysis/unused_permission_sets.md
+          fi
 
-      - name: Compile Final Report
-        run: |
-          # Start with summary
-          cat analysis/executive_summary.md > security_analysis_report.md
+          # Append AI-generated sections to the report
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          
-          # Add detailed findings
-          cat analysis/partial_report.md >> security_analysis_report.md
+          cat analysis/overprivileged_profiles.md >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          
-          # Appendix
+          cat analysis/unused_permission_sets.md >> security_analysis_report.md
+
+      - name: Add Raw Data to Report
+        run: |
+          echo "" >> security_analysis_report.md
+          echo "---" >> security_analysis_report.md
+          echo "" >> security_analysis_report.md
           echo "## Appendix: Raw Statistics" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo '```json' >> security_analysis_report.md
           cat analysis/stats.json >> security_analysis_report.md
-          echo '```' >> security_analysis_report.md  # This line was missing the '.md'
+          echo '```' >> security_analysis_report.md
+
+      - name: Upload Final Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-analysis-report
+          path: security_analysis_report.md
+          retention-days: 7
