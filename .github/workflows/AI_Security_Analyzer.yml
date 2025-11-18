@@ -61,7 +61,7 @@ jobs:
           DATA_DIR="security-data"
           
           # Profiles (all) - Enhanced with more permission fields
-          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData, PermissionsViewSetup, PermissionsManageUsers, PermissionsAuthorApex FROM Profile ORDER BY Name" --json > "$DATA_DIR/profiles.json"
+          sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData, PermissionsViewSetup, PermissionsManageUsers FROM Profile ORDER BY Name" --json > "$DATA_DIR/profiles.json"
           
           # Community Profiles
           sf data query --target-org $ORG_ALIAS --query "SELECT Id, Name, UserLicense.Name, PermissionsModifyAllData, PermissionsViewAllData FROM Profile WHERE UserLicense.Name LIKE '%Community%' ORDER BY Name" --json > "$DATA_DIR/community_profiles.json"
