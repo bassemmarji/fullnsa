@@ -54,6 +54,8 @@ jobs:
         run: mkdir -p security-data
       
       - name: Collect Salesforce Data
+        env:
+          ORG_ALIAS: ${{ env.ORG_ALIAS }}
         run: |
           DATA_DIR="security-data"
           
