@@ -1,4 +1,4 @@
-name: AI Security & Permissions Analyzer (Enhanced)
+name: AI Security & Permissions Analyzer
 on:
   workflow_dispatch:
     inputs:
