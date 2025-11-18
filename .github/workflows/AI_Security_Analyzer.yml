@@ -188,12 +188,15 @@ jobs:
             FROM Organization
           " --json > "$DATA_DIR/owd_org.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_org.json"
 
-          echo "📌 Collecting Custom Object Sharing Model"
-          sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT DeveloperName, SharingModel
-            FROM CustomObject
-            WHERE DeveloperName != null
-          " --json > "$DATA_DIR/custom_object_sharing.json"
+          {
+            echo "📌 Collecting Custom Object Sharing Model"
+            sf data query --target-org "$ORG_ALIAS" --query "
+              SELECT DeveloperName, SharingModel
+              FROM CustomObject
+              WHERE DeveloperName != null
+              LIMIT 200
+            " --json
+          } > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
 
           echo "📌 Collecting Criteria-Based Sharing Rules"
           sf data query --target-org "$ORG_ALIAS" --query "
