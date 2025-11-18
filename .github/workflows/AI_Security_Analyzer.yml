@@ -198,23 +198,6 @@ jobs:
             " --json
           } > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
 
-          echo "📌 Collecting Criteria-Based Sharing Rules"
-          sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT Id, Name, AccessLevel,
-            EntityDefinition.QualifiedApiName,
-            Description
-            FROM CriteriaBasedSharingRule
-            ORDER BY EntityDefinition.QualifiedApiName, Name
-          " --json > "$DATA_DIR/sharing_criteria_rules.json"
-
-          echo "📌 Collecting Owner Sharing Rules"
-          sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT Id, Name, AccessLevel,
-            EntityDefinition.QualifiedApiName,
-            Description
-            FROM OwnerSharingRule
-            ORDER BY EntityDefinition.QualifiedApiName, Name
-          " --json > "$DATA_DIR/sharing_owner_rules.json"
 
       - name: Validate Collected Data
         id: check-data
@@ -281,8 +264,6 @@ jobs:
             owd_settings: (.[10].result.records // [] | map(select(type == "object"))),
             custom_object_sharing: (.[11].result.records // [] | map(select(type == "object"))),
             sharing_rules: (.[12].result.records // [] | map(select(type == "object"))),
-            sharing_criteria_rules: (.[13].result.records // [] | map(select(type == "object"))),
-            sharing_owner_rules: (.[14].result.records // [] | map(select(type == "object")))
           }' \
             data/profiles.json \
             data/community_profiles.json \
@@ -297,8 +278,6 @@ jobs:
             data/owd_settings.json \
             data/custom_object_sharing.json \
             data/sharing_rules.json \
-            data/sharing_criteria_rules.json \
-            data/sharing_owner_rules.json \
             > analysis/context.json
       
           # Identify unused permission sets with safer logic
@@ -444,8 +423,6 @@ jobs:
             owd_settings: (.owd_settings // [] | map(select(type == "object"))),
             custom_object_sharing: (.custom_object_sharing // [] | map(select(type == "object"))),
             sharing_rules: (.sharing_rules // [] | map(select(type == "object"))),
-            sharing_criteria_rules: (.sharing_criteria_rules // [] | map(select(type == "object"))),
-            sharing_owner_rules: (.sharing_owner_rules // [] | map(select(type == "object")))
           }' "$CONTEXT_JSON")
           
           SHARING_ESCAPED=$(jq -Rs . <<< "$SHARING_DATA")
