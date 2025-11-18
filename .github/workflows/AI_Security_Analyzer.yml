@@ -47,12 +47,14 @@ jobs:
       
       - name: Authenticate to Salesforce Org
         run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias $ORG_ALIAS --set-default --sfdx-url-stdin
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url --alias ${{ env.ORG_ALIAS }} --set-default --sfdx-url-stdin
           sf org list
+      
+      - name: Create Data Directory
+        run: mkdir -p security-data
       
       - name: Collect Salesforce Data
         run: |
-          mkdir -p security-data
           DATA_DIR="security-data"
           
           # Profiles (all) - Enhanced with more permission fields
