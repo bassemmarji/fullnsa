@@ -437,46 +437,49 @@ jobs:
         run: |
           MODEL="${{ env.MODEL_NAME }}"
           OVERPRIV_COUNT=$(jq 'length' analysis/overprivileged_enriched.json)
-          
+         
           if [ "$OVERPRIV_COUNT" -gt 0 ]; then
             # Generate markdown table from pre-processed data
             echo "### Overprivileged Profiles" > analysis/overprivileged_profiles.md
             echo "" >> analysis/overprivileged_profiles.md
             echo "**Total Overprivileged:** $OVERPRIV_COUNT" >> analysis/overprivileged_profiles.md
             echo "" >> analysis/overprivileged_profiles.md
-            
+           
             # Generate detailed profile cards instead of tables
-            jq -r '.[] | 
+            jq -r '.[] |
               "#### \(.ProfileName)\n\n" +
               "- **Profile ID**: `\(.ProfileId)`\n" +
               "- **Active Users**: \(.UserCount)\n" +
               "- **Permissions**:\n" +
-              "  - Modify All Data: \(.PermissionsModifyAllData)\n" +
-              "  - View All Data: \(.PermissionsViewAllData)\n" +
-              "  - View Setup: \(.PermissionsViewSetup)\n" +
-              "  - Manage Users: \(.PermissionsManageUsers)\n\n"
+              " - Modify All Data: \(.PermissionsModifyAllData)\n" +
+              " - View All Data: \(.PermissionsViewAllData)\n" +
+              " - View Setup: \(.PermissionsViewSetup)\n" +
+              " - Manage Users: \(.PermissionsManageUsers)\n\n"
             ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
-            
+           
+            # Collect user counts for cleaner prompt insertion
+            USER_COUNTS=$(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json | paste -sd ', ')
+           
             # Now ask AI for targeted analysis
-            cat <<EOF | ollama run "$MODEL" >> analysis/overprivileged_profiles.md
-              You are a Salesforce security analyst. Review these overprivileged profiles:
-              
-              $(cat analysis/overprivileged_enriched.json | jq -c '.')
-              
-              For EACH profile listed above, provide:
-              
-              1. **Risk Assessment** (2-3 sentences):
-                 - Why this specific combination of permissions is dangerous
-                 - Real-world attack scenarios enabled by these permissions
-                 
-              2. **Blast Radius** (1-2 sentences):
-                 - Impact based on the actual user count: $(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json)
-                 - Potential organizational damage
-              
-              3. **Priority Ranking**: High/Critical based on user count and permission combination
-              
-              Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
-            EOF
+            cat <<-EOF | ollama run "$MODEL" >> analysis/overprivileged_profiles.md
+          	You are a Salesforce security analyst. Review these overprivileged profiles:
+          	
+          	$(jq -c '.' analysis/overprivileged_enriched.json)
+          	
+          	For EACH profile listed above, provide:
+          	
+          	1. **Risk Assessment** (2-3 sentences):
+          	   - Why this specific combination of permissions is dangerous
+          	   - Real-world attack scenarios enabled by these permissions
+          	
+          	2. **Blast Radius** (1-2 sentences):
+          	   - Impact based on the actual user count: $USER_COUNTS
+          	   - Potential organizational damage
+          	
+          	3. **Priority Ranking**: High/Critical based on user count and permission combination
+          	
+          	Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
+          	EOF
           fi
     
       - name: Validate AI Output
