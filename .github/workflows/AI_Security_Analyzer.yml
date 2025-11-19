@@ -387,12 +387,11 @@ jobs:
 
       - name: Pre-process Overprivileged Profiles Data
         run: |
-          # Create enriched dataset with all joins pre-computed
           jq '
             ([.profiles[] | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)]) as $overpriv_profiles
             | (.user_stats) as $user_stats
             | (.critical_access) as $critical_access
-          
+      
             | $overpriv_profiles | map(
                 . as $profile
                 | {
@@ -402,20 +401,21 @@ jobs:
                     PermissionsViewAllData: .PermissionsViewAllData,
                     PermissionsViewSetup: .PermissionsViewSetup,
                     PermissionsManageUsers: .PermissionsManageUsers,
-                    UserCount: ($user_stats[]? | select(.ProfileId == $profile.Id) | .UserCount) // 0,
+                    UserCount: ( ($user_stats[]? | select(.ProfileId == $profile.Id) | .UserCount) // 0 ),
                     CriticalObjects: (
                       [$critical_access[]? |
-                       select(.Parent != null and .Parent.Profile != null and .Parent.Profile.Id == $profile.Id) |
-                       .SObjectType] | unique | sort
+                         select(.Parent != null and .Parent.Profile != null and .Parent.Profile.Id == $profile.Id) |
+                         .SObjectType
+                      ] | unique | sort
                     ),
                     HighRiskPermissions: [
                       (if .PermissionsDelete == true then "Delete" else empty end),
                       (if .PermissionsModifyAllRecords == true then "Modify All" else empty end)
                     ]
-                 }
+                  }
               )
           ' analysis/context.json > analysis/overprivileged_enriched.json
-
+      
           echo "Enriched data sample:"
           jq '.[0]' analysis/overprivileged_enriched.json
 
