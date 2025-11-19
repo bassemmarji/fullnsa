@@ -176,10 +176,23 @@ jobs:
             SELECT DeveloperName, SharingModel
             FROM CustomObject
             WHERE DeveloperName != null
-            LIMIT 200
           " --json > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
 
           echo "✅ All Salesforce data collection steps completed."
+
+      - name: Debug Print Sample of Raw JSON Data
+        run: |
+          DATA_DIR="security-data"
+          echo "=== Sample data and record counts ==="
+          for file in profiles.json community_profiles.json permission_sets.json permission_set_assignments.json profile_object_permissions.json permset_object_permissions.json critical_object_access.json active_users.json user_stats.json field_permissions.json owd_settings.json custom_object_sharing.json; do
+            echo ""
+            echo "File: $file"
+            echo "Record count:"
+            jq '.result.records | length' "$DATA_DIR/$file" 2>/dev/null || echo "No records or file missing"
+            echo "Sample (first 3 records):"
+            jq '.result.records[0:3]' "$DATA_DIR/$file" 2>/dev/null || echo "No sample available"
+          done
+
 
       - name: Validate Collected Data
         id: check-data
