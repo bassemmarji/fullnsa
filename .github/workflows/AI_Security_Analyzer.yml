@@ -781,13 +781,6 @@ jobs:
           - \`security-analysis-report.md\` - Complete analysis with AI insights
           - \`analysis-debug/\` - Raw data and intermediate processing files
           
-          ### 🎯 Next Steps
-          
-          1. Review the detailed findings in the security analysis report
-          2. Prioritize remediation based on risk levels
-          3. Schedule profile permission audits with business stakeholders
-          4. Deactivate or archive unused permission sets
-          5. Implement regular security reviews (quarterly recommended)
           EOF
 
       - name: Post-Analysis Cleanup
