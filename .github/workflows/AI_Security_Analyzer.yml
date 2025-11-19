@@ -123,15 +123,16 @@ jobs:
           echo "📌 Collecting Critical Object Access"
           CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity','User','Profile','PermissionSet','PermissionSetAssignment','PermissionSetGroup')"
           sf data query --target-org "$ORG_ALIAS" --query "
-            SELECT Parent.Profile.Id,
-            Parent.Profile.Name,
-            SObjectType,
-            PermissionsRead, PermissionsCreate, PermissionsEdit,
-            PermissionsDelete, PermissionsViewAllRecords,
-            PermissionsModifyAllRecords
-            FROM ObjectPermissions
-            WHERE Parent.ProfileId != null
-            AND SObjectType IN $CRITICAL_OBJECTS
+              SELECT 
+                Parent.Profile.Id,
+                Parent.Profile.Name,
+                SObjectType,
+                PermissionsRead, PermissionsCreate, PermissionsEdit,
+                PermissionsDelete, PermissionsViewAllRecords,
+                PermissionsModifyAllRecords
+              FROM ObjectPermissions
+             WHERE Parent.IsOwnedByProfile = true
+               AND SObjectType IN $CRITICAL_OBJECTS
           " --json > "$DATA_DIR/critical_object_access.json"
 
           echo "📌 Collecting Active Users"
@@ -245,6 +246,19 @@ jobs:
         run: |
           mkdir -p analysis
 
+          # Validate input files first
+          for file in profiles.json permission_sets.json active_users.json; do
+              if [ ! -s "data/$file" ]; then
+                echo "❌ ERROR: Required file data/$file is missing or empty"
+                exit 1
+              fi
+              
+              RECORD_COUNT=$(jq '.result.records | length' "data/$file")
+              if [ "$RECORD_COUNT" -eq 0 ]; then
+                echo "⚠️ WARNING: data/$file contains no records"
+              fi
+          done
+            
           # Combine all data into single context
           jq -s '{
             profiles: [
@@ -430,60 +444,41 @@ jobs:
             echo "" >> analysis/overprivileged_profiles.md
             echo "**Total Overprivileged:** $OVERPRIV_COUNT" >> analysis/overprivileged_profiles.md
             echo "" >> analysis/overprivileged_profiles.md
-            echo "| Profile Name | Profile ID | ModifyAllData | ViewAllData | Active Users | Critical Objects | Risk Level | Recommendation |" >> analysis/overprivileged_profiles.md
-            echo "|--------------|------------|---------------|-------------|--------------|------------------|------------|----------------|" >> analysis/overprivileged_profiles.md
             
-            # Generate table rows with actual data
+            # Generate detailed profile cards instead of tables
             jq -r '.[] | 
-              "| \(.ProfileName) | \(.ProfileId) | \(.PermissionsModifyAllData) | \(.PermissionsViewAllData) | \(.UserCount) | \(.CriticalObjects | join(", ")) | High | Review and restrict |"
+              "#### \(.ProfileName)\n\n" +
+              "- **Profile ID**: `\(.ProfileId)`\n" +
+              "- **Active Users**: \(.UserCount)\n" +
+              "- **Permissions**:\n" +
+              "  - Modify All Data: \(.PermissionsModifyAllData)\n" +
+              "  - View All Data: \(.PermissionsViewAllData)\n" +
+              "  - View Setup: \(.PermissionsViewSetup)\n" +
+              "  - Manage Users: \(.PermissionsManageUsers)\n\n"
             ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
             
-            echo "" >> analysis/overprivileged_profiles.md
-            echo "#### Detailed Findings:" >> analysis/overprivileged_profiles.md
-            echo "" >> analysis/overprivileged_profiles.md
-            
-            # Now ask AI for analysis only (no data generation)
+            # Now ask AI for targeted analysis
             cat <<EOF | ollama run "$MODEL" >> analysis/overprivileged_profiles.md
-
-          You are a Salesforce security analyst. The above table shows overprivileged profiles.
-
-          Based on this data, provide:
-
-          1. **Security Risk Analysis**: For each profile listed, write 2-3 sentences explaining:
-             - Why the combination of permissions is risky
-             - The blast radius (how many users are affected)
-             - What critical objects they can access and why that matters
-             - Specific security implications for the organization
-
-          2. **DO NOT** create new tables or reproduce the data above
-          3. **DO NOT** use placeholders like "[insert]" or "Unknown"
-          4. Use the exact profile names and data from the table above
-
-          Enriched Profile Data:
-          $(cat analysis/overprivileged_enriched.json | jq -c .)
-
-          Write your analysis now:
-          EOF
+            You are a Salesforce security analyst. Review these overprivileged profiles:
             
-            echo "" >> analysis/overprivileged_profiles.md
-            echo "#### Remediation Steps:" >> analysis/overprivileged_profiles.md
-            echo "" >> analysis/overprivileged_profiles.md
-            echo "1. **Audit Business Requirements**: Review each profile's actual business needs with stakeholders" >> analysis/overprivileged_profiles.md
-            echo "2. **Remove Blanket Permissions**: Eliminate ModifyAllData and ViewAllData permissions where possible" >> analysis/overprivileged_profiles.md
-            echo "3. **Migrate to Permission Sets**: Move elevated permissions to specific, purpose-built Permission Sets" >> analysis/overprivileged_profiles.md
-            echo "4. **Implement RBAC**: Set up role-based access control for sensitive objects" >> analysis/overprivileged_profiles.md
-            echo "5. **User Reassignment**: Audit users assigned to these profiles and reassign to least-privilege profiles" >> analysis/overprivileged_profiles.md
-            echo "6. **Enable Field-Level Security**: Restrict access to sensitive fields even when object access is granted" >> analysis/overprivileged_profiles.md
-            echo "7. **Regular Monitoring**: Schedule quarterly reviews of profile permissions and assignments" >> analysis/overprivileged_profiles.md
+            $(cat analysis/overprivileged_enriched.json | jq -c '.')
             
-          else
-            echo "### Overprivileged Profiles" > analysis/overprivileged_profiles.md
-            echo "" >> analysis/overprivileged_profiles.md
-            echo "✅ **No overprivileged profiles found** - Excellent! No profiles have ModifyAllData or ViewAllData permissions." >> analysis/overprivileged_profiles.md
-            echo "" >> analysis/overprivileged_profiles.md
-            echo "**Recommendation:** Maintain this security posture by regularly auditing profile permissions." >> analysis/overprivileged_profiles.md
+            For EACH profile listed above, provide:
+            
+            1. **Risk Assessment** (2-3 sentences):
+               - Why this specific combination of permissions is dangerous
+               - Real-world attack scenarios enabled by these permissions
+               
+            2. **Blast Radius** (1-2 sentences):
+               - Impact based on the actual user count: $(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json)
+               - Potential organizational damage
+            
+            3. **Priority Ranking**: High/Critical based on user count and permission combination
+            
+            Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
+            EOF
           fi
-
+    
       - name: Validate AI Output
         run: |
           echo "=== Validating AI Output for Placeholders ==="
