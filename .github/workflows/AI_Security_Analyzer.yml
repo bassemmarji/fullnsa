@@ -512,12 +512,12 @@ jobs:
             echo "| Permission Set Name | Label | Description | ID | Recommendation |" >> analysis/unused_permission_sets.md
             echo "|---------------------|-------|-------------|-----|----------------|" >> analysis/unused_permission_sets.md
             
-            # Generate table rows directly with jq
+            # Generate table rows directly with jq (with null-safe string operations)
             jq -r '.[] | 
-              "| \(.Name) | \(.Label // "N/A") | \(if .Description then .Description else "No description" end) | \(.Id) | \(
-                if (.Name | test("(?i)(test|temp|demo|sandbox)")) then "Archive or deactivate (appears temporary)"
-                elif (.Description | test("(?i)(deprecated|obsolete|old)")) then "Deactivate (marked obsolete)"
-                elif (.Label | test("(?i)(legacy|retired)")) then "Archive for compliance"
+              "| \(.Name // "Unknown") | \(.Label // "N/A") | \(if .Description then .Description else "No description" end) | \(.Id // "N/A") | \(
+                if (.Name // "" | test("(?i)(test|temp|demo|sandbox)")) then "Archive or deactivate (appears temporary)"
+                elif (.Description // "" | test("(?i)(deprecated|obsolete|old)")) then "Deactivate (marked obsolete)"
+                elif (.Label // "" | test("(?i)(legacy|retired)")) then "Archive for compliance"
                 else "Review business need before deactivation"
                 end
               ) |"
