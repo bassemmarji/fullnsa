@@ -71,7 +71,7 @@ jobs:
           sf data query --target-org "$ORG_ALIAS" --query " SELECT Id, ParentId, Parent.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE (Parent.IsOwnedByProfile = false OR Parent.IsOwnedByProfile = null) " --json > "$DATA_DIR/permset_object_permissions.json"
           echo "📌 Collecting Critical Object Access"
           CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity','User','Profile','PermissionSet','PermissionSetAssignment','PermissionSetGroup')"
-          sf data query --target-org "$ORG_ALIAS" --query " SELECT Parent.Profile.Id, Parent.Profile.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = true AND SObjectType IN $CRITICAL_OBJECTS " --json > "$DATA_DIR/critical_object_access.json"
+          sf data query --target-org "$ORG_ALIAS" --query " SELECT Parent.Profile.Id, Parent.Profile.Name, SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE Parent.ProfileId != null AND SObjectType IN $CRITICAL_OBJECTS " --json > "$DATA_DIR/critical_object_access.json"
           echo "📌 Collecting Active Users"
           sf data query --target-org "$ORG_ALIAS" --query " SELECT Id, Username, Name, ProfileId, Profile.Name, IsActive, LastLoginDate FROM User WHERE IsActive = true ORDER BY Profile.Name " --json > "$DATA_DIR/active_users.json"
           echo "📌 Collecting User Stats by Profile"
@@ -272,19 +272,26 @@ jobs:
             jq -r '.[] | "#### \(.ProfileName)\n\n" + "- **Profile ID**: \(.ProfileId)\n" + "- **Active Users**: \(.UserCount)\n" + "- **Permissions**:\n" + " - Modify All Data: \(.PermissionsModifyAllData)\n" + " - View All Data: \(.PermissionsViewAllData)\n" + " - View Setup: \(.PermissionsViewSetup)\n" + " - Manage Users: \(.PermissionsManageUsers)\n" + "- **Critical Objects Accessed**: \((.CriticalObjects | join(", "))\n\n" ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
             # Collect user counts for cleaner prompt insertion
             USER_COUNTS=$(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json | paste -sd ', ')
-            # Now ask AI for targeted analysis
-            cat <<-EOF | ollama run "$MODEL" >> analysis/overprivileged_profiles.md
-            You are a Salesforce security analyst. Review these overprivileged profiles: $(jq -c '.' analysis/overprivileged_enriched.json)
+            # Prepare AI prompt using temp file to avoid here-doc indentation issues
+            DATA=$(jq -c '.' analysis/overprivileged_enriched.json)
+            cat > prompt_overpriv.txt << 'END'
+            You are a Salesforce security analyst. Review these overprivileged profiles: PROFILE_DATA
+            
             For EACH profile listed above, provide:
             1. **Risk Assessment** (2-3 sentences):
                - Why this specific combination of permissions is dangerous
                - Real-world attack scenarios enabled by these permissions
             2. **Blast Radius** (1-2 sentences):
-               - Impact based on the actual user count: $USER_COUNTS
+               - Impact based on the actual user count: USER_COUNTS_PLACEHOLDER
                - Potential organizational damage
             3. **Priority Ranking**: High/Critical based on user count and permission combination
+            
             Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
-            EOF
+            END
+            sed -i "s|PROFILE_DATA|$DATA|g" prompt_overpriv.txt
+            sed -i "s|USER_COUNTS_PLACEHOLDER|$USER_COUNTS|g" prompt_overpriv.txt
+            ollama run "$MODEL" < prompt_overpriv.txt >> analysis/overprivileged_profiles.md
+            rm prompt_overpriv.txt
           else
             echo "✅ **No overprivileged profiles found** - This indicates strong permission hygiene!" >> analysis/overprivileged_profiles.md
             echo "" >> analysis/overprivileged_profiles.md
@@ -321,9 +328,12 @@ jobs:
             echo "" >> analysis/unused_permission_sets.md
             echo "#### Analysis Summary:" >> analysis/unused_permission_sets.md
             echo "" >> analysis/unused_permission_sets.md
-            # Get AI to provide strategic recommendations
-            cat <<EOF | ollama run "${{ env.MODEL_NAME }}" >> analysis/unused_permission_sets.md
-            You are a Salesforce security analyst. There are $UNUSED_COUNT unused permission sets in this org. Based on the data above, provide:
+            # Prepare AI prompt using temp file
+            UNUSED_JSON=$(jq -c '.' analysis/unused_permission_sets.json)
+            cat > prompt_unused.txt << 'END'
+            You are a Salesforce security analyst. There are UNUSED_COUNT_PLACEHOLDER unused permission sets in this org. Review these: UNUSED_JSON_PLACEHOLDER
+            
+            Based on the data provided, provide:
             1. **Strategic Recommendations** (3-4 bullet points):
                - How to prioritize which permission sets to deactivate first
                - Best practices for permission set lifecycle management
@@ -332,8 +342,13 @@ jobs:
                - When to archive vs deactivate
                - Documentation requirements
                - Audit trail best practices
+            
             DO NOT reproduce the table data. Only provide strategic guidance. Write your analysis now:
-            EOF
+            END
+            sed -i "s|UNUSED_COUNT_PLACEHOLDER|$UNUSED_COUNT|g" prompt_unused.txt
+            sed -i "s|UNUSED_JSON_PLACEHOLDER|$UNUSED_JSON|g" prompt_unused.txt
+            ollama run "${{ env.MODEL_NAME }}" < prompt_unused.txt >> analysis/unused_permission_sets.md
+            rm prompt_unused.txt
             echo "" >> analysis/unused_permission_sets.md
             echo "#### Audit Queries:" >> analysis/unused_permission_sets.md
             echo '```sql' >> analysis/unused_permission_sets.md
@@ -362,14 +377,20 @@ jobs:
           echo "" >> analysis/additional_insights.md
           # Extract key metrics for AI analysis
           STATS=$(cat analysis/stats.json)
-          cat <<EOF | ollama run "$MODEL" >> analysis/additional_insights.md
+          STATS_COMPACT=$(echo "$STATS" | jq -c .)
+          TOTAL_PROFILES=$(echo "$STATS" | jq -r .total_profiles)
+          TOTAL_PERMSETS=$(echo "$STATS" | jq -r .total_permission_sets)
+          TOTAL_USERS=$(echo "$STATS" | jq -r .total_active_users)
+          UNUSED_PSETS=$(echo "$STATS" | jq -r .unused_permission_sets)
+          # Prepare AI prompt using temp file
+          cat > prompt_insights.txt << 'END'
           You are a Salesforce security consultant. Analyze these security metrics and provide insights:
-          Statistics: $(echo "$STATS" | jq -c .)
+          Statistics: STATS_PLACEHOLDER
           Context:
-          - Total profiles: $(echo "$STATS" | jq -r .total_profiles)
-          - Permission sets: $(echo "$STATS" | jq -r .total_permission_sets)
-          - Active users: $(echo "$STATS" | jq -r .total_active_users)
-          - Unused permission sets: $(echo "$STATS" | jq -r .unused_permission_sets)
+          - Total profiles: TOTAL_PROFILES_PLACEHOLDER
+          - Permission sets: TOTAL_PERMSETS_PLACEHOLDER
+          - Active users: TOTAL_USERS_PLACEHOLDER
+          - Unused permission sets: UNUSED_PSETS_PLACEHOLDER
           Provide:
           1. **Overall Security Posture** (2-3 sentences):
              - What's the overall health of this org's security configuration?
@@ -384,7 +405,14 @@ jobs:
              - What governance practices should be implemented?
              - How can this org maintain good security hygiene?
           Be specific and actionable. Use the actual numbers from the statistics.
-          EOF
+          END
+          sed -i "s|STATS_PLACEHOLDER|$STATS_COMPACT|g" prompt_insights.txt
+          sed -i "s|TOTAL_PROFILES_PLACEHOLDER|$TOTAL_PROFILES|g" prompt_insights.txt
+          sed -i "s|TOTAL_PERMSETS_PLACEHOLDER|$TOTAL_PERMSETS|g" prompt_insights.txt
+          sed -i "s|TOTAL_USERS_PLACEHOLDER|$TOTAL_USERS|g" prompt_insights.txt
+          sed -i "s|UNUSED_PSETS_PLACEHOLDER|$UNUSED_PSETS|g" prompt_insights.txt
+          ollama run "$MODEL" < prompt_insights.txt >> analysis/additional_insights.md
+          rm prompt_insights.txt
 
       - name: Generate Executive Summary with AI
         run: |
@@ -404,9 +432,11 @@ jobs:
                 users_per_profile: ($stats.total_active_users / $stats.total_profiles | floor)
               }
             }')
-          cat <<EOF | ollama run "$MODEL" > analysis/executive_summary.md
+          SUMMARY_COMPACT=$(echo "$SUMMARY_DATA" | jq -c .)
+          # Prepare AI prompt using temp file
+          cat > prompt_summary.txt << 'END'
           You are a CISO presenting security findings to executives. Create a concise executive summary.
-          Data: $(echo "$SUMMARY_DATA" | jq -c .)
+          Data: SUMMARY_PLACEHOLDER
           Write a 4-paragraph executive summary that includes:
           1. **Opening Statement** (1-2 sentences):
              - Overall security posture (Strong/Moderate/Weak)
@@ -423,7 +453,10 @@ jobs:
              - Top priority action with timeline
              - Expected outcome of remediation
           Use plain business language. Avoid technical jargon. Be direct and actionable.
-          EOF
+          END
+          sed -i "s|SUMMARY_PLACEHOLDER|$SUMMARY_COMPACT|g" prompt_summary.txt
+          ollama run "$MODEL" < prompt_summary.txt > analysis/executive_summary.md
+          rm prompt_summary.txt
 
       - name: Combine Report Sections
         run: |
@@ -436,6 +469,8 @@ jobs:
           echo "**Report Version:** 2.0" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
+          echo "" >> security_analysis_report.md
+          echo "## Executive Summary" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           cat analysis/executive_summary.md >> security_analysis_report.md
           echo "" >> security_analysis_report.md
@@ -512,7 +547,8 @@ jobs:
             echo "- ✅ No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "$UNUSED_COUNT" -gt 0 ]; then
-            UNUSED_PERCENT=$(( (UNUSED_COUNT * 100) / $(jq -r '.total_permission_sets' analysis/stats.json) ))
+            TOTAL_PERMSETS=$(jq -r '.total_permission_sets' analysis/stats.json)
+            UNUSED_PERCENT=$(( (UNUSED_COUNT * 100) / TOTAL_PERMSETS ))
             echo "- 🟡 **$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ✅ All permission sets are actively assigned" >> $GITHUB_STEP_SUMMARY
@@ -529,5 +565,5 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up temporary files..."
-          rm -f analysis/*.prompt 2>/dev/null || true
+          rm -f analysis/*.prompt prompt_*.txt 2>/dev/null || true
           echo "✅ Cleanup complete"
