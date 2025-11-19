@@ -389,12 +389,10 @@ jobs:
         run: |
           # Create enriched dataset with all joins pre-computed
           jq '
-            # Extract base data
             ([.profiles[] | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)]) as $overpriv_profiles
             | (.user_stats) as $user_stats
             | (.critical_access) as $critical_access
-            
-            # Join and enrich
+          
             | $overpriv_profiles | map(
                 . as $profile
                 | {
@@ -404,19 +402,17 @@ jobs:
                     PermissionsViewAllData: .PermissionsViewAllData,
                     PermissionsViewSetup: .PermissionsViewSetup,
                     PermissionsManageUsers: .PermissionsManageUsers,
-                    UserCount: (
-                      ($user_stats[] | select(.ProfileId == $profile.Id) | .UserCount) // 0
-                    ),
+                    UserCount: ($user_stats[]? | select(.ProfileId == $profile.Id) | .UserCount) // 0,
                     CriticalObjects: (
-                      [$critical_access[] | 
-                       select(.Parent.Profile.Id == $profile.Id) | 
+                      [$critical_access[]? |
+                       select(.Parent != null and .Parent.Profile != null and .Parent.Profile.Id == $profile.Id) |
                        .SObjectType] | unique | sort
                     ),
                     HighRiskPermissions: [
                       (if .PermissionsDelete == true then "Delete" else empty end),
                       (if .PermissionsModifyAllRecords == true then "Modify All" else empty end)
                     ]
-                  }
+                 }
               )
           ' analysis/context.json > analysis/overprivileged_enriched.json
 
