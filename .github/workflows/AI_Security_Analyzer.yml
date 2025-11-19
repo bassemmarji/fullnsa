@@ -117,7 +117,7 @@ jobs:
             PermissionsDelete, PermissionsViewAllRecords,
             PermissionsModifyAllRecords
             FROM ObjectPermissions
-            WHERE Parent.IsOwnedByProfile = false
+           WHERE (Parent.IsOwnedByProfile = false OR Parent.IsOwnedByProfile = null)
           " --json > "$DATA_DIR/permset_object_permissions.json"
 
           echo "📌 Collecting Critical Object Access"
@@ -163,7 +163,7 @@ jobs:
                Field LIKE '%Password%' OR
                Field LIKE '%Credit%')
               OR
-              SObjectType IN ('Account','Contact','Lead','Opportunity','User')
+              SObjectType IN ('Account','Contact','Lead','Opportunity','User','Case','Task','Event')
             ORDER BY SObjectType, Field
           " --json > "$DATA_DIR/field_permissions.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/field_permissions.json"
 
@@ -180,15 +180,12 @@ jobs:
           " --json > "$DATA_DIR/owd_settings.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/owd_settings.json"
 
           echo "📌 Collecting Custom Object Sharing Model"
-          sf data query --target-org "$ORG_ALIAS" --query "
+          sf data query --target-org "$ORG_ALIAS" --use-tooling-api --query "
             SELECT DeveloperName, SharingModel
             FROM CustomObject
             WHERE DeveloperName != null
             LIMIT 200
           " --json > "$DATA_DIR/custom_object_sharing.json" || echo '{"result":{"records":[]}}' > "$DATA_DIR/custom_object_sharing.json"
-
-          echo "📌 Creating empty sharing_rules.json"
-          echo '{"result":{"records":[]}}' > "$DATA_DIR/sharing_rules.json"
 
           echo "✅ All Salesforce data collection steps completed."
 
@@ -293,10 +290,6 @@ jobs:
               .[11].result.records[]? | 
               select(type == "object")
             ],
-            sharing_rules: [
-              .[12].result.records[]? | 
-              select(type == "object")
-            ],
           }' \
             data/profiles.json \
             data/community_profiles.json \
@@ -310,7 +303,6 @@ jobs:
             data/field_permissions.json \
             data/owd_settings.json \
             data/custom_object_sharing.json \
-            data/sharing_rules.json \
             > analysis/context.json
 
           # FIX 2: Improved unused permission sets detection
@@ -336,8 +328,7 @@ jobs:
             permsets_with_modify_all: ([.permission_sets[] | select(.PermissionsModifyAllData == true)] | length),
             permsets_with_view_all: ([.permission_sets[] | select(.PermissionsViewAllData == true)] | length),
             total_active_users: (.active_users | length),
-            total_field_permissions: (.field_permissions | length),
-            total_sharing_rules: (.sharing_rules | length)
+            total_field_permissions: (.field_permissions | length)
           }' analysis/context.json > analysis/stats.json
 
       # FIX 1: Add data quality validation
@@ -396,8 +387,7 @@ jobs:
             "- Profiles with ViewAllData: \(.profiles_with_view_all)\n" +
             "- Profiles with either all data permission: \(.profiles_with_either_all_data_perm)\n" +
             "- Total Active Users: \(.total_active_users)\n" +
-            "- Total Field Permissions Analyzed: \(.total_field_permissions)\n" +
-            "- Total Sharing Rules: \(.total_sharing_rules)\n"
+            "- Total Field Permissions Analyzed: \(.total_field_permissions)\n" 
           ' analysis/stats.json >> security_analysis_report.md
 
       # FIX 2 & 4: Improved overprivileged profile analysis with better data extraction and prompting
