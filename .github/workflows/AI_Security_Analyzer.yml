@@ -228,14 +228,10 @@ jobs:
 
       - name: Generate Basic Report (Non-AI)
         run: |
-          # Initialize report without placeholder executive summary
-          cat << 'EOF' > security_analysis_report.md
-          # Salesforce Security Analysis Report
-          
+          cat << 'EOF' > analysis/stats_section.md
           ## Statistics
-          
           EOF
-          jq -r '- Total Profiles: \(.total_profiles)\n- Community Profiles: \(.community_profiles)\n- Total Permission Sets: \(.total_permission_sets)\n- Total Assignments: \(.total_assignments)\n- Unused Permission Sets: \(.unused_permission_sets)\n- Profiles with ModifyAllData: \(.profiles_with_modify_all)\n- Profiles with ViewAllData: \(.profiles_with_view_all)\n- Profiles with either all data permission: \(.profiles_with_either_all_data_perm)\n- Total Active Users: \(.total_active_users)\n- Total Field Permissions Analyzed: \(.total_field_permissions)\n' analysis/stats.json >> security_analysis_report.md
+          jq -r '"- Total Profiles: \(.total_profiles)\n- Community Profiles: \(.community_profiles)\n- Total Permission Sets: \(.total_permission_sets)\n- Total Assignments: \(.total_assignments)\n- Unused Permission Sets: \(.unused_permission_sets)\n- Profiles with ModifyAllData: \(.profiles_with_modify_all)\n- Profiles with ViewAllData: \(.profiles_with_view_all)\n- Profiles with either all data permission: \(.profiles_with_either_all_data_perm)\n- Total Active Users: \(.total_active_users)\n- Total Field Permissions Analyzed: \(.total_field_permissions)\n"' analysis/stats.json >> analysis/stats_section.md
 
       - name: Pre-process Overprivileged Profiles Data
         run: |
@@ -255,8 +251,8 @@ jobs:
                 PermissionsViewAllData: .PermissionsViewAllData,
                 PermissionsViewSetup: .PermissionsViewSetup,
                 PermissionsManageUsers: .PermissionsManageUsers,
-                UserCount: ($user_stat.UserCount // 0)
-                # CriticalObjects: ( [$critical_access[]? | select(.Parent.Profile.Id == $profile.Id) | .SObjectType ] | unique | sort )
+                UserCount: ($user_stat.UserCount // 0),
+                CriticalObjects: ( [$critical_access[]? | select(.Parent.Profile.Id == $profile.Id) | .SObjectType ] | unique | sort )
               }
             )
           ' analysis/context.json > analysis/overprivileged_enriched.json
@@ -267,14 +263,13 @@ jobs:
         run: |
           MODEL="${{ env.MODEL_NAME }}"
           OVERPRIV_COUNT=$(jq 'length' analysis/overprivileged_enriched.json)
+          echo "### Overprivileged Profiles" > analysis/overprivileged_profiles.md
+          echo "" >> analysis/overprivileged_profiles.md
+          echo "**Total Overprivileged:** $OVERPRIV_COUNT" >> analysis/overprivileged_profiles.md
+          echo "" >> analysis/overprivileged_profiles.md
           if [ "$OVERPRIV_COUNT" -gt 0 ]; then
-            # Generate markdown table from pre-processed data
-            echo "### Overprivileged Profiles" > analysis/overprivileged_profiles.md
-            echo "" >> analysis/overprivileged_profiles.md
-            echo "**Total Overprivileged:** $OVERPRIV_COUNT" >> analysis/overprivileged_profiles.md
-            echo "" >> analysis/overprivileged_profiles.md
             # Generate detailed profile cards instead of tables
-            jq -r '.[] | "#### \(.ProfileName)\n\n" + "- **Profile ID**: \(.ProfileId)\n" + "- **Active Users**: \(.UserCount)\n" + "- **Permissions**:\n" + " - Modify All Data: \(.PermissionsModifyAllData)\n" + " - View All Data: \(.PermissionsViewAllData)\n" + " - View Setup: \(.PermissionsViewSetup)\n" + " - Manage Users: \(.PermissionsManageUsers)\n\n" ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
+            jq -r '.[] | "#### \(.ProfileName)\n\n" + "- **Profile ID**: \(.ProfileId)\n" + "- **Active Users**: \(.UserCount)\n" + "- **Permissions**:\n" + " - Modify All Data: \(.PermissionsModifyAllData)\n" + " - View All Data: \(.PermissionsViewAllData)\n" + " - View Setup: \(.PermissionsViewSetup)\n" + " - Manage Users: \(.PermissionsManageUsers)\n" + "- **Critical Objects Accessed**: \((.CriticalObjects | join(", "))\n\n" ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
             # Collect user counts for cleaner prompt insertion
             USER_COUNTS=$(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json | paste -sd ', ')
             # Now ask AI for targeted analysis
@@ -290,12 +285,16 @@ jobs:
             3. **Priority Ranking**: High/Critical based on user count and permission combination
             Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
             EOF
+          else
+            echo "✅ **No overprivileged profiles found** - This indicates strong permission hygiene!" >> analysis/overprivileged_profiles.md
+            echo "" >> analysis/overprivileged_profiles.md
+            echo "**Recommendation:** Maintain this level of least privilege by regularly reviewing new profile creations." >> analysis/overprivileged_profiles.md
           fi
 
       - name: Validate AI Output
         run: |
           echo "=== Validating AI Output for Placeholders ==="
-          if grep -qE '\[insert|\{list of|Unknown|TODO|PLACEHOLDER' analysis/overprivileged_profiles.md; then
+          if [ -f analysis/overprivileged_profiles.md ] && grep -qE '\[insert|\{list of|Unknown|TODO|PLACEHOLDER' analysis/overprivileged_profiles.md; then
             echo "❌ ERROR: AI output contains placeholders!"
             echo "Problematic content:"
             grep -E '\[insert|\{list of|Unknown|TODO|PLACEHOLDER' analysis/overprivileged_profiles.md || true
@@ -318,7 +317,7 @@ jobs:
             echo "| Permission Set Name | Label | Description | ID | Recommendation |" >> analysis/unused_permission_sets.md
             echo "|---------------------|-------|-------------|-----|----------------|" >> analysis/unused_permission_sets.md
             # Generate table rows directly with jq (with null-safe string operations)
-            jq -r '.[] | "| \(.Name // "Unknown") | \(.Label // "N/A") | \(if .Description then .Description else "No description" end) | \(.Id // "N/A") | \( if (.Name // "" | test("(?i)(test|temp|demo|sandbox)")) then "Archive or deactivate (appears temporary)" elif (.Description // "" | test("(?i)(deprecated|obsolete|old)")) then "Deactivate (marked obsolete)" elif (.Label // "" | test("(?i)(legacy|retired)")) then "Archive for compliance" else "Review business need before deactivation" end ) |" ' analysis/unused_permission_sets.json >> analysis/unused_permission_sets.md
+            jq -r '.[] | "| \(.Name // \"Unknown\") | \(.Label // \"N/A\") | \(if .Description then .Description else \"No description\" end) | \(.Id // \"N/A\") | \( if (.Name // \"\" | test(\"(?i)(test|temp|demo|sandbox)\")) then \"Archive or deactivate (appears temporary)\" elif (.Description // \"\" | test(\"(?i)(deprecated|obsolete|old)\")) then \"Deactivate (marked obsolete)\" elif (.Label // \"\" | test(\"(?i)(legacy|retired)\")) then \"Archive for compliance\" else \"Review business need before deactivation\" end ) |\"" ' analysis/unused_permission_sets.json >> analysis/unused_permission_sets.md
             echo "" >> analysis/unused_permission_sets.md
             echo "#### Analysis Summary:" >> analysis/unused_permission_sets.md
             echo "" >> analysis/unused_permission_sets.md
@@ -428,7 +427,7 @@ jobs:
 
       - name: Combine Report Sections
         run: |
-          # Start with executive summary
+          # Build the report from sections
           echo "# Salesforce Security Analysis Report" > security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "**Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> security_analysis_report.md
@@ -438,14 +437,11 @@ jobs:
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          echo "## Executive Summary" >> security_analysis_report.md
-          echo "" >> security_analysis_report.md
           cat analysis/executive_summary.md >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          # Append statistics (already without placeholder)
-          cat security_analysis_report.md >> security_analysis_report.md  # Note: This is redundant but keeps order; in practice, append directly below
+          cat analysis/stats_section.md >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
