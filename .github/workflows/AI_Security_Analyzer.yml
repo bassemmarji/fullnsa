@@ -459,23 +459,23 @@ jobs:
             
             # Now ask AI for targeted analysis
             cat <<EOF | ollama run "$MODEL" >> analysis/overprivileged_profiles.md
-            You are a Salesforce security analyst. Review these overprivileged profiles:
-            
-            $(cat analysis/overprivileged_enriched.json | jq -c '.')
-            
-            For EACH profile listed above, provide:
-            
-            1. **Risk Assessment** (2-3 sentences):
-               - Why this specific combination of permissions is dangerous
-               - Real-world attack scenarios enabled by these permissions
-               
-            2. **Blast Radius** (1-2 sentences):
-               - Impact based on the actual user count: $(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json)
-               - Potential organizational damage
-            
-            3. **Priority Ranking**: High/Critical based on user count and permission combination
-            
-            Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
+              You are a Salesforce security analyst. Review these overprivileged profiles:
+              
+              $(cat analysis/overprivileged_enriched.json | jq -c '.')
+              
+              For EACH profile listed above, provide:
+              
+              1. **Risk Assessment** (2-3 sentences):
+                 - Why this specific combination of permissions is dangerous
+                 - Real-world attack scenarios enabled by these permissions
+                 
+              2. **Blast Radius** (1-2 sentences):
+                 - Impact based on the actual user count: $(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json)
+                 - Potential organizational damage
+              
+              3. **Priority Ranking**: High/Critical based on user count and permission combination
+              
+              Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
             EOF
           fi
     
