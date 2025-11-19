@@ -240,7 +240,7 @@ jobs:
         run: |
           mkdir -p analysis
 
-          # FIX 1: Improved data filtering with better null handling
+          # Combine all data into single context
           jq -s '{
             profiles: [
               .[0].result.records[]? | 
@@ -305,17 +305,14 @@ jobs:
             data/custom_object_sharing.json \
             > analysis/context.json
 
-          # FIX 2: Improved unused permission sets detection
+          # Detect unused permission sets
           jq -r '
-            # Get all assigned permission set IDs
             ([.assignments[]? | .PermissionSetId | select(. != null)] | unique) as $assigned_ids
-            # Get all permission sets that are not profile-owned
             | [.permission_sets[]? | select(.IsOwnedByProfile != true and .Id != null)]
-            # Filter to only those not in assigned list
             | map(select(.Id as $ps_id | $assigned_ids | index($ps_id) | not))
           ' analysis/context.json > analysis/unused_permission_sets.json
 
-          # Compute enhanced stats with ACCURATE counting
+          # Compute enhanced stats
           jq --argjson unused_ps "$(cat analysis/unused_permission_sets.json)" '{
             total_profiles: (.profiles | length),
             community_profiles: (.community_profiles | length),
@@ -331,7 +328,6 @@ jobs:
             total_field_permissions: (.field_permissions | length)
           }' analysis/context.json > analysis/stats.json
 
-      # FIX 1: Add data quality validation
       - name: Validate Data Quality
         run: |
           echo "=== Data Quality Check ==="
@@ -360,11 +356,6 @@ jobs:
             echo "Sample unused permission set:"
             jq '.[0]' analysis/unused_permission_sets.json
           fi
-          
-          echo ""
-          echo "📊 User Stats Check:"
-          jq '.user_stats | length' analysis/context.json
-          echo "user stats records found"
 
       - name: Generate Basic Report (Non-AI)
         run: |
@@ -375,7 +366,6 @@ jobs:
           For detailed AI-powered analysis, see the sections below:
           EOF
 
-          # Add basic statistics to the report
           jq -r '
             "### Statistics\n\n" +
             "- Total Profiles: \(.total_profiles)\n" +
@@ -390,94 +380,101 @@ jobs:
             "- Total Field Permissions Analyzed: \(.total_field_permissions)\n" 
           ' analysis/stats.json >> security_analysis_report.md
 
-      # FIX 2 & 4: Improved overprivileged profile analysis with better data extraction and prompting
+      - name: Pre-process Overprivileged Profiles Data
+        run: |
+          # Create enriched dataset with all joins pre-computed
+          jq '
+            # Extract base data
+            ([.profiles[] | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)]) as $overpriv_profiles
+            | (.user_stats) as $user_stats
+            | (.critical_access) as $critical_access
+            
+            # Join and enrich
+            | $overpriv_profiles | map(
+                . as $profile
+                | {
+                    ProfileId: .Id,
+                    ProfileName: .Name,
+                    PermissionsModifyAllData: .PermissionsModifyAllData,
+                    PermissionsViewAllData: .PermissionsViewAllData,
+                    PermissionsViewSetup: .PermissionsViewSetup,
+                    PermissionsManageUsers: .PermissionsManageUsers,
+                    UserCount: (
+                      ($user_stats[] | select(.ProfileId == $profile.Id) | .UserCount) // 0
+                    ),
+                    CriticalObjects: (
+                      [$critical_access[] | 
+                       select(.Parent.Profile.Id == $profile.Id) | 
+                       .SObjectType] | unique | sort
+                    ),
+                    HighRiskPermissions: [
+                      (if .PermissionsDelete == true then "Delete" else empty end),
+                      (if .PermissionsModifyAllRecords == true then "Modify All" else empty end)
+                    ]
+                  }
+              )
+          ' analysis/context.json > analysis/overprivileged_enriched.json
+
+          echo "Enriched data sample:"
+          jq '.[0]' analysis/overprivileged_enriched.json
+
       - name: Analyze High-Priority Risks (AI)
         run: |
           MODEL="${{ env.MODEL_NAME }}"
-          CONTEXT_JSON="analysis/context.json"
-          
-          # FIX 2: Extract overprivileged profiles with explicit filtering
-          OVERPRIV_DATA=$(jq '{
-            overpriv_profiles: [
-              .profiles[] | 
-              select(
-                .PermissionsModifyAllData == true or 
-                .PermissionsViewAllData == true
-              ) |
-              {
-                Id: .Id,
-                Name: .Name,
-                PermissionsModifyAllData: .PermissionsModifyAllData,
-                PermissionsViewAllData: .PermissionsViewAllData,
-                PermissionsViewSetup: .PermissionsViewSetup,
-                PermissionsManageUsers: .PermissionsManageUsers
-              }
-            ],
-            user_stats: [
-              .user_stats[] |
-              {
-                ProfileId: .ProfileId,
-                ProfileName: .Profile.Name,
-                UserCount: .UserCount
-              }
-            ],
-            critical_access: [
-              .critical_access[] |
-              {
-                ProfileId: .Parent.Profile.Id,
-                ProfileName: .Parent.Profile.Name,
-                SObjectType: .SObjectType,
-                PermissionsDelete: .PermissionsDelete,
-                PermissionsModifyAllRecords: .PermissionsModifyAllRecords
-              }
-            ]
-          }' "$CONTEXT_JSON")
-          
-          OVERPRIV_COUNT=$(echo "$OVERPRIV_DATA" | jq '.overpriv_profiles | length')
+          OVERPRIV_COUNT=$(jq 'length' analysis/overprivileged_enriched.json)
           
           if [ "$OVERPRIV_COUNT" -gt 0 ]; then
-            # FIX 4: Improved prompt with strict instructions
-            cat <<EOF > analysis/overprivileged_profiles.prompt
-          You are a Salesforce security analyst. Analyze the following JSON data about overprivileged profiles.
+            # Generate markdown table from pre-processed data
+            echo "### Overprivileged Profiles" > analysis/overprivileged_profiles.md
+            echo "" >> analysis/overprivileged_profiles.md
+            echo "**Total Overprivileged:** $OVERPRIV_COUNT" >> analysis/overprivileged_profiles.md
+            echo "" >> analysis/overprivileged_profiles.md
+            echo "| Profile Name | Profile ID | ModifyAllData | ViewAllData | Active Users | Critical Objects | Risk Level | Recommendation |" >> analysis/overprivileged_profiles.md
+            echo "|--------------|------------|---------------|-------------|--------------|------------------|------------|----------------|" >> analysis/overprivileged_profiles.md
+            
+            # Generate table rows with actual data
+            jq -r '.[] | 
+              "| \(.ProfileName) | \(.ProfileId) | \(.PermissionsModifyAllData) | \(.PermissionsViewAllData) | \(.UserCount) | \(.CriticalObjects | join(", ")) | High | Review and restrict |"
+            ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
+            
+            echo "" >> analysis/overprivileged_profiles.md
+            echo "#### Detailed Findings:" >> analysis/overprivileged_profiles.md
+            echo "" >> analysis/overprivileged_profiles.md
+            
+            # Now ask AI for analysis only (no data generation)
+            cat <<EOF | ollama run "$MODEL" >> analysis/overprivileged_profiles.md
 
-          STRICT REQUIREMENTS:
-          1. Use ONLY the exact data from the JSON - no placeholders, no assumptions, no invented values
-          2. For each profile in overpriv_profiles, cross-reference its Id with user_stats ProfileId to get UserCount
-          3. If a ProfileId is not found in user_stats, write "0" for Active Users
-          4. Use the exact Name field from each profile - do not invent names
-          5. List ONLY profiles where PermissionsModifyAllData=true OR PermissionsViewAllData=true
-          6. For critical object access, match profile Ids and list the relevant objects
+          You are a Salesforce security analyst. The above table shows overprivileged profiles.
 
-          JSON DATA:
-          $(echo "$OVERPRIV_DATA" | jq -c .)
+          Based on this data, provide:
 
-          OUTPUT FORMAT (Markdown):
-          ### Overprivileged Profiles
+          1. **Security Risk Analysis**: For each profile listed, write 2-3 sentences explaining:
+             - Why the combination of permissions is risky
+             - The blast radius (how many users are affected)
+             - What critical objects they can access and why that matters
+             - Specific security implications for the organization
 
-          **Total Overprivileged:** $OVERPRIV_COUNT
+          2. **DO NOT** create new tables or reproduce the data above
+          3. **DO NOT** use placeholders like "[insert]" or "Unknown"
+          4. Use the exact profile names and data from the table above
 
-          | Profile Name | Profile ID | ModifyAllData | ViewAllData | Active Users | Critical Objects | Risk Level | Recommendation |
-          |--------------|------------|---------------|-------------|--------------|------------------|------------|----------------|
-          [One row per profile from the JSON data]
+          Enriched Profile Data:
+          $(cat analysis/overprivileged_enriched.json | jq -c .)
 
-          #### Detailed Findings:
-          [For each overprivileged profile, write 2-3 sentences explaining:
-          - What permissions it has and why they're risky
-          - How many users are assigned (from user_stats)
-          - What critical objects it can access (from critical_access)
-          - Specific security implications]
-
-          #### Remediation Steps:
-          1. Review each profile's actual business requirements
-          2. Remove ModifyAllData and ViewAllData permissions where possible
-          3. Migrate elevated permissions to specific Permission Sets
-          4. Implement role-based access control for sensitive objects
-          5. Audit users assigned to these profiles and reassign if appropriate
-          
-          REMEMBER: Only use real data from the JSON. No placeholders like "[insert count]" or "Unknown" unless the data truly doesn't exist.
+          Write your analysis now:
           EOF
             
-            ollama run "$MODEL" < analysis/overprivileged_profiles.prompt > analysis/overprivileged_profiles.md
+            echo "" >> analysis/overprivileged_profiles.md
+            echo "#### Remediation Steps:" >> analysis/overprivileged_profiles.md
+            echo "" >> analysis/overprivileged_profiles.md
+            echo "1. **Audit Business Requirements**: Review each profile's actual business needs with stakeholders" >> analysis/overprivileged_profiles.md
+            echo "2. **Remove Blanket Permissions**: Eliminate ModifyAllData and ViewAllData permissions where possible" >> analysis/overprivileged_profiles.md
+            echo "3. **Migrate to Permission Sets**: Move elevated permissions to specific, purpose-built Permission Sets" >> analysis/overprivileged_profiles.md
+            echo "4. **Implement RBAC**: Set up role-based access control for sensitive objects" >> analysis/overprivileged_profiles.md
+            echo "5. **User Reassignment**: Audit users assigned to these profiles and reassign to least-privilege profiles" >> analysis/overprivileged_profiles.md
+            echo "6. **Enable Field-Level Security**: Restrict access to sensitive fields even when object access is granted" >> analysis/overprivileged_profiles.md
+            echo "7. **Regular Monitoring**: Schedule quarterly reviews of profile permissions and assignments" >> analysis/overprivileged_profiles.md
+            
           else
             echo "### Overprivileged Profiles" > analysis/overprivileged_profiles.md
             echo "" >> analysis/overprivileged_profiles.md
@@ -486,62 +483,72 @@ jobs:
             echo "**Recommendation:** Maintain this security posture by regularly auditing profile permissions." >> analysis/overprivileged_profiles.md
           fi
 
-      # FIX 3: Batch processing for unused permission sets
-      - name: Analyze Unused Permission Sets (Batched)
+      - name: Validate AI Output
         run: |
-          MODEL="${{ env.MODEL_NAME }}"
-          UNUSED_PS_JSON="analysis/unused_permission_sets.json"
-          COUNT=$(jq 'length' "$UNUSED_PS_JSON")
+          echo "=== Validating AI Output for Placeholders ==="
           
-          # Initialize the output file
+          if grep -qE '\[insert|\{list of|Unknown|TODO|PLACEHOLDER' analysis/overprivileged_profiles.md; then
+            echo "❌ ERROR: AI output contains placeholders!"
+            echo "Problematic content:"
+            grep -E '\[insert|\{list of|Unknown|TODO|PLACEHOLDER' analysis/overprivileged_profiles.md || true
+            echo ""
+            echo "⚠️ The AI model may not have enough context or the prompt needs adjustment."
+            echo "⚠️ Report will still be generated but may contain incomplete analysis."
+          else
+            echo "✅ No placeholders detected in AI output"
+          fi
+
+      - name: Pre-process Unused Permission Sets
+        run: |
+          UNUSED_COUNT=$(jq 'length' analysis/unused_permission_sets.json)
+          
           echo "### Unused Permission Sets" > analysis/unused_permission_sets.md
           echo "" >> analysis/unused_permission_sets.md
-          echo "**Total Unused:** $COUNT" >> analysis/unused_permission_sets.md
+          echo "**Total Unused:** $UNUSED_COUNT" >> analysis/unused_permission_sets.md
           echo "" >> analysis/unused_permission_sets.md
           
-          if [ "$COUNT" -gt 0 ]; then
-            # FIX 3: Process in batches of 20 to avoid token limits
-            BATCH_SIZE=20
-            
+          if [ "$UNUSED_COUNT" -gt 0 ]; then
+            # Generate table header
             echo "| Permission Set Name | Label | Description | ID | Recommendation |" >> analysis/unused_permission_sets.md
             echo "|---------------------|-------|-------------|-----|----------------|" >> analysis/unused_permission_sets.md
             
-            for ((i=0; i<COUNT; i+=BATCH_SIZE)); do
-              END=$((i + BATCH_SIZE))
-              if [ $END -gt $COUNT ]; then
-                END=$COUNT
-              fi
-              
-              echo "Processing batch $((i/BATCH_SIZE + 1)): records $i to $((END-1))"
-              
-              BATCH=$(jq ".[$i:$END]" "$UNUSED_PS_JSON")
-              
-              # FIX 4: Improved batch prompt
-              cat <<EOF | ollama run "$MODEL" >> analysis/unused_permission_sets.md
-
-          List these unused Salesforce permission sets in a markdown table. 
-          
-          REQUIREMENTS:
-          - Use the exact Name, Label, Description, and Id from the JSON
-          - If Description is null, write "No description"
-          - Format as a markdown table with NO header row (headers already exist)
-          - Provide a brief recommendation: "Deactivate if obsolete" or "Archive for compliance" or "Review business need"
-          - Do NOT add extra text before or after the table
-          
-          JSON DATA:
-          $(echo "$BATCH" | jq -c .)
-          
-          OUTPUT: Markdown table rows only, no headers.
-          EOF
-            done
+            # Generate table rows directly with jq
+            jq -r '.[] | 
+              "| \(.Name) | \(.Label // "N/A") | \(if .Description then .Description else "No description" end) | \(.Id) | \(
+                if (.Name | test("(?i)(test|temp|demo|sandbox)")) then "Archive or deactivate (appears temporary)"
+                elif (.Description | test("(?i)(deprecated|obsolete|old)")) then "Deactivate (marked obsolete)"
+                elif (.Label | test("(?i)(legacy|retired)")) then "Archive for compliance"
+                else "Review business need before deactivation"
+                end
+              ) |"
+            ' analysis/unused_permission_sets.json >> analysis/unused_permission_sets.md
             
             echo "" >> analysis/unused_permission_sets.md
             echo "#### Analysis Summary:" >> analysis/unused_permission_sets.md
             echo "" >> analysis/unused_permission_sets.md
-            echo "These permission sets have no active assignments. Consider:" >> analysis/unused_permission_sets.md
-            echo "- **Deactivate** permission sets that are no longer needed" >> analysis/unused_permission_sets.md
-            echo "- **Archive** permission sets required for compliance/audit" >> analysis/unused_permission_sets.md
-            echo "- **Document** the business justification for keeping unassigned permission sets" >> analysis/unused_permission_sets.md
+            
+            # Get AI to provide strategic recommendations
+            cat <<EOF | ollama run "${{ env.MODEL_NAME }}" >> analysis/unused_permission_sets.md
+
+          You are a Salesforce security analyst. There are $UNUSED_COUNT unused permission sets in this org.
+
+          Based on the data above, provide:
+
+          1. **Strategic Recommendations** (3-4 bullet points):
+             - How to prioritize which permission sets to deactivate first
+             - Best practices for permission set lifecycle management
+             - Governance recommendations to prevent future unused permission sets
+
+          2. **Compliance Considerations** (2-3 bullet points):
+             - When to archive vs deactivate
+             - Documentation requirements
+             - Audit trail best practices
+
+          DO NOT reproduce the table data. Only provide strategic guidance.
+
+          Write your analysis now:
+          EOF
+            
             echo "" >> analysis/unused_permission_sets.md
             echo "#### Audit Queries:" >> analysis/unused_permission_sets.md
             echo '```sql' >> analysis/unused_permission_sets.md
@@ -563,6 +570,50 @@ jobs:
             echo "**Recommendation:** Continue monitoring permission set assignments quarterly to maintain this clean state." >> analysis/unused_permission_sets.md
           fi
 
+      - name: Generate Additional Security Insights
+        run: |
+          MODEL="${{ env.MODEL_NAME }}"
+          
+          echo "### Additional Security Insights" > analysis/additional_insights.md
+          echo "" >> analysis/additional_insights.md
+          
+          # Extract key metrics for AI analysis
+          STATS=$(cat analysis/stats.json)
+          
+          cat <<EOF | ollama run "$MODEL" >> analysis/additional_insights.md
+
+          You are a Salesforce security consultant. Analyze these security metrics and provide insights:
+
+          Statistics:
+          $(echo "$STATS" | jq -c .)
+
+          Context:
+          - Total profiles: $(echo "$STATS" | jq -r .total_profiles)
+          - Permission sets: $(echo "$STATS" | jq -r .total_permission_sets)
+          - Active users: $(echo "$STATS" | jq -r .total_active_users)
+          - Unused permission sets: $(echo "$STATS" | jq -r .unused_permission_sets)
+
+          Provide:
+
+          1. **Overall Security Posture** (2-3 sentences):
+             - What's the overall health of this org's security configuration?
+             - Are there any red flags in the statistics?
+
+          2. **Comparative Analysis** (2-3 bullet points):
+             - How does this compare to typical Salesforce org security patterns?
+             - What percentages stand out as unusual?
+
+          3. **Priority Actions** (Top 3):
+             - What should be addressed first based on these numbers?
+             - Why are these priorities critical?
+
+          4. **Long-term Recommendations** (3-4 bullet points):
+             - What governance practices should be implemented?
+             - How can this org maintain good security hygiene?
+
+          Be specific and actionable. Use the actual numbers from the statistics.
+          EOF
+
       - name: Combine Report Sections
         run: |
           echo "" >> security_analysis_report.md
@@ -573,6 +624,10 @@ jobs:
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           cat analysis/unused_permission_sets.md >> security_analysis_report.md
+          echo "" >> security_analysis_report.md
+          echo "---" >> security_analysis_report.md
+          echo "" >> security_analysis_report.md
+          cat analysis/additional_insights.md >> security_analysis_report.md
 
       - name: Add Raw Data to Report
         run: |
@@ -584,6 +639,88 @@ jobs:
           echo '```json' >> security_analysis_report.md
           cat analysis/stats.json >> security_analysis_report.md
           echo '```' >> security_analysis_report.md
+          
+          echo "" >> security_analysis_report.md
+          echo "## Appendix: Sample Enriched Data" >> security_analysis_report.md
+          echo "" >> security_analysis_report.md
+          echo '```json' >> security_analysis_report.md
+          jq '.[0:2]' analysis/overprivileged_enriched.json >> security_analysis_report.md 2>/dev/null || echo "[]" >> security_analysis_report.md
+          echo '```' >> security_analysis_report.md
+
+      - name: Generate Executive Summary with AI
+        run: |
+          MODEL="${{ env.MODEL_NAME }}"
+          
+          # Create a comprehensive summary for AI
+          SUMMARY_DATA=$(jq -n \
+            --argjson stats "$(cat analysis/stats.json)" \
+            --argjson overpriv_count "$(jq 'length' analysis/overprivileged_enriched.json)" \
+            --argjson unused_count "$(jq 'length' analysis/unused_permission_sets.json)" \
+            '{
+              stats: $stats,
+              overprivileged_profiles_count: $overpriv_count,
+              unused_permission_sets_count: $unused_count,
+              key_metrics: {
+                privilege_ratio: (($stats.profiles_with_either_all_data_perm / $stats.total_profiles) * 100 | floor),
+                unused_ps_ratio: (($stats.unused_permission_sets / $stats.total_permission_sets) * 100 | floor),
+                users_per_profile: ($stats.total_active_users / $stats.total_profiles | floor)
+              }
+            }')
+          
+          cat <<EOF | ollama run "$MODEL" > analysis/executive_summary.md
+
+          You are a CISO presenting security findings to executives. Create a concise executive summary.
+
+          Data:
+          $(echo "$SUMMARY_DATA" | jq -c .)
+
+          Write a 4-paragraph executive summary that includes:
+
+          1. **Opening Statement** (1-2 sentences):
+             - Overall security posture (Strong/Moderate/Weak)
+             - One key finding
+
+          2. **Critical Findings** (2-3 sentences):
+             - Number of overprivileged profiles and their impact
+             - Unused permission sets and governance gaps
+             - Use actual percentages from key_metrics
+
+          3. **Business Impact** (2-3 sentences):
+             - Risk to data security and compliance
+             - Potential exposure if not addressed
+             - Operational efficiency concerns
+
+          4. **Recommended Actions** (2-3 sentences):
+             - Top priority action with timeline
+             - Expected outcome of remediation
+
+          Use plain business language. Avoid technical jargon. Be direct and actionable.
+          EOF
+          
+          # Prepend executive summary to main report
+          cat analysis/executive_summary.md security_analysis_report.md > temp_report.md
+          mv temp_report.md security_analysis_report.md
+
+      - name: Add Report Metadata
+        run: |
+          # Create header with metadata
+          cat > report_header.md << EOF
+          # Salesforce Security Analysis Report
+          
+          **Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")  
+          **Org Alias:** ${{ env.ORG_ALIAS }}  
+          **Analysis Model:** ${{ env.MODEL_NAME }}  
+          **Report Version:** 2.0
+          
+          ---
+          
+          ## Executive Summary
+          
+          EOF
+          
+          # Combine header with report
+          cat report_header.md security_analysis_report.md > final_report.md
+          mv final_report.md security_analysis_report.md
 
       - name: Upload Final Report
         uses: actions/upload-artifact@v4
@@ -592,10 +729,70 @@ jobs:
           path: security_analysis_report.md
           retention-days: 7
 
-      # Optional: Upload intermediate analysis files for debugging
       - name: Upload Analysis Debug Data
         uses: actions/upload-artifact@v4
         with:
           name: analysis-debug
           path: analysis/
           retention-days: 3
+
+      - name: Generate Summary Comment
+        run: |
+          OVERPRIV_COUNT=$(jq 'length' analysis/overprivileged_enriched.json)
+          UNUSED_COUNT=$(jq 'length' analysis/unused_permission_sets.json)
+          TOTAL_PROFILES=$(jq -r '.total_profiles' analysis/stats.json)
+          TOTAL_USERS=$(jq -r '.total_active_users' analysis/stats.json)
+          
+          cat > $GITHUB_STEP_SUMMARY << EOF
+          ## 🔒 Salesforce Security Analysis Complete
+          
+          ### 📊 Key Metrics
+          
+          | Metric | Count |
+          |--------|-------|
+          | Total Profiles | $TOTAL_PROFILES |
+          | Active Users | $TOTAL_USERS |
+          | Overprivileged Profiles | $OVERPRIV_COUNT |
+          | Unused Permission Sets | $UNUSED_COUNT |
+          
+          ### ⚠️ Priority Findings
+          
+          EOF
+          
+          if [ "$OVERPRIV_COUNT" -gt 0 ]; then
+            echo "- 🔴 **$OVERPRIV_COUNT overprivileged profiles** detected with ModifyAllData or ViewAllData permissions" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ✅ No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "$UNUSED_COUNT" -gt 0 ]; then
+            UNUSED_PERCENT=$(( (UNUSED_COUNT * 100) / $(jq -r '.total_permission_sets' analysis/stats.json) ))
+            echo "- 🟡 **$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ✅ All permission sets are actively assigned" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          
+          ### 📄 Report Artifacts
+          
+          Download the full security analysis report from the artifacts section above.
+          
+          - \`security-analysis-report.md\` - Complete analysis with AI insights
+          - \`analysis-debug/\` - Raw data and intermediate processing files
+          
+          ### 🎯 Next Steps
+          
+          1. Review the detailed findings in the security analysis report
+          2. Prioritize remediation based on risk levels
+          3. Schedule profile permission audits with business stakeholders
+          4. Deactivate or archive unused permission sets
+          5. Implement regular security reviews (quarterly recommended)
+          EOF
+
+      - name: Post-Analysis Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up temporary files..."
+          rm -f analysis/*.prompt 2>/dev/null || true
+          echo "✅ Cleanup complete"
