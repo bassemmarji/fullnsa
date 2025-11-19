@@ -272,24 +272,21 @@ jobs:
             jq -r '.[] | "#### \(.ProfileName)\n\n" + "- **Profile ID**: \(.ProfileId)\n" + "- **Active Users**: \(.UserCount)\n" + "- **Permissions**:\n" + " - Modify All Data: \(.PermissionsModifyAllData)\n" + " - View All Data: \(.PermissionsViewAllData)\n" + " - View Setup: \(.PermissionsViewSetup)\n" + " - Manage Users: \(.PermissionsManageUsers)\n" + "- **Critical Objects Accessed**: \((.CriticalObjects | join(", "))\n\n" ' analysis/overprivileged_enriched.json >> analysis/overprivileged_profiles.md
             # Collect user counts for cleaner prompt insertion
             USER_COUNTS=$(jq -r '.[] | "\(.ProfileName): \(.UserCount) users"' analysis/overprivileged_enriched.json | paste -sd ', ')
-            # Prepare AI prompt using temp file to avoid here-doc indentation issues
+            if [ -z "$USER_COUNTS" ]; then USER_COUNTS="N/A"; fi
+            # Build AI prompt with echo (avoids heredoc issues)
             DATA=$(jq -c '.' analysis/overprivileged_enriched.json)
-            cat > prompt_overpriv.txt << 'END'
-            You are a Salesforce security analyst. Review these overprivileged profiles: PROFILE_DATA
-            
-            For EACH profile listed above, provide:
-            1. **Risk Assessment** (2-3 sentences):
-               - Why this specific combination of permissions is dangerous
-               - Real-world attack scenarios enabled by these permissions
-            2. **Blast Radius** (1-2 sentences):
-               - Impact based on the actual user count: USER_COUNTS_PLACEHOLDER
-               - Potential organizational damage
-            3. **Priority Ranking**: High/Critical based on user count and permission combination
-            
-            Use ONLY the data provided. Reference specific profile names and user counts. No placeholders.
-            END
-            sed -i "s|PROFILE_DATA|$DATA|g" prompt_overpriv.txt
-            sed -i "s|USER_COUNTS_PLACEHOLDER|$USER_COUNTS|g" prompt_overpriv.txt
+            echo "You are a Salesforce security analyst. Review these overprivileged profiles: $DATA" > prompt_overpriv.txt
+            echo "" >> prompt_overpriv.txt
+            echo "For EACH profile listed above, provide:" >> prompt_overpriv.txt
+            echo "1. **Risk Assessment** (2-3 sentences):" >> prompt_overpriv.txt
+            echo "   - Why this specific combination of permissions is dangerous" >> prompt_overpriv.txt
+            echo "   - Real-world attack scenarios enabled by these permissions" >> prompt_overpriv.txt
+            echo "2. **Blast Radius** (1-2 sentences):" >> prompt_overpriv.txt
+            echo "   - Impact based on the actual user count: $USER_COUNTS" >> prompt_overpriv.txt
+            echo "   - Potential organizational damage" >> prompt_overpriv.txt
+            echo "3. **Priority Ranking**: High/Critical based on user count and permission combination" >> prompt_overpriv.txt
+            echo "" >> prompt_overpriv.txt
+            echo "Use ONLY the data provided. Reference specific profile names and user counts. No placeholders." >> prompt_overpriv.txt
             ollama run "$MODEL" < prompt_overpriv.txt >> analysis/overprivileged_profiles.md
             rm prompt_overpriv.txt
           else
@@ -328,25 +325,21 @@ jobs:
             echo "" >> analysis/unused_permission_sets.md
             echo "#### Analysis Summary:" >> analysis/unused_permission_sets.md
             echo "" >> analysis/unused_permission_sets.md
-            # Prepare AI prompt using temp file
+            # Build AI prompt with echo (avoids heredoc issues)
             UNUSED_JSON=$(jq -c '.' analysis/unused_permission_sets.json)
-            cat > prompt_unused.txt << 'END'
-            You are a Salesforce security analyst. There are UNUSED_COUNT_PLACEHOLDER unused permission sets in this org. Review these: UNUSED_JSON_PLACEHOLDER
-            
-            Based on the data provided, provide:
-            1. **Strategic Recommendations** (3-4 bullet points):
-               - How to prioritize which permission sets to deactivate first
-               - Best practices for permission set lifecycle management
-               - Governance recommendations to prevent future unused permission sets
-            2. **Compliance Considerations** (2-3 bullet points):
-               - When to archive vs deactivate
-               - Documentation requirements
-               - Audit trail best practices
-            
-            DO NOT reproduce the table data. Only provide strategic guidance. Write your analysis now:
-            END
-            sed -i "s|UNUSED_COUNT_PLACEHOLDER|$UNUSED_COUNT|g" prompt_unused.txt
-            sed -i "s|UNUSED_JSON_PLACEHOLDER|$UNUSED_JSON|g" prompt_unused.txt
+            echo "You are a Salesforce security analyst. There are $UNUSED_COUNT unused permission sets in this org. Review these: $UNUSED_JSON" > prompt_unused.txt
+            echo "" >> prompt_unused.txt
+            echo "Based on the data provided, provide:" >> prompt_unused.txt
+            echo "1. **Strategic Recommendations** (3-4 bullet points):" >> prompt_unused.txt
+            echo "   - How to prioritize which permission sets to deactivate first" >> prompt_unused.txt
+            echo "   - Best practices for permission set lifecycle management" >> prompt_unused.txt
+            echo "   - Governance recommendations to prevent future unused permission sets" >> prompt_unused.txt
+            echo "2. **Compliance Considerations** (2-3 bullet points):" >> prompt_unused.txt
+            echo "   - When to archive vs deactivate" >> prompt_unused.txt
+            echo "   - Documentation requirements" >> prompt_unused.txt
+            echo "   - Audit trail best practices" >> prompt_unused.txt
+            echo "" >> prompt_unused.txt
+            echo "DO NOT reproduce the table data. Only provide strategic guidance. Write your analysis now:" >> prompt_unused.txt
             ollama run "${{ env.MODEL_NAME }}" < prompt_unused.txt >> analysis/unused_permission_sets.md
             rm prompt_unused.txt
             echo "" >> analysis/unused_permission_sets.md
@@ -382,35 +375,28 @@ jobs:
           TOTAL_PERMSETS=$(echo "$STATS" | jq -r .total_permission_sets)
           TOTAL_USERS=$(echo "$STATS" | jq -r .total_active_users)
           UNUSED_PSETS=$(echo "$STATS" | jq -r .unused_permission_sets)
-          # Prepare AI prompt using temp file
-          cat > prompt_insights.txt << 'END'
-          You are a Salesforce security consultant. Analyze these security metrics and provide insights:
-          Statistics: STATS_PLACEHOLDER
-          Context:
-          - Total profiles: TOTAL_PROFILES_PLACEHOLDER
-          - Permission sets: TOTAL_PERMSETS_PLACEHOLDER
-          - Active users: TOTAL_USERS_PLACEHOLDER
-          - Unused permission sets: UNUSED_PSETS_PLACEHOLDER
-          Provide:
-          1. **Overall Security Posture** (2-3 sentences):
-             - What's the overall health of this org's security configuration?
-             - Are there any red flags in the statistics?
-          2. **Comparative Analysis** (2-3 bullet points):
-             - How does this compare to typical Salesforce org security patterns?
-             - What percentages stand out as unusual?
-          3. **Priority Actions** (Top 3):
-             - What should be addressed first based on these numbers?
-             - Why are these priorities critical?
-          4. **Long-term Recommendations** (3-4 bullet points):
-             - What governance practices should be implemented?
-             - How can this org maintain good security hygiene?
-          Be specific and actionable. Use the actual numbers from the statistics.
-          END
-          sed -i "s|STATS_PLACEHOLDER|$STATS_COMPACT|g" prompt_insights.txt
-          sed -i "s|TOTAL_PROFILES_PLACEHOLDER|$TOTAL_PROFILES|g" prompt_insights.txt
-          sed -i "s|TOTAL_PERMSETS_PLACEHOLDER|$TOTAL_PERMSETS|g" prompt_insights.txt
-          sed -i "s|TOTAL_USERS_PLACEHOLDER|$TOTAL_USERS|g" prompt_insights.txt
-          sed -i "s|UNUSED_PSETS_PLACEHOLDER|$UNUSED_PSETS|g" prompt_insights.txt
+          # Build AI prompt with echo (avoids heredoc issues)
+          echo "You are a Salesforce security consultant. Analyze these security metrics and provide insights:" > prompt_insights.txt
+          echo "Statistics: $STATS_COMPACT" >> prompt_insights.txt
+          echo "Context:" >> prompt_insights.txt
+          echo "- Total profiles: $TOTAL_PROFILES" >> prompt_insights.txt
+          echo "- Permission sets: $TOTAL_PERMSETS" >> prompt_insights.txt
+          echo "- Active users: $TOTAL_USERS" >> prompt_insights.txt
+          echo "- Unused permission sets: $UNUSED_PSETS" >> prompt_insights.txt
+          echo "Provide:" >> prompt_insights.txt
+          echo "1. **Overall Security Posture** (2-3 sentences):" >> prompt_insights.txt
+          echo "   - What's the overall health of this org's security configuration?" >> prompt_insights.txt
+          echo "   - Are there any red flags in the statistics?" >> prompt_insights.txt
+          echo "2. **Comparative Analysis** (2-3 bullet points):" >> prompt_insights.txt
+          echo "   - How does this compare to typical Salesforce org security patterns?" >> prompt_insights.txt
+          echo "   - What percentages stand out as unusual?" >> prompt_insights.txt
+          echo "3. **Priority Actions** (Top 3):" >> prompt_insights.txt
+          echo "   - What should be addressed first based on these numbers?" >> prompt_insights.txt
+          echo "   - Why are these priorities critical?" >> prompt_insights.txt
+          echo "4. **Long-term Recommendations** (3-4 bullet points):" >> prompt_insights.txt
+          echo "   - What governance practices should be implemented?" >> prompt_insights.txt
+          echo "   - How can this org maintain good security hygiene?" >> prompt_insights.txt
+          echo "Be specific and actionable. Use the actual numbers from the statistics." >> prompt_insights.txt
           ollama run "$MODEL" < prompt_insights.txt >> analysis/additional_insights.md
           rm prompt_insights.txt
 
@@ -433,28 +419,25 @@ jobs:
               }
             }')
           SUMMARY_COMPACT=$(echo "$SUMMARY_DATA" | jq -c .)
-          # Prepare AI prompt using temp file
-          cat > prompt_summary.txt << 'END'
-          You are a CISO presenting security findings to executives. Create a concise executive summary.
-          Data: SUMMARY_PLACEHOLDER
-          Write a 4-paragraph executive summary that includes:
-          1. **Opening Statement** (1-2 sentences):
-             - Overall security posture (Strong/Moderate/Weak)
-             - One key finding
-          2. **Critical Findings** (2-3 sentences):
-             - Number of overprivileged profiles and their impact
-             - Unused permission sets and governance gaps
-             - Use actual percentages from key_metrics
-          3. **Business Impact** (2-3 sentences):
-             - Risk to data security and compliance
-             - Potential exposure if not addressed
-             - Operational efficiency concerns
-          4. **Recommended Actions** (2-3 sentences):
-             - Top priority action with timeline
-             - Expected outcome of remediation
-          Use plain business language. Avoid technical jargon. Be direct and actionable.
-          END
-          sed -i "s|SUMMARY_PLACEHOLDER|$SUMMARY_COMPACT|g" prompt_summary.txt
+          # Build AI prompt with echo (avoids heredoc issues)
+          echo "You are a CISO presenting security findings to executives. Create a concise executive summary." > prompt_summary.txt
+          echo "Data: $SUMMARY_COMPACT" >> prompt_summary.txt
+          echo "Write a 4-paragraph executive summary that includes:" >> prompt_summary.txt
+          echo "1. **Opening Statement** (1-2 sentences):" >> prompt_summary.txt
+          echo "   - Overall security posture (Strong/Moderate/Weak)" >> prompt_summary.txt
+          echo "   - One key finding" >> prompt_summary.txt
+          echo "2. **Critical Findings** (2-3 sentences):" >> prompt_summary.txt
+          echo "   - Number of overprivileged profiles and their impact" >> prompt_summary.txt
+          echo "   - Unused permission sets and governance gaps" >> prompt_summary.txt
+          echo "   - Use actual percentages from key_metrics" >> prompt_summary.txt
+          echo "3. **Business Impact** (2-3 sentences):" >> prompt_summary.txt
+          echo "   - Risk to data security and compliance" >> prompt_summary.txt
+          echo "   - Potential exposure if not addressed" >> prompt_summary.txt
+          echo "   - Operational efficiency concerns" >> prompt_summary.txt
+          echo "4. **Recommended Actions** (2-3 sentences):" >> prompt_summary.txt
+          echo "   - Top priority action with timeline" >> prompt_summary.txt
+          echo "   - Expected outcome of remediation" >> prompt_summary.txt
+          echo "Use plain business language. Avoid technical jargon. Be direct and actionable." >> prompt_summary.txt
           ollama run "$MODEL" < prompt_summary.txt > analysis/executive_summary.md
           rm prompt_summary.txt
 
@@ -527,6 +510,7 @@ jobs:
           UNUSED_COUNT=$(jq 'length' analysis/unused_permission_sets.json)
           TOTAL_PROFILES=$(jq -r '.total_profiles' analysis/stats.json)
           TOTAL_USERS=$(jq -r '.total_active_users' analysis/stats.json)
+          TOTAL_PERMSETS=$(jq -r '.total_permission_sets' analysis/stats.json)
           cat > $GITHUB_STEP_SUMMARY << EOF
           ## 🔒 Salesforce Security Analysis Complete
           
@@ -547,8 +531,11 @@ jobs:
             echo "- ✅ No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "$UNUSED_COUNT" -gt 0 ]; then
-            TOTAL_PERMSETS=$(jq -r '.total_permission_sets' analysis/stats.json)
-            UNUSED_PERCENT=$(( (UNUSED_COUNT * 100) / TOTAL_PERMSETS ))
+            if [ "$TOTAL_PERMSETS" -gt 0 ]; then
+              UNUSED_PERCENT=$(( (UNUSED_COUNT * 100) / TOTAL_PERMSETS ))
+            else
+              UNUSED_PERCENT=0
+            fi
             echo "- 🟡 **$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ✅ All permission sets are actively assigned" >> $GITHUB_STEP_SUMMARY
