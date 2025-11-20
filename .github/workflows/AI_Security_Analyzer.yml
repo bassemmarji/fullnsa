@@ -131,7 +131,7 @@ jobs:
                 PermissionsDelete, PermissionsViewAllRecords,
                 PermissionsModifyAllRecords
               FROM ObjectPermissions
-             WHERE Parent.Type = 'Profile' -- Changed from Parent.IsOwnedByProfile = true for robustness
+             WHERE Parent.IsOwnedByProfile = true
                AND SObjectType IN $CRITICAL_OBJECTS
           " --json > "$DATA_DIR/critical_object_access.json"
 
