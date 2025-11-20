@@ -339,7 +339,7 @@ jobs:
                    UserCount: ($user_counts[.Id] // 0),
                    CriticalObjects: (
                      [$critical_access[]? |
-                        select(.Parent.Profile.Id and .Parent.Profile.Id == $profile.Id) | # Added null check
+                        select(.ParentId == $profile.Id) |  # Use ParentId, not Parent.Profile.Id
                         .SObjectType
                      ] | unique | sort
                    )
