@@ -212,9 +212,9 @@ jobs:
             community_profiles: [.[1].result.records[]? | select(.Id != null)],
             permission_sets: [.[2].result.records[]? | select(.Id != null and .Name != null)],
             assignments: [.[3].result.records[]? | select(.PermissionSetId != null)],
-            profile_object_permissions: [.[4].result.records[]? | select(.Parent.Profile.Id != null)],
+            profile_object_permissions: [.[4].result.records[]? | select(.Parent.ProfileId != null)],
             permset_object_permissions: [.[5].result.records[]?],
-            critical_access: [.[6].result.records[]? | select(.Parent.Profile.Id != null)],
+            critical_access: [.[6].result.records[]? | select(.Parent.ProfileId != null)],
             active_users: [.[7].result.records[]? | select(.Id != null)],
             user_stats: [.[8].result.records[]? | select(.ProfileId != null)]
           }' \
@@ -253,7 +253,7 @@ jobs:
           
       - name: Pre-process Overprivileged Profiles Data
         run: |
-          # FIXED: Correctly map critical objects using Parent.Profile.Id
+          # FIXED: Correctly map critical objects using Parent.ProfileId
           jq -r '
             ([.profiles[] | select(.PermissionsModifyAllData == true or .PermissionsViewAllData == true)]) as $overpriv_profiles
             | (.critical_access) as $critical_access
@@ -270,7 +270,7 @@ jobs:
                     UserCount: ($user_counts[.Id] // 0),
                     CriticalObjects: (
                       [$critical_access[]? |
-                         select(.Parent.Profile.Id == $profile.Id) |
+                         select(.Parent.ProfileId == $profile.Id) |
                          .SObjectType
                       ] | unique | sort
                     )
