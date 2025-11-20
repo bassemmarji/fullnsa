@@ -319,7 +319,7 @@ jobs:
             total_active_users: (.active_users | length),
             total_field_permissions: (.field_permissions | length)
           }' analysis/context.json > analysis/stats.json
-
+          
       - name: Pre-process Overprivileged Profiles Data
         run: |
          # Extract overprivileged profiles with critical object access and user counts
@@ -339,7 +339,7 @@ jobs:
                    UserCount: ($user_counts[.Id] // 0),
                    CriticalObjects: (
                      [$critical_access[]? |
-                        select(.Parent.Profile.Id and .Parent.Profile.Id == $profile.Id) | -- Added null check
+                        select(.Parent.Profile.Id and .Parent.Profile.Id == $profile.Id) | # Added null check
                         .SObjectType
                      ] | unique | sort
                    )
