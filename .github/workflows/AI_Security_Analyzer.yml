@@ -434,7 +434,7 @@ jobs:
           EOUNUSED
 
           else
-            echo "-> **Excellent permission set hygiene!** No unused permission sets detected." >> security_analysis_report.md
+            echo "**Excellent permission set hygiene!** No unused permission sets detected." >> security_analysis_report.md
           fi
 
       - name: Generate Security Recommendations
@@ -510,9 +510,9 @@ jobs:
           TOTAL_USERS=$(jq -r '.total_active_users' analysis/stats.json)
 
           cat > $GITHUB_STEP_SUMMARY << EOF
-          ## -> Salesforce Security Analysis Complete
+          ## Salesforce Security Analysis Complete
 
-          ### -> Key Metrics
+          ### Key Metrics
 
           | Metric | Count |
           |--------|-------|
@@ -521,31 +521,31 @@ jobs:
           | **Overprivileged Profiles** | **$OVERPRIV_COUNT** |
           | **Unused Permission Sets** | **$UNUSED_COUNT** |
 
-          ### -> Critical Findings
+          ### Critical Findings
 
           EOF
 
           if [ "$OVERPRIV_COUNT" -gt 0 ]; then
-            echo "-> **CRITICAL**: $OVERPRIV_COUNT profiles have ModifyAllData or ViewAllData permissions" >> $GITHUB_STEP_SUMMARY
+            echo "**CRITICAL**: $OVERPRIV_COUNT profiles have ModifyAllData or ViewAllData permissions" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             jq -r '.[] | "- **\(.ProfileName)**: \(.UserCount) active users, accesses \(.CriticalObjects | length) critical objects"' analysis/overprivileged_enriched.json | head -5 >> $GITHUB_STEP_SUMMARY
           else
-            echo "-> No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
+            echo "No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "$UNUSED_COUNT" -gt 0 ]; then
             UNUSED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($UNUSED_COUNT * 100.0) / $(jq -r '.total_permission_sets' analysis/stats.json)}")
-            echo "-> **$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total) - consider cleanup" >> $GITHUB_STEP_SUMMARY
+            echo "**$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total) - consider cleanup" >> $GITHUB_STEP_SUMMARY
           else
-            echo "-> All permission sets are actively used" >> $GITHUB_STEP_SUMMARY
+            echo "All permission sets are actively used" >> $GITHUB_STEP_SUMMARY
           fi
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
 
-          ### -> Download Report
+          ### Download Report
 
-          The complete AI-generated security analysis is available in the **security-analysis-report** artifact above.
+          The complete AI-generated security analysis is available in the **security-analysis-report** artifact.
 
           EOF
