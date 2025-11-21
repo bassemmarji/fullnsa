@@ -119,19 +119,25 @@ jobs:
             WHERE Parent.IsOwnedByProfile = false
           " --json > "$DATA_DIR/permset_object_permissions.json"
 
-          echo "📌 Collecting Critical Object Access"
-          CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity','User','Profile','PermissionSet','PermissionSetAssignment','PermissionSetGroup')"
+          echo "📌 Collecting Critical Object Access (Fixed)"
+          CRITICAL_OBJECTS="'Account','Contact','Lead','Opportunity'"
           sf data query --target-org "$ORG_ALIAS" --query "
-              SELECT
-                Parent.Profile.Id,
-                Parent.Profile.Name,
-                SObjectType,
-                PermissionsRead, PermissionsCreate, PermissionsEdit,
-                PermissionsDelete, PermissionsViewAllRecords,
-                PermissionsModifyAllRecords
-              FROM ObjectPermissions
-             WHERE Parent.IsOwnedByProfile = true
-               AND SObjectType IN $CRITICAL_OBJECTS
+            SELECT 
+              ParentId,
+              Parent.ProfileId,
+              Parent.Profile.Name,
+              Parent.Name,
+              SobjectType,
+              PermissionsRead, 
+              PermissionsCreate, 
+              PermissionsEdit,
+              PermissionsDelete, 
+              PermissionsViewAllRecords, 
+              PermissionsModifyAllRecords
+            FROM ObjectPermissions
+            WHERE (Parent.IsOwnedByProfile = true 
+                OR Parent.ProfileId != null)
+              AND SobjectType IN ($CRITICAL_OBJECTS)
           " --json > "$DATA_DIR/critical_object_access.json"
 
           echo "📌 Collecting Active Users"
@@ -270,9 +276,11 @@ jobs:
                     UserCount: ($user_counts[.Id] // 0),
                     CriticalObjects: (
                       [$critical_access[]?
-                         | select(.Parent.Profile.Id == $profile.Id)
-                         | .SObjectType
-                         | select(. != null and . != "" and . != "null")
+                         | select(
+                             (.ParentId == $profile.Id) or                       # direct from profile
+                             (.Parent.ProfileId == $profile.Id)                  # from permset owned by profile
+                           )
+                         | .SobjectType
                       ] | unique | sort
                     )
                 }
