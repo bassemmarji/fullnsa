@@ -58,7 +58,7 @@ jobs:
           DATA_DIR="security-data"
           mkdir -p "$DATA_DIR"
 
-          echo "📌 Collecting Profiles"
+          echo "-> Collecting Profiles"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, Name,
             PermissionsModifyAllData, PermissionsViewAllData,
@@ -66,7 +66,7 @@ jobs:
             FROM Profile ORDER BY Name
           " --json > "$DATA_DIR/profiles.json"
 
-          echo "📌 Collecting Community Profiles"
+          echo "-> Collecting Community Profiles"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, Name,
             PermissionsModifyAllData, PermissionsViewAllData
@@ -75,7 +75,7 @@ jobs:
             ORDER BY Name
           " --json > "$DATA_DIR/community_profiles.json"
 
-          echo "📌 Collecting Permission Sets"
+          echo "-> Collecting Permission Sets"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, Name, Label, Description,
             IsOwnedByProfile,
@@ -83,7 +83,7 @@ jobs:
             FROM PermissionSet ORDER BY Name
           " --json > "$DATA_DIR/permission_sets.json"
 
-          echo "📌 Collecting Permission Set Assignments"
+          echo "-> Collecting Permission Set Assignments"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, AssigneeId, PermissionSetId,
             PermissionSet.Name,
@@ -92,7 +92,7 @@ jobs:
             WHERE Assignee.IsActive = true
           " --json > "$DATA_DIR/permission_set_assignments.json"
 
-          echo "📌 Collecting Profile Object Permissions"
+          echo "-> Collecting Profile Object Permissions"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id,
             Parent.Profile.Id,
@@ -105,7 +105,7 @@ jobs:
             WHERE Parent.IsOwnedByProfile = true
           " --json > "$DATA_DIR/profile_object_permissions.json"
 
-          echo "📌 Collecting Permission Set Object Permissions"
+          echo "-> Collecting Permission Set Object Permissions"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id,
             ParentId,
@@ -118,7 +118,7 @@ jobs:
             WHERE Parent.IsOwnedByProfile = false
           " --json > "$DATA_DIR/permset_object_permissions.json"
 
-          echo "📌 Collecting Critical Object Access – FINAL VERSION"
+          echo "-> Collecting Critical Object Access – FINAL VERSION"
           CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity')"
           
           sf data query --target-org "$ORG_ALIAS" --query "
@@ -134,7 +134,7 @@ jobs:
               AND (Parent.IsOwnedByProfile = true OR Parent.ProfileId != null)
           " --json > "$DATA_DIR/critical_object_access.json"
 
-          echo "📌 Collecting Active Users"
+          echo "-> Collecting Active Users"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT Id, Username, Name, ProfileId, Profile.Name,
             IsActive, LastLoginDate
@@ -143,7 +143,7 @@ jobs:
             ORDER BY Profile.Name
           " --json > "$DATA_DIR/active_users.json"
 
-          echo "📌 Collecting User Stats by Profile"
+          echo "-> Collecting User Stats by Profile"
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT ProfileId, Profile.Name, COUNT(Id) UserCount
             FROM User
@@ -151,7 +151,7 @@ jobs:
             GROUP BY ProfileId, Profile.Name
           " --json > "$DATA_DIR/user_stats.json"
 
-          echo "✅ All Salesforce data collection steps completed."
+          echo "-> All Salesforce data collection steps completed."
 
       - name: Validate Collected Data
         id: check-data
@@ -338,7 +338,7 @@ jobs:
 
           if [ "$OVERPRIV_COUNT" -gt 0 ]; then
             echo "" >> security_analysis_report.md
-            echo "## 🔴 Overprivileged Profiles Analysis" >> security_analysis_report.md
+            echo "## -> Overprivileged Profiles Analysis" >> security_analysis_report.md
             echo "" >> security_analysis_report.md
             echo "**Total Identified:** $OVERPRIV_COUNT profiles" >> security_analysis_report.md
             echo "" >> security_analysis_report.md
@@ -378,7 +378,7 @@ jobs:
 
           else
             echo "" >> security_analysis_report.md
-            echo "## ✅ Overprivileged Profiles" >> security_analysis_report.md
+            echo "## -> Overprivileged Profiles" >> security_analysis_report.md
             echo "" >> security_analysis_report.md
             echo "No profiles with ModifyAllData or ViewAllData permissions detected." >> security_analysis_report.md
           fi
@@ -391,7 +391,7 @@ jobs:
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          echo "## 🟡 Unused Permission Sets" >> security_analysis_report.md
+          echo "## -> Unused Permission Sets" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "**Total Unused:** $UNUSED_COUNT permission sets" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
@@ -434,7 +434,7 @@ jobs:
           EOUNUSED
 
           else
-            echo "✅ **Excellent permission set hygiene!** No unused permission sets detected." >> security_analysis_report.md
+            echo "-> **Excellent permission set hygiene!** No unused permission sets detected." >> security_analysis_report.md
           fi
 
       - name: Generate Security Recommendations
@@ -444,7 +444,7 @@ jobs:
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          echo "## 📋 Strategic Recommendations" >> security_analysis_report.md
+          echo "## -> Strategic Recommendations" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
 
           cat <<EORECS | ollama run "$MODEL" >> security_analysis_report.md
@@ -464,7 +464,7 @@ jobs:
           echo "" >> security_analysis_report.md
           echo "---" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
-          echo "## 📊 Appendix: Statistics" >> security_analysis_report.md
+          echo "## -> Appendix: Statistics" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo '```json' >> security_analysis_report.md
           jq '.' analysis/stats.json >> security_analysis_report.md
@@ -510,9 +510,9 @@ jobs:
           TOTAL_USERS=$(jq -r '.total_active_users' analysis/stats.json)
 
           cat > $GITHUB_STEP_SUMMARY << EOF
-          ## 🔒 Salesforce Security Analysis Complete
+          ## -> Salesforce Security Analysis Complete
 
-          ### 📊 Key Metrics
+          ### -> Key Metrics
 
           | Metric | Count |
           |--------|-------|
@@ -521,30 +521,30 @@ jobs:
           | **Overprivileged Profiles** | **$OVERPRIV_COUNT** |
           | **Unused Permission Sets** | **$UNUSED_COUNT** |
 
-          ### ⚠️ Critical Findings
+          ### -> Critical Findings
 
           EOF
 
           if [ "$OVERPRIV_COUNT" -gt 0 ]; then
-            echo "🔴 **CRITICAL**: $OVERPRIV_COUNT profiles have ModifyAllData or ViewAllData permissions" >> $GITHUB_STEP_SUMMARY
+            echo "-> **CRITICAL**: $OVERPRIV_COUNT profiles have ModifyAllData or ViewAllData permissions" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             jq -r '.[] | "- **\(.ProfileName)**: \(.UserCount) active users, accesses \(.CriticalObjects | length) critical objects"' analysis/overprivileged_enriched.json | head -5 >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
+            echo "-> No overprivileged profiles detected" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "$UNUSED_COUNT" -gt 0 ]; then
             UNUSED_PERCENT=$(awk "BEGIN {printf \"%.1f\", ($UNUSED_COUNT * 100.0) / $(jq -r '.total_permission_sets' analysis/stats.json)}")
-            echo "🟡 **$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total) - consider cleanup" >> $GITHUB_STEP_SUMMARY
+            echo "-> **$UNUSED_COUNT unused permission sets** ($UNUSED_PERCENT% of total) - consider cleanup" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ All permission sets are actively used" >> $GITHUB_STEP_SUMMARY
+            echo "-> All permission sets are actively used" >> $GITHUB_STEP_SUMMARY
           fi
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
 
-          ### 📥 Download Report
+          ### -> Download Report
 
           The complete AI-generated security analysis is available in the **security-analysis-report** artifact above.
 
