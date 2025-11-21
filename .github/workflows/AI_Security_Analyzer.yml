@@ -269,9 +269,10 @@ jobs:
                     PermissionsManageUsers: .PermissionsManageUsers,
                     UserCount: ($user_counts[.Id] // 0),
                     CriticalObjects: (
-                      [$critical_access[]? |
-                         select(.Parent.Profile.Id == $profile.Id) |
-                         .SObjectType
+                      [$critical_access[]?
+                         | select(.Parent.Profile.Id == $profile.Id)
+                         | .SObjectType
+                         | select(. != null and . != "" and . != "null")
                       ] | unique | sort
                     )
                 }
@@ -477,7 +478,8 @@ jobs:
           echo "### Complete Unused Permission Sets List" >> security_analysis_report.md
           echo "" >> security_analysis_report.md
           echo "<details>" >> security_analysis_report.md
-          echo "<summary>Click to expand full list ($$(jq 'length' analysis/unused_permission_sets.json) items)</summary>" >> security_analysis_report.md
+          UNUSED_COUNT=$(jq 'length' analysis/unused_permission_sets.json)
+          echo "<summary>Click to expand full list (${UNUSED_COUNT} items)</summary>"
           echo "" >> security_analysis_report.md
           echo '```json' >> security_analysis_report.md
           jq '.' analysis/unused_permission_sets.json >> security_analysis_report.md
