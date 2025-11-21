@@ -13,7 +13,6 @@ on:
         options:
           - llama3:latest
           - gemma2:27b
-          - mistral-large
         default: llama3:latest
 
 env:
@@ -119,25 +118,20 @@ jobs:
             WHERE Parent.IsOwnedByProfile = false
           " --json > "$DATA_DIR/permset_object_permissions.json"
 
-          echo "📌 Collecting Critical Object Access (Fixed)"
-          CRITICAL_OBJECTS="'Account','Contact','Lead','Opportunity'"
+          echo "📌 Collecting Critical Object Access – FINAL VERSION"
+          CRITICAL_OBJECTS="('Account','Contact','Lead','Opportunity')"
+          
           sf data query --target-org "$ORG_ALIAS" --query "
             SELECT 
+              SobjectType,
+              PermissionsViewAllRecords,
+              PermissionsModifyAllRecords,
               ParentId,
               Parent.ProfileId,
-              Parent.Profile.Name,
-              Parent.Name,
-              SobjectType,
-              PermissionsRead, 
-              PermissionsCreate, 
-              PermissionsEdit,
-              PermissionsDelete, 
-              PermissionsViewAllRecords, 
-              PermissionsModifyAllRecords
+              Parent.IsOwnedByProfile
             FROM ObjectPermissions
-            WHERE (Parent.IsOwnedByProfile = true 
-                OR Parent.ProfileId != null)
-              AND SobjectType IN ($CRITICAL_OBJECTS)
+            WHERE SobjectType IN $CRITICAL_OBJECTS
+              AND (Parent.IsOwnedByProfile = true OR Parent.ProfileId != null)
           " --json > "$DATA_DIR/critical_object_access.json"
 
           echo "📌 Collecting Active Users"
@@ -276,11 +270,11 @@ jobs:
                     UserCount: ($user_counts[.Id] // 0),
                     CriticalObjects: (
                       [$critical_access[]?
-                         | select(
-                             (.ParentId == $profile.Id) or                       # direct from profile
-                             (.Parent.ProfileId == $profile.Id)                  # from permset owned by profile
-                           )
-                         | .SobjectType
+                       | select(
+                           (.Parent.IsOwnedByProfile == true and .ParentId == $profile.Id) or    
+                           (.Parent.ProfileId == $profile.Id)                                 
+                         )
+                       | .SobjectType
                       ] | unique | sort
                     )
                 }
