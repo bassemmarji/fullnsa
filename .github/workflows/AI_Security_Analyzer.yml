@@ -11,10 +11,10 @@ on:
         type: choice
         description: "Ollama model to use"
         options:
-          - gemma2:27b
           - llama3:latest
+          - gemma2:27b
           - mistral-large
-        default: gemma2:27b
+        default: llama3:latest
 
 env:
   ORG_ALIAS: ${{ github.event.inputs.org_alias }}
