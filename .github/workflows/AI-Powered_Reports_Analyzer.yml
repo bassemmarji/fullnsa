@@ -1,4 +1,4 @@
-name: Salesforce Reports Analyzer
+name: AI-Powered Reports Analyzer
 
 on:
   workflow_dispatch:
