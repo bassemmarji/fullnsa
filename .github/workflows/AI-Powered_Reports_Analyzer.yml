@@ -1,0 +1,246 @@
+name: Salesforce Reports Analyzer
+
+on:
+  workflow_dispatch:
+    inputs:
+      org_alias:
+        description: "Salesforce org alias"
+        required: true
+        default: "dev"
+      model_name:
+        description: "AI model (Ollama)"
+        required: true
+        default: "llama3:latest"
+
+env:
+  NODE_VERSION: "20"
+  DATA_DIR: "data"
+
+jobs:
+  collect-reports:
+    name: Collect Salesforce Reports Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      has_data: ${{ steps.check.outputs.has_data }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node + Salesforce CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install SF CLI + jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @salesforce/cli
+
+      - name: Authenticate to Salesforce
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias "${{ github.event.inputs.org_alias }}" \
+            --sfdx-url-stdin
+
+      - name: Query Reports Metadata
+        run: |
+          mkdir -p "$DATA_DIR"
+          echo "📥 Extracting Reports Metadata..."
+
+          # Basic ReportDefinition data (name, type, usage)
+          sf data query --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "
+              SELECT Id, DeveloperName, Name, Format, Description,
+                     LastRunDate, LastViewedDate, LastReferencedDate,
+                     ReportType.DeveloperName,
+                     ReportType.BaseObject,
+                     ReportType.Category
+              FROM Report
+              LIMIT 5000
+            " > "$DATA_DIR/reports.json"
+
+          # Report Type details (related objects)
+          sf data query --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "
+              SELECT DeveloperName, BaseObject, JoinObjects, Category
+              FROM ReportType
+            " > "$DATA_DIR/report_types.json"
+
+          # Report instances (last run stats)
+          sf data query --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "
+              SELECT Id, ReportId, RunTime, Status, RowCount, CreatedDate
+              FROM ReportEvent
+              ORDER BY CreatedDate DESC
+              LIMIT 5000
+            " > "$DATA_DIR/report_usage.json"
+
+          echo "📊 Reports collected:"
+          jq '.records | length' "$DATA_DIR/reports.json"
+
+      - name: Validate Data Availability
+        id: check
+        run: |
+          count=$(jq '.records | length' "$DATA_DIR/reports.json")
+          if [ "$count" -gt 0 ]; then
+            echo "has_data=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_data=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw-report-data
+          path: ${{ env.DATA_DIR }}
+          retention-days: 7
+
+  analyze-ai:
+    name: Analyze Reports (AI-Powered)
+    runs-on: ubuntu-latest
+    needs: collect-reports
+    if: needs.collect-reports.outputs.has_data == 'true'
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: raw-report-data
+          path: ${{ env.DATA_DIR }}
+
+      - name: Setup Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+
+          for i in {1..20}; do
+            if curl -s http://localhost:11434/api/version >/dev/null; then break; fi
+            sleep 2
+          done
+
+          ollama pull "${{ github.event.inputs.model_name }}"
+
+      - name: 🔍 Preprocess (Invalid / Rare / Top 20 / Categories)
+        run: |
+          # Normalize helper
+          rec() { jq '.records // .result.records // []' "$1"; }
+
+          echo "📌 Compute invalid reports..."
+          rec "$DATA_DIR/reports.json" | jq '
+            map(select(.ReportType.BaseObject == null or .ReportType.DeveloperName == null))' \
+            > "$DATA_DIR/invalid_reports.json"
+
+          echo "📌 Compute usage frequency from ReportEvent..."
+          rec "$DATA_DIR/report_usage.json" | jq '
+            group_by(.ReportId) |
+            map({ReportId: .[0].ReportId, runs: length})' \
+            > "$DATA_DIR/report_usage_summary.json"
+
+          echo "📌 Join usage with main report metadata..."
+          jq -s '
+            def rec(x): if x|type=="array" then x else [] end;
+            (rec(.[0]) as $reports |
+             rec(.[1]) as $usage |
+             $reports
+             | map(. + {
+                 runs: ($usage | map(select(.ReportId == .Id)) | .[0].runs // 0)
+               })
+            )' \
+            "$DATA_DIR/reports.json" "$DATA_DIR/report_usage_summary.json" \
+            > "$DATA_DIR/reports_enriched.json"
+
+          echo "📌 Rarely used reports"
+          jq 'sort_by(.runs) | .[0:20]' "$DATA_DIR/reports_enriched.json" \
+            > "$DATA_DIR/least_used.json"
+
+          echo "📌 Most used reports"
+          jq 'sort_by(.runs) | reverse | .[0:20]' "$DATA_DIR/reports_enriched.json" \
+            > "$DATA_DIR/most_used.json"
+
+          echo "📌 Reports by Category"
+          jq '
+            group_by(.ReportType.Category) |
+            map({category: .[0].ReportType.Category, reports: length})' \
+            "$DATA_DIR/reports_enriched.json" \
+            > "$DATA_DIR/reports_by_category.json"
+
+          echo "📌 Primary & Related Objects"
+          jq -s '
+            (.[0].records) as $types |
+            (.[1]) as $reports |
+            $reports | map(. + {
+              primaryObject: (.ReportType.BaseObject),
+              relatedObjects: (
+                $types | map(select(.DeveloperName == .ReportType.DeveloperName))
+                       | .[0].JoinObjects
+              )
+            })' \
+            "$DATA_DIR/report_types.json" "$DATA_DIR/reports_enriched.json" \
+            > "$DATA_DIR/reports_objects.json"
+
+      - name: 🧠 AI Analysis (Markdown Report)
+        run: |
+          MODEL=${{ github.event.inputs.model_name }}
+          REPORT="salesforce_reports_analysis_$(date +%Y%m%d_%H%M%S).md"
+
+          PROMPT=$(cat << 'EOF'
+          You are a Salesforce Analytics Architect.
+          Analyze the provided report metadata and generate:
+          
+          ## Executive Summary
+          - Count of reports
+          - Count of invalid reports
+          - Categories distribution
+          - Top 20 most executed reports
+          - Top 20 least executed reports
+          
+          ## Highlight: Invalid Reports
+          | Report Name | Type | Issue |
+          
+          ## Rarely Used Reports
+          | Report | Runs | Category | Primary Object |
+          
+          ## Reports by Category
+          | Category | Count |
+          
+          ## Top 20 Most Used Reports
+          | Report | Runs | Primary Object | Related Objects |
+          
+          ## Primary & Related Objects
+          | Report | Primary Object | Related Objects | Category |
+          
+          Provide concise remediation recommendations at the end.
+          EOF
+          )
+
+          cat > input.json <<EOF
+          {
+            "invalid": $(cat "$DATA_DIR/invalid_reports.json"),
+            "leastUsed": $(cat "$DATA_DIR/least_used.json"),
+            "mostUsed": $(cat "$DATA_DIR/most_used.json"),
+            "categories": $(cat "$DATA_DIR/reports_by_category.json"),
+            "objects": $(cat "$DATA_DIR/reports_objects.json")
+          }
+          EOF
+
+          echo "Sending to AI..."
+
+          RESPONSE=$(curl -s http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d "{\"model\":\"$MODEL\",\"prompt\":$PROMPT,\"context\":$(cat input.json),\"stream\":false}" \
+            | jq -r '.response')
+
+          echo "# Salesforce Reports Analysis" > "$REPORT"
+          echo "**Generated:** $(date -u)" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo "$RESPONSE" >> "$REPORT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salesforce-reports-analysis
+          path: salesforce_reports_analysis_*.md
