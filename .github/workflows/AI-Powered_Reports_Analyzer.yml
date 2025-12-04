@@ -66,8 +66,9 @@ jobs:
           sf data query --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query \"SELECT DeveloperName, BaseObject, JoinObjects, Category FROM ReportType\" \
+            --query 'SELECT DeveloperName, BaseObject, JoinObjects, Category FROM ReportType' \
             > "$DATA_DIR/report_types.json"
+
 
       - name: Query Report Usage (ReportEvent)
         run: |
