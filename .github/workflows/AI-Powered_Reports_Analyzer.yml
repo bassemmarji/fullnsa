@@ -61,12 +61,12 @@ jobs:
             --query "SELECT Id, DeveloperName, Name, Format, Description, LastRunDate, LastViewedDate, LastReferencedDate FROM Report LIMIT 5000" \
             > "$DATA_DIR/reports.json"
 
-      - name: Query Report Types (Tooling API)
+      - name: Query Report Types
         run: |
-          sf data query --use-tooling-api \
+          sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query 'SELECT DeveloperName, BaseObject, JoinObjects, Category FROM ReportType' \
+            --query "SELECT Id, DeveloperName, BaseObject, JoinObjects, Category FROM ReportType" \
             > "$DATA_DIR/report_types.json"
 
 
