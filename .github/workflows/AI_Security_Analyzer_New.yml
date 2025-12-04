@@ -11,12 +11,11 @@ on:
         type: choice
         description: "Ollama model to use"
         options:
-          - phi3
           - mistral
           - llama3:latest
           - gemma2:27b
-        default: phi3
-
+        default: mistral
+        
 env:
   NODE_VERSION: "20"
   DATA_DIR: "data"
