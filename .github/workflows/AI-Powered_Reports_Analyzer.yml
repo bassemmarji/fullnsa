@@ -49,7 +49,7 @@ jobs:
           echo "📥 Extracting Reports Metadata..."
 
           # Basic ReportDefinition data (name, type, usage)
-          sf data query --use-tooling-api \
+          sf data query  \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "
