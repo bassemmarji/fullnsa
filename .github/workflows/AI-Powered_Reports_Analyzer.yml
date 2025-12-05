@@ -61,21 +61,15 @@ jobs:
             --query "SELECT Id, DeveloperName, Name, Format, Description, LastRunDate, LastViewedDate, LastReferencedDate FROM Report LIMIT 5000" \
             > "$DATA_DIR/reports.json"
 
-      - name: Query Report Types
-        run: |
-          sf data query \
-            --target-org "${{ github.event.inputs.org_alias }}" \
-            --result-format json \
-            --query "SELECT Id, DeveloperName, BaseObject, JoinObjects, Category FROM ReportType" \
-            > "$DATA_DIR/report_types.json"
-
+      # REMOVED: ReportType query (not a queryable sObject)
+      # ReportType is metadata, not accessible via data query API
 
       - name: Query Report Usage (ReportEvent)
         run: |
           sf data query --use-tooling-api \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query \"SELECT Id, ReportId, RunTime, Status, RowCount, CreatedDate FROM ReportEvent ORDER BY CreatedDate DESC LIMIT 5000\" \
+            --query "SELECT Id, ReportId, RunTime, Status, RowCount, CreatedDate FROM ReportEvent ORDER BY CreatedDate DESC LIMIT 5000" \
             > "$DATA_DIR/report_usage.json"
 
       # -----------------------------------------------------------
@@ -96,7 +90,7 @@ jobs:
       - name: Check if reports exist
         id: check
         run: |
-          count=$(jq '.records | length // 0' "$DATA_DIR/reports.json")
+          count=$(jq '.result.records | length // 0' "$DATA_DIR/reports.json")
           if [ "$count" -gt 0 ]; then
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
@@ -143,7 +137,7 @@ jobs:
 
       - name: Preprocess Data
         run: |
-          rec() { jq '.records // .result.records // []' "$1"; }
+          rec() { jq '.result.records // .records // []' "$1"; }
 
           # INVALID REPORTS = missing description + missing run/view references
           rec "$DATA_DIR/reports.json" | jq '
@@ -161,11 +155,13 @@ jobs:
 
           # ENRICH REPORTS WITH USAGE
           jq -s '
-            (.[0].records // []) as $reports |
+            (.[0].result.records // .[0].records // []) as $reports |
             (.[1] // []) as $usage |
-            $reports | map(. + {
-              runs: ($usage | map(select(.ReportId == .Id)) | .[0].runs // 0)
-            })
+            $reports | map(
+              . as $report |
+              ($usage | map(select(.ReportId == $report.Id)) | .[0].runs // 0) as $runCount |
+              $report + {runs: $runCount}
+            )
           ' "$DATA_DIR/reports.json" "$DATA_DIR/report_usage_summary.json" \
             > "$DATA_DIR/reports_enriched.json"
 
@@ -180,7 +176,7 @@ jobs:
           ' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_category.json"
 
           # EXTRACT HARDIS FINDINGS
-          jq '.result.findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
+          jq '.result.findings // .findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
 
       # -----------------------------------------------------------
       #  AI ANALYSIS
@@ -191,13 +187,13 @@ jobs:
           MODEL="${{ github.event.inputs.model_name }}"
           REPORT="salesforce_reports_analysis_$(date +%Y%m%d_%H%M%S).md"
 
-          CONTEXT=$(jq -c '{
-            reports: (input | .reports_enriched),
-            leastUsed: (input | .least_used),
-            mostUsed: (input | .most_used),
-            categories: (input | .categories),
-            invalid: (input | .invalid_reports),
-            hardis: (input | .hardis_findings)
+          CONTEXT=$(jq -nc '{
+            reports: $reports_enriched[0],
+            leastUsed: $least_used[0],
+            mostUsed: $most_used[0],
+            categories: $categories[0],
+            invalid: $invalid_reports[0],
+            hardis: $hardis_findings[0]
           }' \
             --slurpfile reports_enriched "$DATA_DIR/reports_enriched.json" \
             --slurpfile least_used "$DATA_DIR/least_used.json" \
@@ -250,7 +246,7 @@ jobs:
 
           RESPONSE=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d "{\"model\":\"$MODEL\",\"prompt\":$(jq -R <<< "$FINAL_PROMPT"),\"stream\":false}" \
+            -d "$(jq -n --arg model "$MODEL" --arg prompt "$FINAL_PROMPT" '{model: $model, prompt: $prompt, stream: false}')" \
             | jq -r '.response // "AI analysis failed."')
 
           {
