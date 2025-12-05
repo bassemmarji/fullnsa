@@ -1,4 +1,4 @@
-name: AI-Powered Reports Analyzer (with sfdx-hardis)
+name: AI-Powered Reports Analyzer (Enhanced)
 
 on:
   workflow_dispatch:
@@ -50,7 +50,7 @@ jobs:
         run: mkdir -p "$DATA_DIR"
 
       # -----------------------------------------------------------
-      #  STANDARD METADATA COLLECTION
+      # METADATA COLLECTION (without ReportEvent)
       # -----------------------------------------------------------
 
       - name: Query Reports Metadata
@@ -58,22 +58,19 @@ jobs:
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, DeveloperName, Name, Format, Description, LastRunDate, LastViewedDate, LastReferencedDate FROM Report LIMIT 5000" \
+            --query "SELECT Id, DeveloperName, Name, NamespacePrefix, Description, Format, FolderName, LastRunDate, LastViewedDate, LastReferencedDate FROM Report LIMIT 5000" \
             > "$DATA_DIR/reports.json"
 
-      # REMOVED: ReportType query (not a queryable sObject)
-      # ReportType is metadata, not accessible via data query API
-
-      - name: Query Report Usage (ReportEvent)
+      - name: Query Dashboard Usage (DashboardComponent)
         run: |
-          sf data query --use-tooling-api \
+          sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, ReportId, RunTime, Status, RowCount, CreatedDate FROM ReportEvent ORDER BY CreatedDate DESC LIMIT 5000" \
-            > "$DATA_DIR/report_usage.json"
+            --query "SELECT Id, DashboardId, CustomReportId FROM DashboardComponent LIMIT 5000" \
+            > "$DATA_DIR/dashboard_components.json"
 
       # -----------------------------------------------------------
-      #  HARDIS ANALYSIS
+      # HARDIS ANALYSIS
       # -----------------------------------------------------------
 
       - name: Run sfdx-hardis Report Analysis
@@ -84,7 +81,7 @@ jobs:
             --json
 
       # -----------------------------------------------------------
-      #  CHECK IF DATA EXISTS
+      # CHECK FOR DATA
       # -----------------------------------------------------------
 
       - name: Check if reports exist
@@ -118,7 +115,7 @@ jobs:
           path: ${{ env.DATA_DIR }}
 
       # -----------------------------------------------------------
-      #  OLLAMA SETUP
+      # OLLAMA SETUP
       # -----------------------------------------------------------
 
       - name: Setup Ollama
@@ -132,122 +129,118 @@ jobs:
           ollama pull "${{ github.event.inputs.model_name }}"
 
       # -----------------------------------------------------------
-      #  DATA PREPROCESSING
+      # DATA PREPROCESSING (Recency + Dashboard Usage)
       # -----------------------------------------------------------
 
       - name: Preprocess Data
         run: |
-          rec() { jq '.result.records // .records // []' "$1"; }
+          rec_reports() { jq '.result.records // .records // []' "$DATA_DIR/reports.json"; }
+          rec_dash() { jq '.result.records // .records // []' "$DATA_DIR/dashboard_components.json"; }
 
-          # INVALID REPORTS = missing description + missing run/view references
-          rec "$DATA_DIR/reports.json" | jq '
+          # 1. DASHBOARD USAGE MAP
+          rec_dash | jq '
+            group_by(.CustomReportId) |
+            map({reportId: .[0].CustomReportId, dashboardCount: length})
+          ' > "$DATA_DIR/dashboard_usage.json"
+
+          # 2. ENRICH REPORTS WITH DASHBOARD USAGE + RECENCY SCORE
+          # Recency Score: 3 = active, 2 = viewed, 1 = referenced, 0 = stale
+          jq -s '
+            (.[0].result.records // .[0].records // []) as $reports |
+            (.[1] // []) as $dash |
+
+            $reports | map(
+              . as $r |
+
+              # dashboard usage
+              ($dash | map(select(.reportId == $r.Id)) | .[0].dashboardCount // 0) as $dashCount |
+
+              # recency score
+              (if $r.LastRunDate != null then 3
+               elif $r.LastViewedDate != null then 2
+               elif $r.LastReferencedDate != null then 1
+               else 0 end) as $recency |
+
+              $r + {
+                dashboardUsage: $dashCount,
+                recencyScore: $recency
+              }
+            )
+          ' "$DATA_DIR/reports.json" "$DATA_DIR/dashboard_usage.json" \
+            > "$DATA_DIR/reports_enriched.json"
+
+          # INVALID REPORTS
+          jq '
             map(select(
               (.Description == null or .Description == "") and
               (.LastViewedDate == null and .LastReferencedDate == null)
             ))
-          ' > "$DATA_DIR/invalid_reports.json"
+          ' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/invalid_reports.json"
 
-          # USAGE SUMMARY
-          rec "$DATA_DIR/report_usage.json" | jq '
-            group_by(.ReportId) |
-            map({ReportId: .[0].ReportId, runs: length})
-          ' > "$DATA_DIR/report_usage_summary.json"
+          # TOP 20 STALE REPORTS
+          jq 'sort_by(.recencyScore) | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/stale_reports.json"
 
-          # ENRICH REPORTS WITH USAGE
-          jq -s '
-            (.[0].result.records // .[0].records // []) as $reports |
-            (.[1] // []) as $usage |
-            $reports | map(
-              . as $report |
-              ($usage | map(select(.ReportId == $report.Id)) | .[0].runs // 0) as $runCount |
-              $report + {runs: $runCount}
-            )
-          ' "$DATA_DIR/reports.json" "$DATA_DIR/report_usage_summary.json" \
-            > "$DATA_DIR/reports_enriched.json"
+          # TOP 20 ACTIVE REPORTS
+          jq 'sort_by(.recencyScore) | reverse | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/top_reports.json"
 
-          # MOST/LEAST USED
-          jq 'sort_by(.runs) | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/least_used.json"
-          jq 'sort_by(.runs) | reverse | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/most_used.json"
-
-          # CATEGORIES
+          # FORMAT CATEGORIES
           jq '
             group_by(.Format) |
             map({format: .[0].Format, count: length})
           ' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_category.json"
 
-          # EXTRACT HARDIS FINDINGS
+          # HARDIS FINDINGS
           jq '.result.findings // .findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
 
       # -----------------------------------------------------------
-      #  AI ANALYSIS
+      # AI ANALYSIS
       # -----------------------------------------------------------
 
-      - name: AI Analysis with Hardis Context
+      - name: AI Analysis
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
           REPORT="salesforce_reports_analysis_$(date +%Y%m%d_%H%M%S).md"
 
           CONTEXT=$(jq -nc '{
-            reports: $reports_enriched[0],
-            leastUsed: $least_used[0],
-            mostUsed: $most_used[0],
+            enriched: $enriched[0],
+            stale: $stale[0],
+            top: $top[0],
             categories: $categories[0],
-            invalid: $invalid_reports[0],
-            hardis: $hardis_findings[0]
+            invalid: $invalid[0],
+            hardis: $hardis[0]
           }' \
-            --slurpfile reports_enriched "$DATA_DIR/reports_enriched.json" \
-            --slurpfile least_used "$DATA_DIR/least_used.json" \
-            --slurpfile most_used "$DATA_DIR/most_used.json" \
+            --slurpfile enriched "$DATA_DIR/reports_enriched.json" \
+            --slurpfile stale "$DATA_DIR/stale_reports.json" \
+            --slurpfile top "$DATA_DIR/top_reports.json" \
             --slurpfile categories "$DATA_DIR/reports_by_category.json" \
-            --slurpfile invalid_reports "$DATA_DIR/invalid_reports.json" \
-            --slurpfile hardis_findings "$DATA_DIR/hardis_findings.json")
+            --slurpfile invalid "$DATA_DIR/invalid_reports.json" \
+            --slurpfile hardis "$DATA_DIR/hardis_findings.json")
 
           PROMPT=$(cat << 'EOF'
           You are a Senior Salesforce Governance Analyst.
           
-          Analyze the following JSON dataset containing:
-          - enriched report metadata
-          - usage analytics
+          Analyze the following dataset based on:
+          - enriched report metadata (recencyScore, dashboardUsage, description quality)
+          - stale vs active reports
           - invalid reports
-          - report categories
-          - sfdx-hardis findings (security, technical debt, orphan reports)
+          - reports by format
+          - sfdx-hardis findings (security risks, technical debt)
           
           Produce a high-quality **Markdown report** with:
-          
-          ## Executive Summary
-          - Total reports, invalid reports, usage overview
-          - Security/performance concerns from Hardis
-          
-          ## Invalid or High-Risk Reports
-          | Name | Issue | Hardis Risk Level |
-          
-          ## Rarely Used Reports (Top 20)
-          | Name | Runs | Format |
-          
-          ## Most Used Reports (Top 20)
-          | Name | Runs | Format |
-          
-          ## Reports by Format
-          | Format | Count |
-          
-          ## sfdx-hardis Findings Summary
-          - Critical or High issues
-          - Recommended remediation
-          
-          End with **actionable recommendations** for governance, cleanup, and security.
+          1. Executive Summary
+          2. Invalid or High-Risk Reports
+          3. Stale Reports (Top 20)
+          4. Most Active Reports (Top 20)
+          5. Reports by Format
+          6. sfdx-hardis Findings Summary
+          7. Actionable Recommendations
           EOF
           )
 
-          FINAL_PROMPT="$PROMPT
-
-          CONTEXT (JSON):
-          $CONTEXT
-          "
-
           RESPONSE=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d "$(jq -n --arg model "$MODEL" --arg prompt "$FINAL_PROMPT" '{model: $model, prompt: $prompt, stream: false}')" \
-            | jq -r '.response // "AI analysis failed."')
+            -d "$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT\n\nCONTEXT:\n$CONTEXT" '{model: $model, prompt: $prompt, stream: false}')" \
+            | jq -r '.response')
 
           {
             echo "# Salesforce Reports Governance Report"
