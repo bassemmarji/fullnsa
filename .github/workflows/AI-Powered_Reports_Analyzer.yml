@@ -86,10 +86,16 @@ jobs:
       - name: Run sfdx-hardis Report Analysis
         run: |
           mkdir -p "$DATA_DIR"
+          # Try sfdx-hardis analysis, but don't fail if it errors
           sfdx-hardis org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --outputfile "$DATA_DIR/hardis_report.json" \
-            --json || echo "{}" > "$DATA_DIR/hardis_report.json"
+            --json 2>&1 | tee "$DATA_DIR/hardis_log.txt" || true
+          
+          # Ensure file exists with valid JSON
+          if [ ! -f "$DATA_DIR/hardis_report.json" ] || [ ! -s "$DATA_DIR/hardis_report.json" ]; then
+            echo '{"status": "skipped", "message": "sfdx-hardis analysis not available", "findings": []}' > "$DATA_DIR/hardis_report.json"
+          fi
 
       # -----------------------------------------------------------
       # CHECK FOR DATA
@@ -297,71 +303,113 @@ jobs:
             --slurpfile hardis "$DATA_DIR/hardis_findings.json")
 
           PROMPT=$(cat << 'EOF'
-          You are a Senior Salesforce Governance Analyst. Analyze the provided Salesforce Reports data and create a comprehensive governance report.
+          You are a Senior Salesforce Governance Analyst creating a detailed governance report.
 
-          IMPORTANT FORMATTING REQUIREMENTS:
-          1. For EVERY section with reports, create a Markdown table with these columns:
-             - Report Name
-             - Report ID (as Salesforce URL: https://[instance].salesforce.com/[ID])
-             - Folder
-             - Health Score (0-10)
-             - Risk Level
-             - Days Since Last Activity
-             - Dashboard Usage
-             - Recommendation
+          CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:
 
-          2. Structure your report with these sections:
-             
+          1. CREATE MARKDOWN TABLES FOR EVERY REPORT LIST
+             - Do NOT just summarize - show the actual reports
+             - Every table MUST include these columns: Report Name, Report ID, Folder, Health Score, Days Inactive, Dashboard Usage, Risk Level
+             - Include 15-20 reports per table (use the data provided)
+             - Format Report ID as a link: [ID](https://yourinstance.salesforce.com/ID)
+
+          2. REQUIRED SECTIONS WITH TABLES:
+
              ## Executive Summary
-             - Total reports analyzed
-             - Risk distribution (High/Medium/Low)
-             - Key findings (3-5 bullet points)
-             - Immediate actions required
+             - Total Reports: [number]
+             - High Risk: [count] | Medium Risk: [count] | Low Risk: [count]
+             - Orphaned Reports: [count]
+             - Average Health Score: [score]
+             - Top 3 Critical Issues (bullet points)
 
-             ## 1. High Risk Reports
-             [TABLE with top 15-20 high risk reports]
-             Analysis: Why these reports are high risk and what to do about them
+             ## 1. 🚨 High Risk Reports
+             
+             These reports have health scores ≤ 3 and require immediate attention:
+             
+             | Report Name | Report ID | Folder | Health Score | Days Inactive | Dashboard Usage | Recommendation |
+             |-------------|-----------|--------|--------------|---------------|-----------------|----------------|
+             | [Show 15-20 actual reports from highRisk data] |
+             
+             **Analysis:** [2-3 sentences about patterns]
 
-             ## 2. Invalid Reports (Missing Metadata)
-             [TABLE with all invalid reports found]
-             Analysis: Impact and remediation steps
+             ## 2. ❌ Invalid Reports (Missing Metadata)
+             
+             Reports with no description and no activity history:
+             
+             | Report Name | Report ID | Folder | Created Date | Last Modified | Recommendation |
+             |-------------|-----------|--------|--------------|---------------|----------------|
+             | [Show all invalid reports] |
+             
+             **Action Required:** [Specific steps]
 
-             ## 3. Stale Reports (180+ Days Inactive)
-             [TABLE with top 15-20 stale reports]
-             Analysis: Potential for archival or deletion
+             ## 3. 📅 Stale Reports (180+ Days Inactive)
+             
+             | Report Name | Report ID | Folder | Days Inactive | Last Activity | Dashboard Usage | Recommendation |
+             |-------------|-----------|--------|---------------|---------------|-----------------|----------------|
+             | [Show 15-20 stale reports] |
+             
+             **Archival Candidates:** [Analysis]
 
-             ## 4. Top Performing Reports
-             [TABLE with top 15-20 active reports]
-             Analysis: What makes these successful
+             ## 4. ⭐ Top Performing Reports
+             
+             | Report Name | Report ID | Folder | Health Score | Last Activity | Dashboard Usage | Success Factor |
+             |-------------|-----------|--------|--------------|---------------|-----------------|----------------|
+             | [Show 15-20 top reports] |
+             
+             **Best Practices:** [What makes these successful]
 
-             ## 5. Orphaned Reports (Not in Dashboards)
-             [TABLE with top 15-20 orphaned reports]
-             Analysis: Integration opportunities
+             ## 5. 🔗 Orphaned Reports (Not in Dashboards)
+             
+             | Report Name | Report ID | Folder | Health Score | Days Inactive | Integration Opportunity |
+             |-------------|-----------|--------|--------------|---------------|------------------------|
+             | [Show 15-20 orphaned reports] |
+             
+             **Recommendation:** [Integration strategies]
 
-             ## 6. Reports by Format Category
-             For each format (Tabular, Summary, Matrix):
-             - Count and average health score
-             - [TABLE with 5 lowest health score reports in this category]
+             ## 6. 📊 Reports by Format
+             
+             ### Tabular Reports
+             - Count: [X] | Avg Health: [Y]
+             
+             | Report Name | Report ID | Health Score | Issue |
+             |-------------|-----------|--------------|-------|
+             | [5 lowest health tabular reports] |
+             
+             ### Summary Reports
+             [Same table structure]
+             
+             ### Matrix Reports
+             [Same table structure]
 
-             ## 7. sfdx-hardis Security & Technical Findings
-             [Summarize any security or technical debt issues]
+             ## 7. 🔐 Security & Technical Findings
+             [Summarize hardis findings if available, otherwise state "No automated findings - manual review recommended"]
 
-             ## 8. Actionable Recommendations
-             Prioritized list of actions:
-             1. Immediate (Week 1)
-             2. Short-term (Month 1)
-             3. Long-term (Quarter 1)
+             ## 8. 🎯 Actionable Recommendations
 
-          3. Use proper Markdown table syntax:
-             | Column1 | Column2 | Column3 |
-             |---------|---------|---------|
-             | Value1  | Value2  | Value3  |
+             ### Immediate (This Week)
+             1. [Specific action with report names]
+             2. [Specific action with report names]
+             3. [Specific action with report names]
 
-          4. For Report IDs, format as: `[View Report](https://[instance].salesforce.com/[ID])`
+             ### Short-term (This Month)
+             1. [Specific action]
+             2. [Specific action]
 
-          5. Be specific - include actual report names, IDs, and concrete recommendations for each report.
+             ### Long-term (This Quarter)
+             1. [Strategic initiative]
+             2. [Process improvement]
 
-          CONTEXT DATA:
+          3. FORMATTING RULES:
+             - Use actual data from the JSON context provided
+             - Every report mentioned must include its ID
+             - Use emojis for section headers (provided above)
+             - Keep tables clean and aligned
+             - NO generic summaries - show actual report details
+
+          4. EXAMPLE TABLE ROW:
+             | Sample Report: Cases | 00O8... | NSA Customer Service | 2 | 45 | 1 | Review usage pattern |
+
+          NOW ANALYZE THIS DATA AND CREATE THE REPORT:
           EOF
           )
 
