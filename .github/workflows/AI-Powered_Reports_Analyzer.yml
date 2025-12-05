@@ -75,7 +75,7 @@ jobs:
 
       - name: Run sfdx-hardis Report Analysis
         run: |
-          sf hardis:org:report:analyze \
+          sfdx-hardis org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --outputfile "$DATA_DIR/hardis_report.json" \
             --json
