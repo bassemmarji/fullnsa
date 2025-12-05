@@ -36,6 +36,16 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq curl unzip
 
+      - name: Install Salesforce CLI + jq
+        run: |
+          npm install -g @salesforce/cli
+          
+      - name: Authenticate to Salesforce
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias "${{ github.event.inputs.org_alias }}" \
+            --sfdx-url-stdin
+      
       - name: Install Salesforce CLI
         uses: sfdx-actions/setup-sfdx@v1
         with:
@@ -46,12 +56,6 @@ jobs:
           # ensure npm is available from setup-node
           npm install -g sfdx-hardis
           sfdx-hardis --version || true
-
-      - name: Authenticate to Salesforce
-        run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
-            --alias "${{ github.event.inputs.org_alias }}" \
-            --sfdx-url-stdin
 
       - name: Create data directory
         run: mkdir -p "$DATA_DIR"
