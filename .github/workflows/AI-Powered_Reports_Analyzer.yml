@@ -31,14 +31,21 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install SF CLI & tools
+      - name: Install common linux packages
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y jq curl
-          npm install -g @salesforce/cli
+          sudo apt-get install -y jq curl unzip
 
-      - name: Install sfdx-hardis plugin
-        run: sf plugins install sfdx-hardis
+      - name: Install Salesforce CLI
+        uses: sfdx-actions/setup-sfdx@v1
+        with:
+          version: latest
+
+      - name: Install sfdx-hardis (global)
+        run: |
+          # ensure npm is available from setup-node
+          npm install -g sfdx-hardis
+          sfdx-hardis --version || true
 
       - name: Authenticate to Salesforce
         run: |
@@ -50,7 +57,7 @@ jobs:
         run: mkdir -p "$DATA_DIR"
 
       # -----------------------------------------------------------
-      # METADATA COLLECTION (without ReportEvent)
+      # METADATA COLLECTION (no ReportEvent)
       # -----------------------------------------------------------
 
       - name: Query Reports Metadata
@@ -70,15 +77,17 @@ jobs:
             > "$DATA_DIR/dashboard_components.json"
 
       # -----------------------------------------------------------
-      # HARDIS ANALYSIS
+      # HARDIS ANALYSIS (uses sfdx-hardis cli)
       # -----------------------------------------------------------
 
       - name: Run sfdx-hardis Report Analysis
         run: |
+          # ensure data dir exists
+          mkdir -p "$DATA_DIR"
           sfdx-hardis org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --outputfile "$DATA_DIR/hardis_report.json" \
-            --json
+            --json || echo "{}" > "$DATA_DIR/hardis_report.json"
 
       # -----------------------------------------------------------
       # CHECK FOR DATA
@@ -87,7 +96,13 @@ jobs:
       - name: Check if reports exist
         id: check
         run: |
-          count=$(jq '.result.records | length // 0' "$DATA_DIR/reports.json")
+          # safe parsing if file missing or empty
+          if [ ! -f "$DATA_DIR/reports.json" ] || [ ! -s "$DATA_DIR/reports.json" ]; then
+            echo "has_data=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          count=$(jq '.result.records | length // .records | length // 0' "$DATA_DIR/reports.json")
           if [ "$count" -gt 0 ]; then
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
@@ -121,12 +136,12 @@ jobs:
       - name: Setup Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
+          ollama serve & disown
           for i in {1..20}; do
             if curl -s http://localhost:11434/api/version >/dev/null; then break; fi
             sleep 2
           done
-          ollama pull "${{ github.event.inputs.model_name }}"
+          ollama pull "${{ github.event.inputs.model_name }}" || true
 
       # -----------------------------------------------------------
       # DATA PREPROCESSING (Recency + Dashboard Usage)
@@ -134,33 +149,29 @@ jobs:
 
       - name: Preprocess Data
         run: |
-          rec_reports() { jq '.result.records // .records // []' "$DATA_DIR/reports.json"; }
-          rec_dash() { jq '.result.records // .records // []' "$DATA_DIR/dashboard_components.json"; }
+          set -euo pipefail
+          rec_reports() { jq '.result.records // .records // []' "$1"; }
+          rec_dash() { jq '.result.records // .records // []' "$1"; }
 
-          # 1. DASHBOARD USAGE MAP
-          rec_dash | jq '
+          # 1. DASHBOARD USAGE MAP (sort before group_by)
+          rec_dash "$DATA_DIR/dashboard_components.json" | jq '
+            sort_by(.CustomReportId) |
             group_by(.CustomReportId) |
             map({reportId: .[0].CustomReportId, dashboardCount: length})
           ' > "$DATA_DIR/dashboard_usage.json"
 
           # 2. ENRICH REPORTS WITH DASHBOARD USAGE + RECENCY SCORE
-          # Recency Score: 3 = active, 2 = viewed, 1 = referenced, 0 = stale
+          # Recency Score: 3 = active (LastRunDate), 2 = viewed, 1 = referenced, 0 = stale
           jq -s '
             (.[0].result.records // .[0].records // []) as $reports |
             (.[1] // []) as $dash |
-
             $reports | map(
               . as $r |
-
-              # dashboard usage
               ($dash | map(select(.reportId == $r.Id)) | .[0].dashboardCount // 0) as $dashCount |
-
-              # recency score
-              (if $r.LastRunDate != null then 3
-               elif $r.LastViewedDate != null then 2
-               elif $r.LastReferencedDate != null then 1
+              (if ($r.LastRunDate // null) != null then 3
+               elif ($r.LastViewedDate // null) != null then 2
+               elif ($r.LastReferencedDate // null) != null then 1
                else 0 end) as $recency |
-
               $r + {
                 dashboardUsage: $dashCount,
                 recencyScore: $recency
@@ -169,36 +180,38 @@ jobs:
           ' "$DATA_DIR/reports.json" "$DATA_DIR/dashboard_usage.json" \
             > "$DATA_DIR/reports_enriched.json"
 
-          # INVALID REPORTS
+          # INVALID REPORTS: no description and no view/reference activity
           jq '
             map(select(
-              (.Description == null or .Description == "") and
+              ((.Description // "") == "") and
               (.LastViewedDate == null and .LastReferencedDate == null)
             ))
           ' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/invalid_reports.json"
 
-          # TOP 20 STALE REPORTS
-          jq 'sort_by(.recencyScore) | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/stale_reports.json"
+          # TOP 20 STALE REPORTS (lowest recencyScore, then dashboardUsage)
+          jq 'sort_by(.recencyScore, .dashboardUsage) | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/stale_reports.json"
 
-          # TOP 20 ACTIVE REPORTS
-          jq 'sort_by(.recencyScore) | reverse | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/top_reports.json"
+          # TOP 20 ACTIVE REPORTS (highest recencyScore, then dashboardUsage)
+          jq 'sort_by(.recencyScore, .dashboardUsage) | reverse | .[0:20]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/top_reports.json"
 
-          # FORMAT CATEGORIES
-          jq '
-            group_by(.Format) |
-            map({format: .[0].Format, count: length})
-          ' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_category.json"
+          # FORMAT CATEGORIES (safe sort/group)
+          jq 'sort_by(.Format) | group_by(.Format) | map({format: .[0].Format, count: length})' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_category.json"
 
-          # HARDIS FINDINGS
-          jq '.result.findings // .findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
+          # HARDIS FINDINGS (safe fallback)
+          if [ -f "$DATA_DIR/hardis_report.json" ] && [ -s "$DATA_DIR/hardis_report.json" ]; then
+            jq '.result.findings // .findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
+          else
+            echo "[]" > "$DATA_DIR/hardis_findings.json"
+          fi
 
       # -----------------------------------------------------------
       # AI ANALYSIS
       # -----------------------------------------------------------
 
       - name: AI Analysis
+        env:
+          MODEL: ${{ github.event.inputs.model_name }}
         run: |
-          MODEL="${{ github.event.inputs.model_name }}"
           REPORT="salesforce_reports_analysis_$(date +%Y%m%d_%H%M%S).md"
 
           CONTEXT=$(jq -nc '{
@@ -226,7 +239,7 @@ jobs:
           - reports by format
           - sfdx-hardis findings (security risks, technical debt)
           
-          Produce a high-quality **Markdown report** with:
+          Produce a high-quality Markdown report with:
           1. Executive Summary
           2. Invalid or High-Risk Reports
           3. Stale Reports (Top 20)
@@ -237,10 +250,11 @@ jobs:
           EOF
           )
 
+          # send to Ollama (local) and extract response
+          PAYLOAD=$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT\n\nCONTEXT:\n$CONTEXT" '{model: $model, prompt: $prompt, stream: false}')
           RESPONSE=$(curl -s http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
-            -d "$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT\n\nCONTEXT:\n$CONTEXT" '{model: $model, prompt: $prompt, stream: false}')" \
-            | jq -r '.response')
+            -d "$PAYLOAD" | jq -r '.response // "AI analysis failed."')
 
           {
             echo "# Salesforce Reports Governance Report"
