@@ -187,9 +187,12 @@ jobs:
               # Composite Risk Score (higher = healthier, 0-10 scale)
               ($recency + $descQuality + $dashScore) as $riskScore |
               
-              # Days since last activity
+              # Days since last activity (handle Salesforce date format)
               (if ($r.LastRunDate // $r.LastViewedDate // $r.LastReferencedDate) then
-                (now - (($r.LastRunDate // $r.LastViewedDate // $r.LastReferencedDate) | fromdateiso8601)) / 86400 | floor
+                (($r.LastRunDate // $r.LastViewedDate // $r.LastReferencedDate) | 
+                 sub("\\.\\d{3}\\+\\d{4}$"; "Z") | # Remove milliseconds and timezone
+                 fromdateiso8601) as $lastDate |
+                ((now - $lastDate) / 86400 | floor)
               else 9999 end) as $daysSinceActivity |
               
               $r + {
