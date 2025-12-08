@@ -127,7 +127,6 @@ jobs:
               }]
             )
           ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
-
       ###########################################################################
       # SUMMARY STATS
       ###########################################################################
