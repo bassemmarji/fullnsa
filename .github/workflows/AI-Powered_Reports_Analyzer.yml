@@ -1,7 +1,5 @@
-# AI-Powered Reports Analyzer (Fixed Version)
-# Full corrected pipeline with sf for auth/queries and sfdx for Hardis
-
-name: AI-Powered Reports Analyzer (Enhanced Fixed)
+# AI-Powered Reports Analyzer (Enhanced + Folder/Object Distribution)
+name: AI-Powered Reports Analyzer (Enhanced Full)
 
 on:
   workflow_dispatch:
@@ -35,47 +33,60 @@ jobs:
       - name: Create data directory
         run: mkdir -p "$DATA_DIR"
 
-      - name: Install Salesforce CLI (sf) for auth & queries
+      ###########################################################################
+      # INSTALL CLI TOOLS
+      ###########################################################################
+      - name: Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli
           sf --version
 
-      - name: Authenticate to Salesforce
-        run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" > authfile.txt
-          sf org login sfdx-url --sfdx-url-file authfile.txt --alias "${{ github.event.inputs.org_alias }}"
-          sf org display --target-org "${{ github.event.inputs.org_alias }}"
-
-      - name: Install sfdx + Hardis (LOCAL) for analysis only
+      - name: Install sfdx + Hardis
         run: |
           npm install sfdx-cli --save-dev
           npm install sfdx-hardis --save-dev
           npx sfdx --version
           npx sfdx hardis:version
 
+      - name: Install Ollama CLI
+        run: |
+          curl -sSL https://ollama.com/install.sh | sh
+          ollama --version
+
       ###########################################################################
-      # COLLECT REPORT METADATA
+      # AUTHENTICATE TO SALESFORCE
       ###########################################################################
-      - name: Create data directory
-        run: mkdir -p "$DATA_DIR"
-        
+      - name: Authenticate to Salesforce
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" > authfile.txt
+          sf org login sfdx-url --sfdx-url-file authfile.txt --alias "${{ github.event.inputs.org_alias }}"
+          sf org display --target-org "${{ github.event.inputs.org_alias }}"
+
+      ###########################################################################
+      # FETCH REPORT METADATA AND EVENTS
+      ###########################################################################
       - name: Fetch Reports
         run: |
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, Name, LastViewedDate, LastRunDate, OwnerId, DeveloperName, Format, CreatedDate FROM Report" \
+            --query "SELECT Id, Name, FolderName, DeveloperName, Format, CreatedDate, LastRunDate, OwnerId FROM Report" \
             > "$DATA_DIR/reports_raw.json"
-            
-          sf data query \
-            --target-org "${{ github.event.inputs.org_alias }}" \
+
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
-            > $DATA_DIR/report_events.json
+            > "$DATA_DIR/report_events.json"
+
+      - name: Fetch Report Types
+        run: |
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, DeveloperName, BaseObject FROM ReportType" \
+            > "$DATA_DIR/report_types.json"
 
       ###########################################################################
-      # RUN HARDIS REPORT ANALYZER (via sfdx only)
+      # RUN HARDIS ANALYZER
       ###########################################################################
-
       - name: Run Hardis Analyzer
         run: |
           if npx sfdx hardis:org:report:analyze \
@@ -86,22 +97,16 @@ jobs:
           else
               echo '{"status":"skipped","findings":[]}' > "$DATA_DIR/hardis_report.json"
           fi
-
-          # validate JSON
+          # Validate JSON
           if ! jq empty "$DATA_DIR/hardis_report.json" 2>/dev/null; then
             echo '{"status":"skipped","findings":[]}' > "$DATA_DIR/hardis_report.json"
           fi
 
-      ###########################################################################
-      # NORMALIZE HARDIS OUTPUT
-      ###########################################################################
-
       - name: Extract Hardis Findings
-        run: |
-          jq '.findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
+        run: jq '.findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
 
       ###########################################################################
-      # MERGE REPORT METADATA + USAGE + HARDIS
+      # ENRICH REPORTS WITH LAST RUN, CREATION, AND HARDIS
       ###########################################################################
       - name: Enrich Reports
         run: |
@@ -111,7 +116,8 @@ jobs:
               . + [{
                 Id: $r.Id,
                 Name: $r.Name,
-                Description: $r.Description,
+                FolderName: $r.FolderName,
+                DeveloperName: $r.DeveloperName,
                 Format: $r.Format,
                 LastRunDays: (
                   if $r.LastRunDate == null then null
@@ -127,27 +133,41 @@ jobs:
               }]
             )
           ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
-      ###########################################################################
-      # SUMMARY STATS
-      ###########################################################################
 
-      - name: Generate Summary
+      ###########################################################################
+      # SUMMARY STATISTICS
+      ###########################################################################
+      - name: Generate Summary Stats
         run: |
           jq '{
             totalReports: (length),
-            neverRun: map(select(.usage.LastRunDate == null)) | length,
-            staleReports: map(select(.usage.daysSinceLastActivity != null and .usage.daysSinceLastActivity > 180)) | length,
-            withHardisWarnings: map(select(.hardisWarnings | length > 0)) | length
+            neverRun: map(select(.LastRunDays == null)) | length,
+            staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length,
+            withHardisWarnings: map(select(.HardisWarnings != null and .HardisWarnings | length > 0)) | length
           }' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/summary_stats.json"
 
       ###########################################################################
-      # AI EXECUTIVE SUMMARY (Ollama via model choice)
+      # DISTRIBUTION BY FOLDER
       ###########################################################################
-      - name: Install Ollama CLI
+      - name: Reports by Folder
         run: |
-          curl -sSL https://ollama.com/install.sh | sh
-          ollama --version
+          jq '[.[] | .FolderName] | group_by(.) | map({folder: .[0], count: length})' \
+            "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_folder.json"
 
+      ###########################################################################
+      # DISTRIBUTION BY PRIMARY OBJECT
+      ###########################################################################
+      - name: Reports by Primary Object
+        run: |
+          jq -n --slurpfile reports "$DATA_DIR/reports_enriched.json" --slurpfile types "$DATA_DIR/report_types.json" '
+            [$reports[0][] | . as $r | 
+              ($types[0].result.records[] | select(.DeveloperName == $r.DeveloperName) | .BaseObject) // "Unknown"] |
+            group_by(.) | map({object: .[0], count: length})
+          ' > "$DATA_DIR/reports_by_object.json"
+
+      ###########################################################################
+      # AI EXECUTIVE SUMMARY
+      ###########################################################################
       - name: Build AI Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
@@ -160,26 +180,43 @@ jobs:
           echo "$CONTEXT" | ollama run "$MODEL" > "$DATA_DIR/ai_summary.md"
 
       ###########################################################################
-      # FINAL REPORT
+      # BUILD FINAL MARKDOWN REPORT
       ###########################################################################
-
       - name: Build Final Markdown Report
         run: |
           echo "# AI-Powered Reports Analysis" > final_report.md
           echo "## Executive Summary" >> final_report.md
           cat "$DATA_DIR/ai_summary.md" >> final_report.md
-
           echo "## Summary Statistics" >> final_report.md
           cat "$DATA_DIR/summary_stats.json" >> final_report.md
-
+          echo "## Reports by Folder" >> final_report.md
+          cat "$DATA_DIR/reports_by_folder.json" >> final_report.md
+          echo "## Reports by Primary Object" >> final_report.md
+          cat "$DATA_DIR/reports_by_object.json" >> final_report.md
           echo "## Detailed Enriched Report JSON" >> final_report.md
-          echo '
-          ```json' >> final_report.md
+          echo '```json' >> final_report.md
           cat "$DATA_DIR/reports_enriched.json" >> final_report.md
           echo '```' >> final_report.md
 
+      ###########################################################################
+      # UPLOAD ARTIFACTS
+      ###########################################################################
       - name: Upload Final Report
         uses: actions/upload-artifact@v4
         with:
           name: report
           path: final_report.md
+
+      - name: Upload JSON Data Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: report_data
+          path: |
+            $DATA_DIR/reports_raw.json
+            $DATA_DIR/report_events.json
+            $DATA_DIR/report_types.json
+            $DATA_DIR/reports_enriched.json
+            $DATA_DIR/hardis_findings.json
+            $DATA_DIR/summary_stats.json
+            $DATA_DIR/reports_by_folder.json
+            $DATA_DIR/reports_by_object.json
