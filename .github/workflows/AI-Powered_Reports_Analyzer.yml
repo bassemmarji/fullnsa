@@ -82,18 +82,20 @@ jobs:
       # RUN HARDIS ANALYZER
       ###########################################################################
       - name: Run Hardis Analyzer
+        id: hardis
+        continue-on-error: true
         run: |
-          if npx sfdx hardis:org:report:analyze \
-              --target-org "${{ github.event.inputs.org_alias }}" \
-              --format json \
-              --outputfile "$DATA_DIR/hardis_report.json"; then
-              echo "Hardis report OK"
-          else
-              echo '{"status":"skipped","findings":[]}' > "$DATA_DIR/hardis_report.json"
-          fi
-          # Validate JSON
-          if ! jq empty "$DATA_DIR/hardis_report.json" 2>/dev/null; then
-            echo '{"status":"skipped","findings":[]}' > "$DATA_DIR/hardis_report.json"
+          npx sfdx hardis:org:report:analyze \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --format json \
+            --outputfile "$DATA_DIR/hardis_report.json"
+      
+      - name: Validate Hardis Output
+        run: |
+          if [ "${{ steps.hardis.outcome }}" != "success" ]; then
+            echo "::warning::Hardis analysis failed or was skipped"
+            echo '{"status":"failed","findings":[],"error":"Analysis did not complete"}' \
+              > "$DATA_DIR/hardis_report.json"
           fi
 
       - name: Extract Hardis Findings
