@@ -1,4 +1,4 @@
-name: AI-Powered Reports Analyzer (Enhanced with Details)
+name: AI-Powered Reports Analyzer (Fixed)
 
 on:
   workflow_dispatch:
@@ -36,40 +36,51 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq curl unzip
 
-      - name: Install Salesforce CLI + jq
+      # Install modern sf CLI globally (used for auth + queries)
+      - name: Install sf (Salesforce CLI)
         run: |
-          npm install -g @salesforce/cli
-          
-      - name: Authenticate to Salesforce
-        run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
-            --alias "${{ github.event.inputs.org_alias }}" \
-            --sfdx-url-stdin
-      
-      - name: Install Salesforce CLI
-        uses: sfdx-actions/setup-sfdx@v1
-        with:
-          version: latest
+          npm install -g @salesforce/cli@latest
+          sf --version
 
-      - name: Install sfdx-hardis (global)
+      # Install local sfdx-cli + sfdx-hardis (used only for Hardis analysis via npx)
+      - name: Install local sfdx-cli and sfdx-hardis (for Hardis only)
         run: |
-          npm install -g sfdx-hardis
-          sfdx-hardis --version || true
+          mkdir -p toolchain
+          cd toolchain
+          npm init -y >/dev/null
+          npm install sfdx-cli sfdx-hardis >/dev/null
+          npx sfdx --version
+          cd -
 
       - name: Create data directory
         run: mkdir -p "$DATA_DIR"
 
       # -----------------------------------------------------------
-      # METADATA COLLECTION
+      # AUTHENTICATE using sf (modern client) — required for queries
       # -----------------------------------------------------------
 
-      - name: Query Reports Metadata
+      - name: Authenticate to Salesforce (sf)
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias "${{ github.event.inputs.org_alias }}" \
+            --sfdx-url-stdin
+
+      - name: Capture org info (instance url + user)
+        run: |
+          sf org display --target-org "${{ github.event.inputs.org_alias }}" --json > "$DATA_DIR/org_display.json"
+          jq -r '.result.instanceUrl // .instanceUrl // ""' "$DATA_DIR/org_display.json" > "$DATA_DIR/instance_url.txt" || true
+
+      # -----------------------------------------------------------
+      # METADATA COLLECTION (use sf for queries)
+      # -----------------------------------------------------------
+
+      - name: Query Reports Metadata (sf)
         run: |
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Id, DeveloperName, Name, NamespacePrefix, Description, Format, FolderName, LastRunDate, LastViewedDate, LastReferencedDate, CreatedDate, CreatedBy.Name, LastModifiedDate, LastModifiedBy.Name FROM Report LIMIT 5000" \
-            > "$DATA_DIR/reports.json"
+            > "$DATA_DIR/reports.json" || true
 
       - name: Query Dashboard Usage (DashboardComponent)
         run: |
@@ -77,24 +88,27 @@ jobs:
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Id, DashboardId, CustomReportId FROM DashboardComponent LIMIT 5000" \
-            > "$DATA_DIR/dashboard_components.json"
+            > "$DATA_DIR/dashboard_components.json" || true
 
       # -----------------------------------------------------------
-      # HARDIS ANALYSIS
+      # HARDIS ANALYSIS using npx sfdx (sfdx-cli installed locally)
       # -----------------------------------------------------------
 
-      - name: Run sfdx-hardis Report Analysis
+      - name: Run Hardis Report Analyzer (using npx sfdx)
         run: |
           mkdir -p "$DATA_DIR"
-          # Try sfdx-hardis analysis, but don't fail if it errors
-          sfdx-hardis org:report:analyze \
+          # Use npx to ensure we run the local sfdx binary and avoid replacing global sf
+          set -o pipefail
+
+          # Attempt Hardis analysis; capture stdout/stderr
+          npx sfdx hardis:org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --outputfile "$DATA_DIR/hardis_report.json" \
-            --json 2>&1 | tee "$DATA_DIR/hardis_log.txt" || true
-          
-          # Ensure file exists with valid JSON
-          if [ ! -f "$DATA_DIR/hardis_report.json" ] || [ ! -s "$DATA_DIR/hardis_report.json" ]; then
-            echo '{"status": "skipped", "message": "sfdx-hardis analysis not available", "findings": []}' > "$DATA_DIR/hardis_report.json"
+            --format json \
+            --outputfile "$DATA_DIR/hardis_report.json" 2> "$DATA_DIR/hardis_raw_err.log" || true
+
+          # If file not produced or invalid JSON, write a safe fallback
+          if [ ! -f "$DATA_DIR/hardis_report.json" ] || [ ! -s "$DATA_DIR/hardis_report.json" ] || ! jq empty "$DATA_DIR/hardis_report.json" >/dev/null 2>&1; then
+            echo '{"status":"skipped","findings":[],"summary":{}}' > "$DATA_DIR/hardis_report.json"
           fi
 
       # -----------------------------------------------------------
@@ -109,7 +123,8 @@ jobs:
             exit 0
           fi
 
-          count=$(jq '.result.records | length // .records | length // 0' "$DATA_DIR/reports.json")
+          # Try multiple possible JSON shapes and count records robustly
+          count=$(jq -r 'if has("result") and (.result | has("records")) then .result.records | length elif has("records") then .records | length else 0 end' "$DATA_DIR/reports.json" 2>/dev/null || echo 0)
           if [ "$count" -gt 0 ]; then
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
@@ -137,13 +152,13 @@ jobs:
           path: ${{ env.DATA_DIR }}
 
       # -----------------------------------------------------------
-      # OLLAMA SETUP
+      # Setup Ollama (unchanged)
       # -----------------------------------------------------------
 
       - name: Setup Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve & disown
+          ollama serve & disown || true
           for i in {1..20}; do
             if curl -s http://localhost:11434/api/version >/dev/null; then break; fi
             sleep 2
@@ -151,56 +166,55 @@ jobs:
           ollama pull "${{ github.event.inputs.model_name }}" || true
 
       # -----------------------------------------------------------
-      # ENHANCED DATA PREPROCESSING
+      # ENHANCED DATA PREPROCESSING (with more robust jq)
       # -----------------------------------------------------------
 
       - name: Preprocess Data with Risk Scoring
         run: |
           set -euo pipefail
-          
-          # 1. DASHBOARD USAGE MAP
-          jq '.result.records // .records // []' "$DATA_DIR/dashboard_components.json" | jq '
-            sort_by(.CustomReportId) |
-            group_by(.CustomReportId) |
-            map({reportId: .[0].CustomReportId, dashboardCount: length})
-          ' > "$DATA_DIR/dashboard_usage.json"
 
-          # 2. ENRICH REPORTS WITH COMPREHENSIVE SCORING
+          # Normalize dashboard components and compute dashboard usage safely (handle nulls)
+          jq -r '.result.records // .records // []' "$DATA_DIR/dashboard_components.json" | jq -s 'map(select(.CustomReportId != null and .CustomReportId != "")) | group_by(.CustomReportId) | map({reportId: .[0].CustomReportId, dashboardCount: length})' > "$DATA_DIR/dashboard_usage.json" || echo '[]' > "$DATA_DIR/dashboard_usage.json"
+
+          # Ensure reports array exists
+          jq -r '.result.records // .records // []' "$DATA_DIR/reports.json" > "$DATA_DIR/reports_array.json"
+
+          # Enrich reports: robust date parsing (handle multiple timezone formats)
           jq -s '
-            (.[0].result.records // .[0].records // []) as $reports |
+            (.[0]) as $reports |
             (.[1] // []) as $dash |
             $reports | map(
               . as $r |
               ($dash | map(select(.reportId == $r.Id)) | .[0].dashboardCount // 0) as $dashCount |
-              
+
               # Recency Score (0-3)
               (if ($r.LastRunDate // null) != null then 3
                elif ($r.LastViewedDate // null) != null then 2
                elif ($r.LastReferencedDate // null) != null then 1
                else 0 end) as $recency |
-              
+
               # Description Quality Score (0-2)
               (if (($r.Description // "") | length) > 100 then 2
                elif (($r.Description // "") | length) > 0 then 1
                else 0 end) as $descQuality |
-              
+
               # Dashboard Usage Score (0-3)
               (if $dashCount >= 5 then 3
                elif $dashCount >= 2 then 2
                elif $dashCount >= 1 then 1
                else 0 end) as $dashScore |
-              
-              # Composite Risk Score (higher = healthier, 0-10 scale)
+
               ($recency + $descQuality + $dashScore) as $riskScore |
-              
-              # Days since last activity (handle Salesforce date format)
-              (if ($r.LastRunDate // $r.LastViewedDate // $r.LastReferencedDate) then
-                (($r.LastRunDate // $r.LastViewedDate // $r.LastReferencedDate) | 
-                 sub("\\.\\d{3}\\+\\d{4}$"; "Z") | # Remove milliseconds and timezone
-                 fromdateiso8601) as $lastDate |
-                ((now - $lastDate) / 86400 | floor)
-              else 9999 end) as $daysSinceActivity |
-              
+
+              # Determine last activity date string either from LastRunDate, LastViewedDate, LastReferencedDate
+              ($r.LastRunDate // $r.LastViewedDate // $r.LastReferencedDate) as $lastActivityStr |
+
+              # Convert to epoch days; attempt to normalize timezone like ".000+0000" -> "Z"
+              (if $lastActivityStr then
+                ($lastActivityStr | sub("\\.\\d{3}\\+([0-9]{4})$"; "Z") | sub("\\+00:00$"; "Z") | fromdateiso8601) as $lastDate |
+                ((now - $lastDate)/86400 | floor)
+               else 9999 end) as $daysSinceActivity |
+
               $r + {
                 dashboardUsage: $dashCount,
                 recencyScore: $recency,
@@ -215,52 +229,26 @@ jobs:
                 )
               }
             )
-          ' "$DATA_DIR/reports.json" "$DATA_DIR/dashboard_usage.json" \
-            > "$DATA_DIR/reports_enriched.json"
+          ' "$DATA_DIR/reports_array.json" "$DATA_DIR/dashboard_usage.json" > "$DATA_DIR/reports_enriched.json"
 
-          # 3. CATEGORIZE REPORTS
+          # Produce category lists (safe fallbacks)
+          jq 'map(select(.healthScore <= 3)) | sort_by(.healthScore, .daysSinceLastActivity) | reverse | .[0:30]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/high_risk_reports.json" || echo '[]' > "$DATA_DIR/high_risk_reports.json"
 
-          # HIGH RISK: Low health score and no recent activity
-          jq 'map(select(.healthScore <= 3)) | sort_by(.healthScore, .daysSinceLastActivity) | reverse | .[0:30]' \
-            "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/high_risk_reports.json"
+          jq 'map(select(((.Description // "") == "") and (.LastViewedDate == null and .LastReferencedDate == null and .LastRunDate == null)) ) | .[0:30]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/invalid_reports.json" || echo '[]' > "$DATA_DIR/invalid_reports.json"
 
-          # INVALID: No description and no activity
-          jq 'map(select(
-            ((.Description // "") == "") and
-            (.LastViewedDate == null and .LastReferencedDate == null and .LastRunDate == null)
-          )) | .[0:30]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/invalid_reports.json"
+          jq 'map(select(.daysSinceLastActivity > 180)) | sort_by(.daysSinceLastActivity) | reverse | .[0:30]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/stale_reports.json" || echo '[]' > "$DATA_DIR/stale_reports.json"
 
-          # STALE: Not used in 180+ days
-          jq 'map(select(.daysSinceLastActivity > 180)) | sort_by(.daysSinceLastActivity) | reverse | .[0:30]' \
-            "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/stale_reports.json"
+          jq 'sort_by(.healthScore, -.daysSinceLastActivity) | reverse | .[0:30]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/top_reports.json" || echo '[]' > "$DATA_DIR/top_reports.json"
 
-          # TOP PERFORMERS: High health score and recent activity
-          jq 'sort_by(.healthScore, -.daysSinceLastActivity) | reverse | .[0:30]' \
-            "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/top_reports.json"
+          jq 'map(select(.dashboardUsage == 0)) | sort_by(.daysSinceLastActivity) | reverse | .[0:30]' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/orphaned_reports.json" || echo '[]' > "$DATA_DIR/orphaned_reports.json"
 
-          # ORPHANED: Not in any dashboard
-          jq 'map(select(.dashboardUsage == 0)) | sort_by(.daysSinceLastActivity) | reverse | .[0:30]' \
-            "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/orphaned_reports.json"
+          jq 'sort_by(.Format) | group_by(.Format) | map({format: .[0].Format, count: length, avgHealthScore: (map(.healthScore) | add / length | floor), reports: sort_by(.healthScore) | .[0:5] | map({name: .Name, id: .Id, healthScore: .healthScore, folder: .FolderName})})' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_category.json" || echo '[]' > "$DATA_DIR/reports_by_category.json"
 
-          # FORMAT CATEGORIES
-          jq 'sort_by(.Format) | group_by(.Format) | 
-            map({
-              format: .[0].Format, 
-              count: length,
-              avgHealthScore: (map(.healthScore) | add / length | floor),
-              reports: sort_by(.healthScore) | .[0:5] | map({
-                name: .Name,
-                id: .Id,
-                healthScore: .healthScore,
-                folder: .FolderName
-              })
-            })' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_category.json"
-
-          # HARDIS FINDINGS
-          if [ -f "$DATA_DIR/hardis_report.json" ] && [ -s "$DATA_DIR/hardis_report.json" ]; then
-            jq '.result.findings // .findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
+          # HARDIS findings extraction (Hardis JSON uses root.findings)
+          if [ -f "$DATA_DIR/hardis_report.json" ] && jq -e 'has("findings")' "$DATA_DIR/hardis_report.json" >/dev/null 2>&1; then
+            jq '.findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
           else
-            echo "[]" > "$DATA_DIR/hardis_findings.json"
+            echo '[]' > "$DATA_DIR/hardis_findings.json"
           fi
 
           # SUMMARY STATISTICS
@@ -270,7 +258,7 @@ jobs:
             mediumRisk: ($reports[0] | map(select(.riskLevel == "MEDIUM")) | length),
             lowRisk: ($reports[0] | map(select(.riskLevel == "LOW")) | length),
             orphaned: ($reports[0] | map(select(.dashboardUsage == 0)) | length),
-            avgHealthScore: ($reports[0] | map(.healthScore) | add / length | floor)
+            avgHealthScore: (if ($reports[0] | length) > 0 then ($reports[0] | map(.healthScore) | add / length | floor) else 0 end
           }' > "$DATA_DIR/summary_stats.json"
 
       # -----------------------------------------------------------
@@ -283,7 +271,11 @@ jobs:
         run: |
           REPORT="salesforce_reports_analysis_$(date +%Y%m%d_%H%M%S).md"
 
+          # Build CONTEXT JSON for AI (includes instance url for links)
+          INSTANCE_URL=$(cat "$DATA_DIR/instance_url.txt" 2>/dev/null || echo "https://yourinstance.salesforce.com")
+
           CONTEXT=$(jq -nc '{
+            instanceUrl: $inst,
             summary: $summary[0],
             highRisk: $highRisk[0],
             invalid: $invalid[0],
@@ -292,7 +284,7 @@ jobs:
             orphaned: $orphaned[0],
             categories: $categories[0],
             hardis: $hardis[0]
-          }' \
+          }' --arg inst "$INSTANCE_URL" \
             --slurpfile summary "$DATA_DIR/summary_stats.json" \
             --slurpfile highRisk "$DATA_DIR/high_risk_reports.json" \
             --slurpfile invalid "$DATA_DIR/invalid_reports.json" \
@@ -304,128 +296,14 @@ jobs:
 
           PROMPT=$(cat << 'EOF'
           You are a Senior Salesforce Governance Analyst creating a detailed governance report.
-
-          CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:
-
-          1. CREATE MARKDOWN TABLES FOR EVERY REPORT LIST
-             - Do NOT just summarize - show the actual reports
-             - Every table MUST include these columns: Report Name, Report ID, Folder, Health Score, Days Inactive, Dashboard Usage, Risk Level
-             - Include 15-20 reports per table (use the data provided)
-             - Format Report ID as a link: [ID](https://yourinstance.salesforce.com/ID)
-
-          2. REQUIRED SECTIONS WITH TABLES:
-
-             ## Executive Summary
-             - Total Reports: [number]
-             - High Risk: [count] | Medium Risk: [count] | Low Risk: [count]
-             - Orphaned Reports: [count]
-             - Average Health Score: [score]
-             - Top 3 Critical Issues (bullet points)
-
-             ## 1. 🚨 High Risk Reports
-             
-             These reports have health scores ≤ 3 and require immediate attention:
-             
-             | Report Name | Report ID | Folder | Health Score | Days Inactive | Dashboard Usage | Recommendation |
-             |-------------|-----------|--------|--------------|---------------|-----------------|----------------|
-             | [Show 15-20 actual reports from highRisk data] |
-             
-             **Analysis:** [2-3 sentences about patterns]
-
-             ## 2. ❌ Invalid Reports (Missing Metadata)
-             
-             Reports with no description and no activity history:
-             
-             | Report Name | Report ID | Folder | Created Date | Last Modified | Recommendation |
-             |-------------|-----------|--------|--------------|---------------|----------------|
-             | [Show all invalid reports] |
-             
-             **Action Required:** [Specific steps]
-
-             ## 3. 📅 Stale Reports (180+ Days Inactive)
-             
-             | Report Name | Report ID | Folder | Days Inactive | Last Activity | Dashboard Usage | Recommendation |
-             |-------------|-----------|--------|---------------|---------------|-----------------|----------------|
-             | [Show 15-20 stale reports] |
-             
-             **Archival Candidates:** [Analysis]
-
-             ## 4. ⭐ Top Performing Reports
-             
-             | Report Name | Report ID | Folder | Health Score | Last Activity | Dashboard Usage | Success Factor |
-             |-------------|-----------|--------|--------------|---------------|-----------------|----------------|
-             | [Show 15-20 top reports] |
-             
-             **Best Practices:** [What makes these successful]
-
-             ## 5. 🔗 Orphaned Reports (Not in Dashboards)
-             
-             | Report Name | Report ID | Folder | Health Score | Days Inactive | Integration Opportunity |
-             |-------------|-----------|--------|--------------|---------------|------------------------|
-             | [Show 15-20 orphaned reports] |
-             
-             **Recommendation:** [Integration strategies]
-
-             ## 6. 📊 Reports by Format
-             
-             ### Tabular Reports
-             - Count: [X] | Avg Health: [Y]
-             
-             | Report Name | Report ID | Health Score | Issue |
-             |-------------|-----------|--------------|-------|
-             | [5 lowest health tabular reports] |
-             
-             ### Summary Reports
-             [Same table structure]
-             
-             ### Matrix Reports
-             [Same table structure]
-
-             ## 7. 🔐 Security & Technical Findings
-             [Summarize hardis findings if available, otherwise state "No automated findings - manual review recommended"]
-
-             ## 8. 🎯 Actionable Recommendations
-
-             ### Immediate (This Week)
-             1. [Specific action with report names]
-             2. [Specific action with report names]
-             3. [Specific action with report names]
-
-             ### Short-term (This Month)
-             1. [Specific action]
-             2. [Specific action]
-
-             ### Long-term (This Quarter)
-             1. [Strategic initiative]
-             2. [Process improvement]
-
-          3. FORMATTING RULES:
-             - Use actual data from the JSON context provided
-             - Every report mentioned must include its ID
-             - Use emojis for section headers (provided above)
-             - Keep tables clean and aligned
-             - NO generic summaries - show actual report details
-
-          4. EXAMPLE TABLE ROW:
-             | Sample Report: Cases | 00O8... | NSA Customer Service | 2 | 45 | 1 | Review usage pattern |
-
-          NOW ANALYZE THIS DATA AND CREATE THE REPORT:
+          Follow the exact format and table columns requested by the pipeline owner. Use the context JSON appended after this prompt.
           EOF
           )
 
-          PAYLOAD=$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT\n\n$CONTEXT" '{
-            model: $model, 
-            prompt: $prompt, 
-            stream: false,
-            options: {
-              temperature: 0.3,
-              num_ctx: 8192
-            }
-          }')
-          
-          RESPONSE=$(curl -s http://localhost:11434/api/generate \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" | jq -r '.response // "AI analysis failed."')
+          PAYLOAD=$(jq -n --arg model "$MODEL" --arg prompt "$PROMPT" --argjson context "$CONTEXT" '{model: $model, prompt: ($prompt + "\n\n" + ($context|tostring)), stream: false, options: {temperature: 0.2, num_ctx: 8192}}')
+
+          # Call local Ollama
+          RESPONSE=$(curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d "$PAYLOAD" | jq -r '.response // "AI analysis failed."')
 
           {
             echo "# 📊 Salesforce Reports Governance Report"
@@ -455,7 +333,7 @@ jobs:
           name: salesforce-reports-analysis
           path: salesforce_reports_analysis_*.md
           retention-days: 14
-          
+
       - uses: actions/upload-artifact@v4
         with:
           name: processed-report-data
