@@ -107,35 +107,27 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            def as_object: if type=="array" then (.[0] // {}) else . end;
-
-            # Input structure: [reports_raw, usage_raw, hardis]
-            . as $all |
-            ($all[0].result.records // []) as $reports |
-            ($all[1].result.records // []) as $usage |
-            ($all[2] // []) as $hardis |
-
-            # Build map: ReportId → latest usage
-            ($usage | group_by(.ReportId__c) | map({key: (.[0].ReportId__c), value: (as_object)}) | from_entries) as $usageMap |
-
-            $reports |
-            map(. + {
-              hardisWarnings: ($hardis | map(select(.reportId == .Id))) ,
-              usage: (
-                ($usageMap[.Id] // {}) as $u |
-                {
-                  ReportId: ($u.ReportId__c // null),
-                  LastRunDate: ($u.CreatedDate // null),
-                  daysSinceLastActivity: (
-                    if ($u.CreatedDate // null) == null then null
-                    else ((now - ((($u.CreatedDate | sub("\.\d{3}\+[0-9]{4}$"; "Z")) | fromdateiso8601)))/86400 | floor)
-                    end
-                  )
-                }
-              )
-            })
-          ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_usage.json" "$DATA_DIR/hardis_findings.json" \
-            > "$DATA_DIR/reports_enriched.json"
+          reduce .[0].result.records[] as $r (
+            [];
+            . + [{
+              Id: $r.Id,
+              Name: $r.Name,
+              Description: $r.Description,
+              Format: $r.Format,
+              LastRunDate: (
+                if $r.LastRunDate == null then null
+                else ((now - (($r.LastRunDate | sub("\\.\\d{3}\\+[0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                end
+              ),
+              CreatedDate: (
+                if $r.CreatedDate == null then null
+                else ((now - (($r.CreatedDate | sub("\\.\\d{3}\\+[0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                end
+              ),
+              OwnerId: $r.OwnerId
+            }]
+          )
+        ' data/reports.json data/report_events.json > data/enriched_reports.json
 
       ###########################################################################
       # SUMMARY STATS
