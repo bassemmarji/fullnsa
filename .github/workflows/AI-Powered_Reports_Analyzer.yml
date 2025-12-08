@@ -103,31 +103,31 @@ jobs:
       ###########################################################################
       # MERGE REPORT METADATA + USAGE + HARDIS
       ###########################################################################
-
       - name: Enrich Reports
         run: |
-          jq -s '
-          reduce .[0].result.records[] as $r (
-            [];
-            . + [{
-              Id: $r.Id,
-              Name: $r.Name,
-              Description: $r.Description,
-              Format: $r.Format,
-              LastRunDate: (
-                if $r.LastRunDate == null then null
-                else ((now - (($r.LastRunDate | sub("\\.\\d{3}\\+[0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                end
-              ),
-              CreatedDate: (
-                if $r.CreatedDate == null then null
-                else ((now - (($r.CreatedDate | sub("\\.\\d{3}\\+[0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                end
-              ),
-              OwnerId: $r.OwnerId
-            }]
-          )
-          ' data/reports.json data/report_events.json > data/enriched_reports.json
+          jq -s "
+            reduce .[0].result.records[] as \$r (
+              [];
+              . + [{
+                Id: \$r.Id,
+                Name: \$r.Name,
+                Description: \$r.Description,
+                Format: \$r.Format,
+                LastRunDate: (
+                  if \$r.LastRunDate == null then null
+                  else ((now - ((\$r.LastRunDate | sub(\"\\.\\d{3}\\+[0-9]{4}\$\"; \"Z\")) | fromdateiso8601)) / 86400 | floor)
+                  end
+                ),
+                CreatedDate: (
+                  if \$r.CreatedDate == null then null
+                  else ((now - ((\$r.CreatedDate | sub(\"\\.\\d{3}\\+[0-9]{4}\$\"; \"Z\")) | fromdateiso8601)) / 86400 | floor)
+                  end
+                ),
+                OwnerId: \$r.OwnerId
+              }]
+            )
+          " "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
+
 
       ###########################################################################
       # SUMMARY STATS
