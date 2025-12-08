@@ -43,10 +43,9 @@ jobs:
 
       - name: Install sfdx + Hardis
         run: |
-          npm install sfdx-cli --save-dev
-          npm install sfdx-hardis --save-dev
-          npx sfdx --version
-          npx sfdx hardis:version
+          npm install -g sfdx-cli
+          npm install -g @hardis/cli
+          hardis --version
 
       - name: Install Ollama CLI
         run: |
