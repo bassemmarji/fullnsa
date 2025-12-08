@@ -113,14 +113,14 @@ jobs:
                 Name: $r.Name,
                 Description: $r.Description,
                 Format: $r.Format,
-                LastRunDate: (
+                LastRunDays: (
                   if $r.LastRunDate == null then null
-                  else ((now - (($r.LastRunDate | sub("\\\\.\\d{3}\\+[0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                  else ((now - (($r.LastRunDate | sub("\\\\.\\d{3}[+-][0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
                   end
                 ),
-                CreatedDate: (
+                CreatedDays: (
                   if $r.CreatedDate == null then null
-                  else ((now - (($r.CreatedDate | sub("\\\\.\\d{3}\\+[0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                  else ((now - (($r.CreatedDate | sub("\\\\.\\d{3}[+-][0-9]{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
                   end
                 ),
                 OwnerId: $r.OwnerId
