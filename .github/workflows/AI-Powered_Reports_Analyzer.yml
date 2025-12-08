@@ -1,4 +1,4 @@
-# AI-Powered Reports Analyzer (Enhanced without ReportType)
+# AI-Powered Reports Analyzer (Enhanced Full)
 name: AI-Powered Reports Analyzer (Enhanced Full)
 
 on:
@@ -50,7 +50,8 @@ jobs:
 
       - name: Install Ollama CLI
         run: |
-          curl -sSL https://ollama.com/install.sh | sh
+          # GitHub Actions runner is non-root → install to /usr/local/bin with sudo
+          curl -fsSL https://ollama.com/install.sh | sudo bash
           ollama --version
 
       ###########################################################################
@@ -99,9 +100,9 @@ jobs:
         run: jq '.findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
 
       ###########################################################################
-      # ENRICH REPORTS WITH LAST RUN, CREATION, AND HARDIS
+      # ENRICH REPORTS + MERGE HARDIS FINDINGS
       ###########################################################################
-      - name: Enrich Reports
+      - name: Enrich Reports with Metadata
         run: |
           jq -s '
             reduce .[0].result.records[] as $r (
@@ -127,27 +128,57 @@ jobs:
             )
           ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
 
+      - name: Merge Hardis Findings by Report ID
+        run: |
+          jq '
+            # Build map: ReportId → [findings]
+            (input | group_by(.reportId) | map({key: .[0].reportId, value: .}) | from_entries) as $hardisMap |
+            map(
+              .HardisWarnings = ($hardisMap[.Id] // [])
+            )
+          ' "$DATA_DIR/reports_enriched.json" "$DATA_DIR/hardis_findings.json" > "$DATA_DIR/reports_enriched_with_hardis.json"
+          mv "$DATA_DIR/reports_enriched_with_hardis.json" "$DATA_DIR/reports_enriched.json"
+
       ###########################################################################
       # SUMMARY STATISTICS
       ###########################################################################
       - name: Generate Summary Stats
         run: |
-          jq '[
-            .[] 
-          ] | {
+          jq '{
             totalReports: length,
             neverRun: map(select(.LastRunDays == null)) | length,
             staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length,
-            withHardisWarnings: map(select(.HardisWarnings != null and (.HardisWarnings | type == "array") and (. | .HardisWarnings | length > 0))) | length
+            withHardisWarnings: map(select(.HardisWarnings | length > 0)) | length
           }' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/summary_stats.json"
-          
+
       ###########################################################################
       # DISTRIBUTION BY FOLDER
       ###########################################################################
       - name: Reports by Folder
         run: |
-          jq '[.[] | .FolderName] | group_by(.) | map({folder: .[0], count: length})' \
+          jq '[.[] | .FolderName // "Unspecified"] | group_by(.) | map({folder: .[0], count: length})' \
             "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_folder.json"
+
+      ###########################################################################
+      # GENERATE MARKDOWN TABLES
+      ###########################################################################
+      - name: Generate Summary Table (Markdown)
+        run: |
+          jq -r '
+            "Metric | Value\n--- | ---\n" +
+            "Total Reports | " + (.totalReports | tostring) + "\n" +
+            "Never Run | " + (.neverRun | tostring) + "\n" +
+            "Stale (>180 days) | " + (.staleReports | tostring) + "\n" +
+            "Reports with Hardis Warnings | " + (.withHardisWarnings | tostring)
+          ' "$DATA_DIR/summary_stats.json" > "$DATA_DIR/summary_table.md"
+
+      - name: Generate Folder Distribution Table (Markdown)
+        run: |
+          {
+            echo "Folder | Count"
+            echo "--- | ---"
+            jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
+          } > "$DATA_DIR/folder_table.md"
 
       ###########################################################################
       # AI EXECUTIVE SUMMARY
@@ -180,11 +211,11 @@ jobs:
             echo "## Reports by Folder"
             cat "$DATA_DIR/folder_table.md"
             echo
-            echo "## Detailed Enriched Report (Preview)"
-            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) |"
-            echo "|---|---|---|---|---|---|"
+            echo "## Detailed Enriched Report (Preview - Top 10)"
+            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) | Hardis Warnings |"
+            echo "|---|---|---|---|---|---|---|"
             jq -r '.[0:10][] | 
-              "| \(.Id) | \(.Name // "") | \(.FolderName // "") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") |"
+              "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") | \((.HardisWarnings | length) // 0) |"
             ' "$DATA_DIR/reports_enriched.json" || echo "| _Failed to render preview_ |"
             echo
             echo "*(Full data available in artifacts)*"
@@ -204,14 +235,17 @@ jobs:
           name: report
           path: final_report.md
 
-      - name: Upload JSON Data Files
+      - name: Upload JSON and Markdown Data Files
         uses: actions/upload-artifact@v4
         with:
           name: report_data
           path: |
-            $DATA_DIR/reports_raw.json
-            $DATA_DIR/report_events.json
-            $DATA_DIR/reports_enriched.json
-            $DATA_DIR/hardis_findings.json
-            $DATA_DIR/summary_stats.json
-            $DATA_DIR/reports_by_folder.json
+            data/reports_raw.json
+            data/report_events.json
+            data/reports_enriched.json
+            data/hardis_findings.json
+            data/summary_stats.json
+            data/reports_by_folder.json
+            data/summary_table.md
+            data/folder_table.md
+            data/ai_summary.md
