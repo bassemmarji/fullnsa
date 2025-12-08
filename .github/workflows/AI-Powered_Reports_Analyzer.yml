@@ -132,13 +132,15 @@ jobs:
       ###########################################################################
       - name: Generate Summary Stats
         run: |
-          jq '{
-            totalReports: (length),
+          jq '[
+            .[] 
+          ] | {
+            totalReports: length,
             neverRun: map(select(.LastRunDays == null)) | length,
             staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length,
-            withHardisWarnings: map(select(.HardisWarnings != null and .HardisWarnings | length > 0)) | length
+            withHardisWarnings: map(select(.HardisWarnings != null and (.HardisWarnings | type == "array") and (. | .HardisWarnings | length > 0))) | length
           }' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/summary_stats.json"
-
+          
       ###########################################################################
       # DISTRIBUTION BY FOLDER
       ###########################################################################
