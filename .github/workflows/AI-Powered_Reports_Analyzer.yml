@@ -1,4 +1,4 @@
-# AI-Powered Reports Analyzer (Enhanced + Folder/Object Distribution)
+# AI-Powered Reports Analyzer (Enhanced without ReportType)
 name: AI-Powered Reports Analyzer (Enhanced Full)
 
 on:
@@ -77,13 +77,6 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             > "$DATA_DIR/report_events.json"
 
-      - name: Fetch Report Types
-        run: |
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --result-format json \
-            --query "SELECT Id, DeveloperName, BaseObject FROM ReportType" \
-            > "$DATA_DIR/report_types.json"
-
       ###########################################################################
       # RUN HARDIS ANALYZER
       ###########################################################################
@@ -155,17 +148,6 @@ jobs:
             "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_folder.json"
 
       ###########################################################################
-      # DISTRIBUTION BY PRIMARY OBJECT
-      ###########################################################################
-      - name: Reports by Primary Object
-        run: |
-          jq -n --slurpfile reports "$DATA_DIR/reports_enriched.json" --slurpfile types "$DATA_DIR/report_types.json" '
-            [$reports[0][] | . as $r | 
-              ($types[0].result.records[] | select(.DeveloperName == $r.DeveloperName) | .BaseObject) // "Unknown"] |
-            group_by(.) | map({object: .[0], count: length})
-          ' > "$DATA_DIR/reports_by_object.json"
-
-      ###########################################################################
       # AI EXECUTIVE SUMMARY
       ###########################################################################
       - name: Build AI Summary
@@ -191,8 +173,6 @@ jobs:
           cat "$DATA_DIR/summary_stats.json" >> final_report.md
           echo "## Reports by Folder" >> final_report.md
           cat "$DATA_DIR/reports_by_folder.json" >> final_report.md
-          echo "## Reports by Primary Object" >> final_report.md
-          cat "$DATA_DIR/reports_by_object.json" >> final_report.md
           echo "## Detailed Enriched Report JSON" >> final_report.md
           echo '```json' >> final_report.md
           cat "$DATA_DIR/reports_enriched.json" >> final_report.md
@@ -214,9 +194,7 @@ jobs:
           path: |
             $DATA_DIR/reports_raw.json
             $DATA_DIR/report_events.json
-            $DATA_DIR/report_types.json
             $DATA_DIR/reports_enriched.json
             $DATA_DIR/hardis_findings.json
             $DATA_DIR/summary_stats.json
             $DATA_DIR/reports_by_folder.json
-            $DATA_DIR/reports_by_object.json
