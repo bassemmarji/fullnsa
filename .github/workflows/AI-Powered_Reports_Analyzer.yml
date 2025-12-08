@@ -143,6 +143,11 @@ jobs:
       ###########################################################################
       # AI EXECUTIVE SUMMARY (Ollama via model choice)
       ###########################################################################
+      - name: Install Ollama CLI
+        run: |
+          curl -sSL https://ollama.com/install.sh | sh
+          ollama --version
+
       - name: Build AI Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
