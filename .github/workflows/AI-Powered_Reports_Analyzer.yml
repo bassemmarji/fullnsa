@@ -64,12 +64,11 @@ jobs:
             --query "SELECT Id, Name, LastViewedDate, LastRunDate, OwnerId, DeveloperName, Format, CreatedDate FROM Report" \
             > "$DATA_DIR/reports_raw.json"
 
-      - name: Fetch Report Usage (EventLogFile)
-        run: |
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, EventType, ReportId__c, UserId, CreatedDate FROM ReportEvent" \
-            > "$DATA_DIR/report_usage.json"
+            --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
+            > \"$DATA_DIR/report_events.json\"
 
       ###########################################################################
       # RUN HARDIS REPORT ANALYZER (via sfdx only)
