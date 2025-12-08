@@ -56,19 +56,21 @@ jobs:
       ###########################################################################
       # COLLECT REPORT METADATA
       ###########################################################################
-
+      - name: Create data directory
+        run: mkdir -p "$DATA_DIR"
+        
       - name: Fetch Reports
         run: |
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Id, Name, LastViewedDate, LastRunDate, OwnerId, DeveloperName, Format, CreatedDate FROM Report" \
             > "$DATA_DIR/reports_raw.json"
-
+            
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
-            > \"$DATA_DIR/report_events.json\"
+            > $DATA_DIR/report_events.json
 
       ###########################################################################
       # RUN HARDIS REPORT ANALYZER (via sfdx only)
