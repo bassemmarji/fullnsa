@@ -127,7 +127,7 @@ jobs:
               OwnerId: $r.OwnerId
             }]
           )
-        ' data/reports.json data/report_events.json > data/enriched_reports.json
+          ' data/reports.json data/report_events.json > data/enriched_reports.json
 
       ###########################################################################
       # SUMMARY STATS
