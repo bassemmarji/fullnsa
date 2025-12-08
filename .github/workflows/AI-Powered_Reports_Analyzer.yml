@@ -168,17 +168,32 @@ jobs:
       ###########################################################################
       - name: Build Final Markdown Report
         run: |
-          echo "# AI-Powered Reports Analysis" > final_report.md
-          echo "## Executive Summary" >> final_report.md
-          cat "$DATA_DIR/ai_summary.md" >> final_report.md
-          echo "## Summary Statistics" >> final_report.md
-          cat "$DATA_DIR/summary_stats.json" >> final_report.md
-          echo "## Reports by Folder" >> final_report.md
-          cat "$DATA_DIR/reports_by_folder.json" >> final_report.md
-          echo "## Detailed Enriched Report JSON" >> final_report.md
-          echo '```json' >> final_report.md
-          cat "$DATA_DIR/reports_enriched.json" >> final_report.md
-          echo '```' >> final_report.md
+          {
+            echo "# AI-Powered Reports Analysis"
+            echo
+            echo "## Executive Summary"
+            cat "$DATA_DIR/ai_summary.md"
+            echo
+            echo "## Summary Statistics"
+            cat "$DATA_DIR/summary_table.md"
+            echo
+            echo "## Reports by Folder"
+            cat "$DATA_DIR/folder_table.md"
+            echo
+            echo "## Detailed Enriched Report (Preview)"
+            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) |"
+            echo "|---|---|---|---|---|---|"
+            jq -r '.[0:10][] | 
+              "| \(.Id) | \(.Name // "") | \(.FolderName // "") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") |"
+            ' "$DATA_DIR/reports_enriched.json" || echo "| _Failed to render preview_ |"
+            echo
+            echo "*(Full data available in artifacts)*"
+            echo
+            echo "## Appendix: Full Enriched Report (JSON)"
+            echo '```json'
+            cat "$DATA_DIR/reports_enriched.json"
+            echo '```'
+          } > final_report.md
 
       ###########################################################################
       # UPLOAD ARTIFACTS
