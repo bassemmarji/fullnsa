@@ -143,22 +143,15 @@ jobs:
       ###########################################################################
       # AI EXECUTIVE SUMMARY (Ollama via model choice)
       ###########################################################################
-
       - name: Build AI Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
-
-          CONTEXT=$(jq -r \
-            '{totalReports, neverRun, staleReports, withHardisWarnings} | 
-             "Total reports: " + (.totalReports|tostring) + "
-              =
-             "Never run: " + (.neverRun|tostring) + "
-             " +
-             "Stale (>180d): " + (.staleReports|tostring) + "
-             " +
-             "Reports w/ Hardis warnings: " + (.withHardisWarnings|tostring)
-            ' "$DATA_DIR/summary_stats.json")
-
+          CONTEXT=$(jq -r '
+            "Total reports: " + (.totalReports | tostring) + "\n" +
+            "Never run: " + (.neverRun | tostring) + "\n" +
+            "Stale (>180d): " + (.staleReports | tostring) + "\n" +
+            "Reports w/ Hardis warnings: " + (.withHardisWarnings | tostring)
+          ' "$DATA_DIR/summary_stats.json")
           echo "$CONTEXT" | ollama run "$MODEL" > "$DATA_DIR/ai_summary.md"
 
       ###########################################################################
