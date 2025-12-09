@@ -1,5 +1,5 @@
-# AI-Powered Reports Analyzer (Enhanced Full)
-name: AI-Powered Reports Analyzer (Enhanced Full)
+# AI-Powered Reports Analyzer (Hardis-Free)
+name: AI-Powered Reports Analyzer (Enhanced Full - Hardis Free)
 
 on:
   workflow_dispatch:
@@ -18,9 +18,11 @@ env:
   DATA_DIR: "data"
 
 jobs:
-  analyze-reports:
+  collect-metadata:
     runs-on: ubuntu-latest
-
+    outputs:
+      reports_file: ${{ steps.set_files.outputs.reports }}
+      events_file: ${{ steps.set_files.outputs.events }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,44 +35,18 @@ jobs:
       - name: Create data directory
         run: mkdir -p "$DATA_DIR"
 
-      ###########################################################################
-      # INSTALL CLI TOOLS
-      ###########################################################################
       - name: Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli
           sf --version
-      
-      - name: Configure NPM for Hardis
-        run: |
-          npm config set @hardisgroupcom:registry https://npm.pkg.github.com/
-          npm config set //npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Install Hardis plugin
-        run: |
-          npm config set fund false
-          npm config set audit false
-          sf plugins install @hardis/sfdx-hardis
-          
-      - name: Install Ollama CLI
-        run: |
-          # GitHub Actions runner is non-root → install to /usr/local/bin with sudo
-          curl -fsSL https://ollama.com/install.sh | sudo bash
-          ollama --version
 
-      ###########################################################################
-      # AUTHENTICATE TO SALESFORCE
-      ###########################################################################
       - name: Authenticate to Salesforce
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" > authfile.txt
           sf org login sfdx-url --sfdx-url-file authfile.txt --alias "${{ github.event.inputs.org_alias }}"
           sf org display --target-org "${{ github.event.inputs.org_alias }}"
 
-      ###########################################################################
-      # FETCH REPORT METADATA AND EVENTS
-      ###########################################################################
-      - name: Fetch Reports
+      - name: Fetch Reports and Events
         run: |
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
@@ -82,34 +58,48 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             > "$DATA_DIR/report_events.json"
 
-      ###########################################################################
-      # RUN HARDIS ANALYZER
-      ###########################################################################
-      - name: Run Hardis Analyzer
-        id: hardis
-        continue-on-error: true
+      - name: Set output file paths
+        id: set_files
         run: |
-          sf plugins
-          sf commands | grep hardis
-          sf help hardis
-          sf hardis:org:report:analyze \
-            --target-org "${{ github.event.inputs.org_alias }}" \
-            --format json \
-            --outputfile "$DATA_DIR/hardis_report.json"
-      
-      - name: Validate Hardis Output
-        run: |
-          if [ "${{ steps.hardis.outcome }}" != "success" ]; then
-            echo "::warning::Hardis analysis failed or was skipped"
-            echo '{"status":"failed","findings":[],"error":"Analysis did not complete"}' \
-              > "$DATA_DIR/hardis_report.json"
-          fi
+          echo "reports=$DATA_DIR/reports_raw.json" >> $GITHUB_OUTPUT
+          echo "events=$DATA_DIR/report_events.json" >> $GITHUB_OUTPUT
 
-      - name: Extract Hardis Findings
-        run: jq '.findings // []' "$DATA_DIR/hardis_report.json" > "$DATA_DIR/hardis_findings.json"
+      - name: Upload Raw Metadata Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw_metadata
+          path: |
+            ${{ steps.set_files.outputs.reports }}
+            ${{ steps.set_files.outputs.events }}
+
+  ai-analysis:
+    runs-on: ubuntu-latest
+    needs: collect-metadata
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Create data directory
+        run: mkdir -p "$DATA_DIR"
+
+      - name: Download Metadata Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: raw_metadata
+          path: $DATA_DIR
+
+      - name: Install Ollama CLI
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sudo bash
+          ollama --version
 
       ###########################################################################
-      # ENRICH REPORTS + MERGE HARDIS FINDINGS
+      # ENRICH REPORTS
       ###########################################################################
       - name: Enrich Reports with Metadata
         run: |
@@ -137,17 +127,6 @@ jobs:
             )
           ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
 
-      - name: Merge Hardis Findings by Report ID
-        run: |
-          jq '
-            # Build map: ReportId → [findings]
-            (input | group_by(.reportId) | map({key: .[0].reportId, value: .}) | from_entries) as $hardisMap |
-            map(
-              .HardisWarnings = ($hardisMap[.Id] // [])
-            )
-          ' "$DATA_DIR/reports_enriched.json" "$DATA_DIR/hardis_findings.json" > "$DATA_DIR/reports_enriched_with_hardis.json"
-          mv "$DATA_DIR/reports_enriched_with_hardis.json" "$DATA_DIR/reports_enriched.json"
-
       ###########################################################################
       # SUMMARY STATISTICS
       ###########################################################################
@@ -156,14 +135,10 @@ jobs:
           jq '{
             totalReports: length,
             neverRun: map(select(.LastRunDays == null)) | length,
-            staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length,
-            withHardisWarnings: map(select(.HardisWarnings | length > 0)) | length
+            staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length
           }' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/summary_stats.json"
 
-      ###########################################################################
-      # DISTRIBUTION BY FOLDER
-      ###########################################################################
-      - name: Reports by Folder
+      - name: Generate Folder Distribution
         run: |
           jq '[.[] | .FolderName // "Unspecified"] | group_by(.) | map({folder: .[0], count: length})' \
             "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_folder.json"
@@ -171,17 +146,16 @@ jobs:
       ###########################################################################
       # GENERATE MARKDOWN TABLES
       ###########################################################################
-      - name: Generate Summary Table (Markdown)
+      - name: Generate Summary Table
         run: |
           jq -r '
             "Metric | Value\n--- | ---\n" +
             "Total Reports | " + (.totalReports | tostring) + "\n" +
             "Never Run | " + (.neverRun | tostring) + "\n" +
-            "Stale (>180 days) | " + (.staleReports | tostring) + "\n" +
-            "Reports with Hardis Warnings | " + (.withHardisWarnings | tostring)
+            "Stale (>180 days) | " + (.staleReports | tostring)
           ' "$DATA_DIR/summary_stats.json" > "$DATA_DIR/summary_table.md"
 
-      - name: Generate Folder Distribution Table (Markdown)
+      - name: Generate Folder Table
         run: |
           {
             echo "Folder | Count"
@@ -198,8 +172,7 @@ jobs:
           CONTEXT=$(jq -r '
             "Total reports: " + (.totalReports | tostring) + "\n" +
             "Never run: " + (.neverRun | tostring) + "\n" +
-            "Stale (>180d): " + (.staleReports | tostring) + "\n" +
-            "Reports w/ Hardis warnings: " + (.withHardisWarnings | tostring)
+            "Stale (>180d): " + (.staleReports | tostring)
           ' "$DATA_DIR/summary_stats.json")
           echo "$CONTEXT" | ollama run "$MODEL" > "$DATA_DIR/ai_summary.md"
 
@@ -221,10 +194,10 @@ jobs:
             cat "$DATA_DIR/folder_table.md"
             echo
             echo "## Detailed Enriched Report (Preview - Top 10)"
-            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) | Hardis Warnings |"
-            echo "|---|---|---|---|---|---|---|"
+            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) |"
+            echo "|---|---|---|---|---|---|"
             jq -r '.[0:10][] | 
-              "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") | \((.HardisWarnings | length) // 0) |"
+              "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") |"
             ' "$DATA_DIR/reports_enriched.json" || echo "| _Failed to render preview_ |"
             echo
             echo "*(Full data available in artifacts)*"
@@ -252,7 +225,6 @@ jobs:
             data/reports_raw.json
             data/report_events.json
             data/reports_enriched.json
-            data/hardis_findings.json
             data/summary_stats.json
             data/reports_by_folder.json
             data/summary_table.md
