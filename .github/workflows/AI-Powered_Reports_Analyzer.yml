@@ -83,7 +83,10 @@ jobs:
         id: hardis
         continue-on-error: true
         run: |
-          sf run hardis:org:report:analyze \
+          sf plugins
+          sf commands
+          sf help hardis
+          sf hardis:org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --format json \
             --outputfile "$DATA_DIR/hardis_report.json"
