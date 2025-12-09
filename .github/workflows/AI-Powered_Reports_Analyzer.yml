@@ -40,11 +40,10 @@ jobs:
         run: |
           npm install -g @salesforce/cli
           sf --version
-
+      
       - name: Install Hardis CLI
         run: |
-          yes | sf plugins install sfdx-hardis
-          hardis --version
+          sf plugins install https://github.com/hardisgroupcom/sfdx-hardis/releases/latest/download/sfdx-hardis.tgz
           sf plugins
           
       - name: Install Ollama CLI
@@ -84,7 +83,7 @@ jobs:
         id: hardis
         continue-on-error: true
         run: |
-          npx hardis org:report:analyze \
+          sf hardis org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --format json \
             --outputfile "$DATA_DIR/hardis_report.json"
