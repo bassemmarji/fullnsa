@@ -43,7 +43,7 @@ jobs:
 
       - name: Install Hardis CLI
         run: |
-          npm install -g @hardis/cli
+          npm install -g hardis
           hardis --version
           
       - name: Install Ollama CLI
