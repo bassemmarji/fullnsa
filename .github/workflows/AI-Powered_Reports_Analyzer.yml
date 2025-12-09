@@ -43,7 +43,7 @@ jobs:
 
       - name: Install Hardis CLI
         run: |
-          sf plugins install sfdx-hardis
+          sf plugins install sfdx-hardis --force
           hardis --version
           
       - name: Install Ollama CLI
