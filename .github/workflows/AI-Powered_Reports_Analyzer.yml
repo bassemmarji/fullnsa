@@ -1,5 +1,5 @@
-# AI-Powered Reports Analyzer (Hardis-Free)
-name: AI-Powered Reports Analyzer (Enhanced Full - Hardis Free)
+# AI-Powered Reports Analyzer (Enhanced Full - No Hardis)
+name: AI-Powered Reports Analyzer (Enhanced Full - No Hardis)
 
 on:
   workflow_dispatch:
@@ -18,13 +18,14 @@ env:
   DATA_DIR: "data"
 
 jobs:
+  ###########################################################################
+  # STEP 1: Collect Salesforce Metadata
+  ###########################################################################
   collect-metadata:
     runs-on: ubuntu-latest
-    outputs:
-      reports_file: ${{ steps.set_files.outputs.reports }}
-      events_file: ${{ steps.set_files.outputs.events }}
+
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -46,7 +47,7 @@ jobs:
           sf org login sfdx-url --sfdx-url-file authfile.txt --alias "${{ github.event.inputs.org_alias }}"
           sf org display --target-org "${{ github.event.inputs.org_alias }}"
 
-      - name: Fetch Reports and Events
+      - name: Fetch Reports Metadata
         run: |
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
@@ -58,25 +59,23 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             > "$DATA_DIR/report_events.json"
 
-      - name: Set output file paths
-        id: set_files
-        run: |
-          echo "reports=$DATA_DIR/reports_raw.json" >> $GITHUB_OUTPUT
-          echo "events=$DATA_DIR/report_events.json" >> $GITHUB_OUTPUT
-
-      - name: Upload Raw Metadata Artifacts
+      - name: Upload Metadata Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: raw_metadata
           path: |
-            ${{ steps.set_files.outputs.reports }}
-            ${{ steps.set_files.outputs.events }}
+            $DATA_DIR/reports_raw.json
+            $DATA_DIR/report_events.json
 
+  ###########################################################################
+  # STEP 2: AI Analysis & Report Generation
+  ###########################################################################
   ai-analysis:
     runs-on: ubuntu-latest
     needs: collect-metadata
+
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -87,49 +86,48 @@ jobs:
       - name: Create data directory
         run: mkdir -p "$DATA_DIR"
 
+      - name: Install Ollama CLI
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sudo bash
+          ollama --version
+
       - name: Download Metadata Artifacts
         uses: actions/download-artifact@v4
         with:
           name: raw_metadata
           path: $DATA_DIR
 
-      - name: Install Ollama CLI
+      - name: Enrich Reports with Calculated Fields
         run: |
-          curl -fsSL https://ollama.com/install.sh | sudo bash
-          ollama --version
+          if [ ! -f "$DATA_DIR/reports_raw.json" ] || [ ! -f "$DATA_DIR/report_events.json" ]; then
+            echo "::warning::Missing report or report event files, creating empty enriched file."
+            echo "[]" > "$DATA_DIR/reports_enriched.json"
+          else
+            jq -s '
+              reduce .[0].result.records[] as $r (
+                [];
+                . + [{
+                  Id: $r.Id,
+                  Name: $r.Name,
+                  FolderName: ($r.FolderName // "Unspecified"),
+                  DeveloperName: $r.DeveloperName,
+                  Format: $r.Format,
+                  LastRunDays: (
+                    if $r.LastRunDate == null then null
+                    else ((now - (($r.LastRunDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                    end
+                  ),
+                  CreatedDays: (
+                    if $r.CreatedDate == null then null
+                    else ((now - (($r.CreatedDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                    end
+                  ),
+                  OwnerId: $r.OwnerId
+                }]
+              )
+            ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
+          fi
 
-      ###########################################################################
-      # ENRICH REPORTS
-      ###########################################################################
-      - name: Enrich Reports with Metadata
-        run: |
-          jq -s '
-            reduce .[0].result.records[] as $r (
-              [];
-              . + [{
-                Id: $r.Id,
-                Name: $r.Name,
-                FolderName: $r.FolderName,
-                DeveloperName: $r.DeveloperName,
-                Format: $r.Format,
-                LastRunDays: (
-                  if $r.LastRunDate == null then null
-                  else ((now - (($r.LastRunDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                  end
-                ),
-                CreatedDays: (
-                  if $r.CreatedDate == null then null
-                  else ((now - (($r.CreatedDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                  end
-                ),
-                OwnerId: $r.OwnerId
-              }]
-            )
-          ' "$DATA_DIR/reports_raw.json" "$DATA_DIR/report_events.json" > "$DATA_DIR/reports_enriched.json"
-
-      ###########################################################################
-      # SUMMARY STATISTICS
-      ###########################################################################
       - name: Generate Summary Stats
         run: |
           jq '{
@@ -138,16 +136,14 @@ jobs:
             staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length
           }' "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/summary_stats.json"
 
-      - name: Generate Folder Distribution
+      - name: Reports by Folder
         run: |
           jq '[.[] | .FolderName // "Unspecified"] | group_by(.) | map({folder: .[0], count: length})' \
             "$DATA_DIR/reports_enriched.json" > "$DATA_DIR/reports_by_folder.json"
 
-      ###########################################################################
-      # GENERATE MARKDOWN TABLES
-      ###########################################################################
-      - name: Generate Summary Table
+      - name: Generate Markdown Tables
         run: |
+          # Summary Table
           jq -r '
             "Metric | Value\n--- | ---\n" +
             "Total Reports | " + (.totalReports | tostring) + "\n" +
@@ -155,18 +151,14 @@ jobs:
             "Stale (>180 days) | " + (.staleReports | tostring)
           ' "$DATA_DIR/summary_stats.json" > "$DATA_DIR/summary_table.md"
 
-      - name: Generate Folder Table
-        run: |
+          # Folder Table
           {
             echo "Folder | Count"
             echo "--- | ---"
             jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
           } > "$DATA_DIR/folder_table.md"
 
-      ###########################################################################
-      # AI EXECUTIVE SUMMARY
-      ###########################################################################
-      - name: Build AI Summary
+      - name: AI Executive Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
           CONTEXT=$(jq -r '
@@ -176,9 +168,6 @@ jobs:
           ' "$DATA_DIR/summary_stats.json")
           echo "$CONTEXT" | ollama run "$MODEL" > "$DATA_DIR/ai_summary.md"
 
-      ###########################################################################
-      # BUILD FINAL MARKDOWN REPORT
-      ###########################################################################
       - name: Build Final Markdown Report
         run: |
           {
@@ -193,31 +182,22 @@ jobs:
             echo "## Reports by Folder"
             cat "$DATA_DIR/folder_table.md"
             echo
-            echo "## Detailed Enriched Report (Preview - Top 10)"
+            echo "## Detailed Enriched Report (Top 10)"
             echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) |"
             echo "|---|---|---|---|---|---|"
-            jq -r '.[0:10][] | 
-              "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") |"
-            ' "$DATA_DIR/reports_enriched.json" || echo "| _Failed to render preview_ |"
+            jq -r '.[0:10][] | "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") |"' \
+              "$DATA_DIR/reports_enriched.json" || echo "| _Failed to render preview_ |"
             echo
             echo "*(Full data available in artifacts)*"
-            echo
-            echo "## Appendix: Full Enriched Report (JSON)"
-            echo '```json'
-            cat "$DATA_DIR/reports_enriched.json"
-            echo '```'
           } > final_report.md
 
-      ###########################################################################
-      # UPLOAD ARTIFACTS
-      ###########################################################################
       - name: Upload Final Report
         uses: actions/upload-artifact@v4
         with:
           name: report
           path: final_report.md
 
-      - name: Upload JSON and Markdown Data Files
+      - name: Upload JSON & Markdown Data Files
         uses: actions/upload-artifact@v4
         with:
           name: report_data
