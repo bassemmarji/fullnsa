@@ -41,9 +41,14 @@ jobs:
           npm install -g @salesforce/cli
           sf --version
       
-      - name: Install Hardis CLI
+      - name: Configure NPM for Hardis
         run: |
-          sf plugins install https://github.com/hardisgroupcom/sfdx-hardis/releases/latest/download/sfdx-hardis.tgz
+          npm config set @hardisgroupcom:registry https://npm.pkg.github.com/
+          npm config set //npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Install Hardis CLI plugin
+        run: |
+          sf plugins install @hardisgroupcom/sfdx-hardis
           sf plugins
           
       - name: Install Ollama CLI
@@ -84,7 +89,7 @@ jobs:
         continue-on-error: true
         run: |
           sf plugins
-          sf commands
+          sf commands | grep hardis
           sf help hardis
           sf hardis:org:report:analyze \
             --target-org "${{ github.event.inputs.org_alias }}" \
