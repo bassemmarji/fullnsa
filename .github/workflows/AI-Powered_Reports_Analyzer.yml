@@ -46,10 +46,11 @@ jobs:
           npm config set @hardisgroupcom:registry https://npm.pkg.github.com/
           npm config set //npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}
       
-      - name: Install Hardis CLI plugin
+      - name: Install Hardis plugin
         run: |
-          sf plugins install @hardisgroupcom/sfdx-hardis
-          sf plugins
+          npm config set fund false
+          npm config set audit false
+          sf plugins install @hardis/sfdx-hardis
           
       - name: Install Ollama CLI
         run: |
