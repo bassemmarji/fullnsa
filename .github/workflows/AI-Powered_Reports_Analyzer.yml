@@ -159,31 +159,52 @@ jobs:
             "Stale (>180d): " + (.staleReports | tostring)
           ' data/summary_stats.json)
           echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md
-
+          
       - name: Build Final Markdown Report
         run: |
           {
             echo "# AI-Powered Reports Analysis"
             echo
+      
+            ## Executive Summary
             echo "## Executive Summary"
-            cat data/ai_summary.md
+            cat "$DATA_DIR/ai_summary.md"
             echo
+      
+            ## Summary Statistics
             echo "## Summary Statistics"
-            cat data/summary_table.md
+            echo "Metric | Value"
+            echo "--- | ---"
+            jq -r '[
+              "Total Reports | " + (.totalReports | tostring),
+              "Never Run | " + (.neverRun | tostring),
+              "Stale (>180 days) | " + (.staleReports | tostring)
+            ] | .[]' "$DATA_DIR/summary_stats.json"
             echo
+      
+            ## Reports by Folder
             echo "## Reports by Folder"
-            cat data/folder_table.md
+            echo "Folder | Count"
+            echo "--- | ---"
+            jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
             echo
+      
+            ## Detailed Enriched Report (Preview - Top 10)
             echo "## Detailed Enriched Report (Preview - Top 10)"
-            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) |"
-            echo "|---|---|---|---|---|---|"
-            jq -r '.[0:10][] | "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") |"' data/reports_enriched.json
+            echo "| Id | Name | Folder | Format | Last Run (Days Ago) | Created (Days Ago) | Stale? |"
+            echo "|---|---|---|---|---|---|---|"
+            jq -r '.[0:10][] |
+              "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") | \(
+                  if .LastRunDays != null and .LastRunDays > 180 then "Yes" else "No" end
+              ) |"' "$DATA_DIR/reports_enriched.json"
             echo
             echo "*(Full data available in artifacts)*"
             echo
+      
+            ## Appendix: Full Enriched Report (JSON)
             echo "## Appendix: Full Enriched Report (JSON)"
             echo '```json'
-            cat data/reports_enriched.json
+            cat "$DATA_DIR/reports_enriched.json"
             echo '```'
           } > final_report.md
 
