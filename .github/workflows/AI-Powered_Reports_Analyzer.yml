@@ -53,6 +53,18 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             > data/report_events.json
 
+          # Get report subscriptions
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT ReportId, COUNT(Id) subscribers FROM ReportSubscriber GROUP BY ReportId" \
+            > data/report_subscriptions.json
+          
+          # Get owner information
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, Name, IsActive FROM User WHERE Id IN (SELECT OwnerId FROM Report)" \
+            > data/report_owners.json
+
       - name: Verify files exist
         run: ls -l data
 
@@ -92,6 +104,12 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sudo bash
           ollama --version
+
+      - name: Start Ollama Service
+        run: |
+          ollama serve &
+          sleep 5
+          ollama pull "${{ github.event.inputs.model_name }}"
 
       - name: Enrich Reports
         run: |
@@ -154,10 +172,21 @@ jobs:
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
           CONTEXT=$(jq -r '
-            "Total reports: " + (.totalReports | tostring) + "\n" +
-            "Never run: " + (.neverRun | tostring) + "\n" +
-            "Stale (>180d): " + (.staleReports | tostring)
-          ' data/summary_stats.json)
+              "# Salesforce Reports Analysis Data\n\n" +
+              "## Overall Statistics\n" +
+              "- Total reports: " + (.totalReports | tostring) + "\n" +
+              "- Never run: " + (.neverRun | tostring) + " (" + ((.neverRun / .totalReports * 100) | floor | tostring) + "%)\n" +
+              "- Stale reports (>180d): " + (.staleReports | tostring) + " (" + ((.staleReports / .totalReports * 100) | floor | tostring) + "%)\n\n" +
+              "## Top Folders by Report Count\n" +
+              (reduce .topFolders[] as $f (""; . + "- " + $f.folder + ": " + ($f.count | tostring) + " reports\n")) +
+              "\n## Analysis Request\n" +
+              "Based on this data, provide:\n" +
+              "1. Key insights about report usage and health\n" +
+              "2. Actionable recommendations for optimization\n" +
+              "3. Potential risks or concerns\n" +
+              "4. Best practices to implement\n\n" +
+              "Keep the summary concise (3-5 paragraphs) and business-focused."
+              ' data/summary_stats.json)
           echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md
           
       - name: Build Final Markdown Report
