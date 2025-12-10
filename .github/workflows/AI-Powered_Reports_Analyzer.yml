@@ -144,6 +144,18 @@ jobs:
         run: |
           jq '[.[] | .FolderName // "Unspecified"] | group_by(.) | map({folder: .[0], count: length})' \
             data/reports_enriched.json > data/reports_by_folder.json
+            
+      - name: Reports by Format
+        run: |
+          jq '
+            map(select(.Format != null)) |
+            group_by(.Format) |
+            map({
+              format: .[0].Format,
+              count: length
+            }) |
+            sort_by(.count) | reverse
+          ' data/reports_enriched.json > data/reports_by_format.json
 
       - name: Generate Summary Table (Markdown)
         run: |
@@ -162,12 +174,21 @@ jobs:
             jq -r '.[] | "\(.folder) | \(.count)"' data/reports_by_folder.json
           } > data/folder_table.md
 
+      - name: Generate Format Distribution Table (Markdown)
+        run: |
+          {
+            echo "Format | Count"
+            echo "--- | ---"
+            jq -r '.[] | "\(.format // "Unknown") | \(.count)"' data/reports_by_format.json
+          } > data/format_table.md
+      
       - name: Build AI Executive Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
           CONTEXT=$(jq -s -r '
             .[0] as $stats |
             .[1] as $folders |
+            .[2] as $formats |
             "# Salesforce Reports Analysis Data\n\n" +
             "## Overall Statistics\n" +
             "- Total reports: \($stats.totalReports)\n" +
@@ -175,14 +196,16 @@ jobs:
             "- Stale reports (>180d): \($stats.staleReports) (\($stats.staleReports / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n\n" +
             "## Top Folders by Report Count\n" +
             ($folders | sort_by(.count) | reverse | .[0:5] | map("- \(.folder): \(.count) reports") | join("\n")) +
+            "\n\n## Report Formats\n" +
+            ($formats | map("- \(.format // "Unknown"): \(.count) reports") | join("\n")) +
             "\n\n## Analysis Request\n" +
             "Based on this data, provide:\n" +
             "1. Key insights about report usage and health\n" +
             "2. Actionable recommendations for optimization\n" +
-            "3. Potential risks or concerns\n" +
+            "3. Potential risks or concerns (e.g., obsolete formats)\n" +
             "4. Best practices to implement\n\n" +
             "Keep the summary concise (3-5 paragraphs) and business-focused."
-          ' data/summary_stats.json data/reports_by_folder.json)
+          ' data/summary_stats.json data/reports_by_folder.json data/reports_by_format.json)
           echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md
           
       - name: Build Final Markdown Report
@@ -212,6 +235,13 @@ jobs:
             echo "Folder | Count"
             echo "--- | ---"
             jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
+            echo
+
+            ## Reports by Format
+            echo "## Reports by Format"
+            echo "Format | Count"
+            echo "--- | ---"
+            jq -r '.[] | "\(.format // "Unknown") | \(.count)"' "$DATA_DIR/reports_by_format.json"
             echo
       
             ## Detailed Enriched Report (Preview - Top 10)
