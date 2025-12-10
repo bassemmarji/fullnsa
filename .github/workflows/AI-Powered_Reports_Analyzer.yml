@@ -52,18 +52,12 @@ jobs:
             --result-format json \
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             > data/report_events.json
-
-          # Get report subscriptions
+            
+          # Get folder info (may work in some orgs)
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT ReportId, COUNT(Id) subscribers FROM ReportSubscriber GROUP BY ReportId" \
-            > data/report_subscriptions.json
-          
-          # Get owner information
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --result-format json \
-            --query "SELECT Id, Name, IsActive FROM User WHERE Id IN (SELECT OwnerId FROM Report)" \
-            > data/report_owners.json
+            --query "SELECT Id, Name, DeveloperName, Type, AccessType FROM Folder WHERE Type = 'Report'" \
+            > data/report_folders.json
 
       - name: Verify files exist
         run: ls -l data
