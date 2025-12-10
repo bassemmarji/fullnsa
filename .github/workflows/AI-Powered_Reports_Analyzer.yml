@@ -165,22 +165,24 @@ jobs:
       - name: Build AI Executive Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
-          CONTEXT=$(jq -r '
-              "# Salesforce Reports Analysis Data\n\n" +
-              "## Overall Statistics\n" +
-              "- Total reports: " + (.totalReports | tostring) + "\n" +
-              "- Never run: " + (.neverRun | tostring) + " (" + ((.neverRun / .totalReports * 100) | floor | tostring) + "%)\n" +
-              "- Stale reports (>180d): " + (.staleReports | tostring) + " (" + ((.staleReports / .totalReports * 100) | floor | tostring) + "%)\n\n" +
-              "## Top Folders by Report Count\n" +
-              (reduce .topFolders[] as $f (""; . + "- " + $f.folder + ": " + ($f.count | tostring) + " reports\n")) +
-              "\n## Analysis Request\n" +
-              "Based on this data, provide:\n" +
-              "1. Key insights about report usage and health\n" +
-              "2. Actionable recommendations for optimization\n" +
-              "3. Potential risks or concerns\n" +
-              "4. Best practices to implement\n\n" +
-              "Keep the summary concise (3-5 paragraphs) and business-focused."
-              ' data/summary_stats.json)
+          CONTEXT=$(jq -s -r '
+            .[0] as $stats |
+            .[1] as $folders |
+            "# Salesforce Reports Analysis Data\n\n" +
+            "## Overall Statistics\n" +
+            "- Total reports: \($stats.totalReports)\n" +
+            "- Never run: \($stats.neverRun) (\($stats.neverRun / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n" +
+            "- Stale reports (>180d): \($stats.staleReports) (\($stats.staleReports / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n\n" +
+            "## Top Folders by Report Count\n" +
+            ($folders | sort_by(.count) | reverse | .[0:5] | map("- \(.folder): \(.count) reports") | join("\n")) +
+            "\n\n## Analysis Request\n" +
+            "Based on this data, provide:\n" +
+            "1. Key insights about report usage and health\n" +
+            "2. Actionable recommendations for optimization\n" +
+            "3. Potential risks or concerns\n" +
+            "4. Best practices to implement\n\n" +
+            "Keep the summary concise (3-5 paragraphs) and business-focused."
+          ' data/summary_stats.json data/reports_by_folder.json)
           echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md
           
       - name: Build Final Markdown Report
