@@ -114,13 +114,22 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            (.folders // []) as $folderList |
-            (.users // []) as $userList |
+            # Inputs:
+            # .[0] = reports_raw.json     → { result: { records: [...] } }
+            # .[1] = report_folders.json  → { result: { records: [...] } } or { records: [...] }
+            # .[2] = users.json           → { result: { records: [...] } } or { records: [...] }
+      
+            # Normalize folder and user lists
+            (. [1] | if has("result") then .result.records else .records // [] end) as $folderList |
+            (. [2] | if has("result") then .result.records else .records // [] end) as $userList |
+      
+            # Build lookup maps
             ($folderList | map({(.Id): .Name}) | add // {}) as $folders |
             ($userList | map({(.Id): .Name}) | add // {}) as $users |
       
-            .reports |
-            (.result.records // []) |
+            # Process reports
+            (. [0] | if has("result") then .result.records else .records // [] end) as $reports |
+            $reports |
             map({
               Id: .Id,
               Name: .Name,
@@ -141,11 +150,7 @@ jobs:
                 end
               )
             })
-          ' \
-            --argjson reports "$(cat data/reports_raw.json)" \
-            --argjson folders "$(cat data/report_folders.json)" \
-            --argjson users "$(cat data/users.json)" \
-            > data/reports_enriched.json
+          ' data/reports_raw.json data/report_folders.json data/users.json > data/reports_enriched.json
 
       
       - name: Generate Summary Stats
