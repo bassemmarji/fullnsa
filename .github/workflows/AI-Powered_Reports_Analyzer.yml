@@ -45,7 +45,7 @@ jobs:
         run: |
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --result-format json \
-            --query "SELECT Id, Name, FolderName, DeveloperName, Format, CreatedDate, LastRunDate, OwnerId FROM Report" \
+            --query "SELECT Id, Name, FolderName, DeveloperName, Format, CreatedDate, LastRunDate, OwnerId, Owner.Name From Report" \
             > data/reports_raw.json
 
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
