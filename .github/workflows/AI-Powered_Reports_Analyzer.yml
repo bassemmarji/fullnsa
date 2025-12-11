@@ -1,4 +1,4 @@
-name: AI-Powered Reports Analyzer (Enhanced)
+name: AI-Powered Reports Analyzer (Enhanced Full)
 
 on:
   workflow_dispatch:
@@ -17,10 +17,11 @@ env:
   DATA_DIR: "data"
 
 jobs:
-  collect-metadata:
+  collect-and-analyze-reports:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -29,329 +30,150 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Create data directory
-        run: mkdir -p data
+        run: mkdir -p $DATA_DIR
 
-      - name: Install Salesforce CLI
+      ##############################################
+      # Queries
+      ##############################################
+
+      - name: Query Reports
         run: |
-          npm install -g @salesforce/cli
-          sf --version
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, Name, DeveloperName, Format, CreatedDate, LastRunDate, OwnerId, NamespacePrefix FROM Report" \
+            > "$DATA_DIR/reports_raw.json"
 
-      - name: Authenticate to Salesforce
+      - name: Query Folders
         run: |
-          echo "${{ secrets.ORG_SFDX_URL }}" > authfile.txt
-          sf org login sfdx-url --sfdx-url-file authfile.txt --alias "${{ github.event.inputs.org_alias }}"
-
-      - name: Fetch Reports Metadata
-        run: |
-          # Reports (metadata-only)
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, Name, DeveloperName, FolderName, Format, CreatedDate, LastRunDate, OwnerId, Owner.Name, NamespacePrefix FROM Report" \
-            --result-format json > data/reports_raw.json
-
-          # Resolve User names
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, Name FROM User" \
-            --result-format json > data/users.json
-
-          # Resolve Folder names (legacy orgs)
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
             --query "SELECT Id, Name FROM Folder WHERE Type = 'Report'" \
-            --result-format json > data/report_folders.json
+            > "$DATA_DIR/report_folders.json"
 
-          # Report usage events (requires Event Monitoring)
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
-            --result-format json > data/report_events.json
-
-      - name: Verify files exist
-        run: ls -l data
-
-      - name: Upload Metadata Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: raw_metadata
-          path: |
-            data/reports_raw.json
-            data/report_events.json
-            data/users.json
-            data/report_folders.json
-
-  ai-analysis:
-    runs-on: ubuntu-latest
-    needs: collect-metadata
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Create data directory
-        run: mkdir -p data
-
-      - name: Download Metadata Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: raw_metadata
-          path: data
-
-      - name: List files in data
-        run: ls -l data
-
-      - name: Install Ollama CLI
+      - name: Query Users
         run: |
-          curl -fsSL https://ollama.com/install.sh | sudo bash
-          ollama --version
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, Name FROM User" \
+            > "$DATA_DIR/users.json"
 
-      - name: Start Ollama Service
+      - name: Query Report Events (Last 365 Days)
         run: |
-          ollama serve &
-          sleep 5
-          ollama pull "${{ github.event.inputs.model_name }}"
-      
-      - name: Enrich Reports
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent WHERE CreatedDate = LAST_N_DAYS:365 LIMIT 50000" \
+            > "$DATA_DIR/report_events.json"
+
+      ##############################################
+      # Enrich Reports + Usage Stats
+      ##############################################
+
+      - name: Enrich Reports + Compute Usage Stats
         run: |
           jq -s '
-            # Normalize folder and user lists
-            (. [1] | if has("result") then .result.records else .records // [] end) as $folderList |
-            (. [2] | if has("result") then .result.records else .records // [] end) as $userList |
-      
-            # Build lookup maps (filter out null Ids)
-            ($folderList | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $folders |
-            ($userList   | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $users |
-      
-            # Process reports
+            # Input files
             (. [0] | if has("result") then .result.records else .records // [] end) as $reports |
-            $reports |
-            map({
-              Id: .Id,
-              Name: .Name,
-      
-              FolderName:
-                (if (.FolderId // null) != null and ($folders[.FolderId] // null) != null
-                 then $folders[.FolderId]
-                 else "Unspecified" end),
-      
-              DeveloperName: .DeveloperName,
-              Format: .Format,
-              OwnerId: .OwnerId,
-      
-              OwnerName:
-                (if (.OwnerId // null) != null and ($users[.OwnerId] // null) != null
-                 then $users[.OwnerId]
-                 else "Unknown Owner" end),
-      
-              Package: (.NamespacePrefix // "Unmanaged"),
-      
-              LastRunDays:
-                (if .LastRunDate == null then null
-                 else ((now - ((.LastRunDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                 end),
-      
-              CreatedDays:
-                (if .CreatedDate == null then null
-                 else ((now - ((.CreatedDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                 end)
-            })
-          ' data/reports_raw.json data/report_folders.json data/users.json > data/reports_enriched.json
+            (. [1] | if has("result") then .result.records else .records // [] end) as $folders |
+            (. [2] | if has("result") then .result.records else .records // [] end) as $users |
+            (. [3] | if has("result") then .result.records else .records // [] end) as $events |
 
-      
-      - name: Generate Summary Stats
-        run: |
-          jq '{
-            totalReports: length,
-            neverRun: map(select(.LastRunDays == null)) | length,
-            staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length
-          }' data/reports_enriched.json > data/summary_stats.json
+            # Lookup maps
+            ($folders | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $foldersMap |
+            ($users   | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $usersMap |
 
-      - name: Reports by Folder
-        run: |
-          jq '[.[] | .FolderName // "Unspecified"] | group_by(.) | map({folder: .[0], count: length})' \
-            data/reports_enriched.json > data/reports_by_folder.json
+            #####################################################
+            # Enriched Reports
+            #####################################################
+            def enrichReport:
+              map({
+                Id: .Id,
+                Name: .Name,
+                DeveloperName: .DeveloperName,
+                Format: .Format,
+                OwnerId: .OwnerId,
+                OwnerName:
+                  (if (.OwnerId // null) != null and ($usersMap[.OwnerId] // null) != null
+                   then $usersMap[.OwnerId]
+                   else "Unknown Owner"
+                   end),
+                Package: (.NamespacePrefix // "Unmanaged"),
+                LastRunDays:
+                  (if .LastRunDate == null then null
+                   else ((now - ((.LastRunDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                   end),
+                CreatedDays:
+                  (if .CreatedDate == null then null
+                   else ((now - ((.CreatedDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
+                   end)
+              });
 
-      - name: Reports by Format
-        run: |
-          jq '
-            map(select(.Format != null)) |
-            group_by(.Format) |
-            map({ format: .[0].Format, count: length }) |
-            sort_by(.count) | reverse
-          ' data/reports_enriched.json > data/reports_by_format.json
+            #####################################################
+            # Usage Stats from ReportEvent
+            #####################################################
+            def usageStats:
+              def cutoff(days): (now - (days * 86400));
 
-      - name: Reports by Owner
-        run: |
-          jq '
-            group_by(.OwnerName) |
-            map({ owner: .[0].OwnerName, count: length }) |
-            sort_by(.count) | reverse
-          ' data/reports_enriched.json > data/reports_by_owner.json
+              def filterEvents(days):
+                map(select((.CreatedDate | fromdateiso8601) >= cutoff(days)));
 
-      - name: Reports by Package
-        run: |
-          jq '
-            group_by(.Package) |
-            map({ package: .[0].Package, count: length }) |
-            sort_by(.count) | reverse
-          ' data/reports_enriched.json > data/reports_by_package.json
+              def countByReport:
+                group_by(.ReportId)
+                | map({ reportId: .[0].ReportId, count: length })
+                | sort_by(.count)
+                | reverse;
 
-      - name: Generate Summary Table (Markdown)
-        run: |
-          jq -r '
-            "Metric | Value\n--- | ---\n" +
-            "Total Reports | " + (.totalReports | tostring) + "\n" +
-            "Never Run | " + (.neverRun | tostring) + "\n" +
-            "Stale (>180 days) | " + (.staleReports | tostring)
-          ' data/summary_stats.json > data/summary_table.md
+              {
+                lastWeek:  ($events | filterEvents(7)   | countByReport),
+                lastMonth: ($events | filterEvents(30)  | countByReport),
+                lastYear:  ($events | filterEvents(365) | countByReport)
+              };
 
-      - name: Generate Distribution Tables (Markdown)
-        run: |
-          # Folder
-          {
-            echo "Folder | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.folder) | \(.count)"' data/reports_by_folder.json
-          } > data/folder_table.md
-
-          # Format
-          {
-            echo "Format | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.format // "Unknown") | \(.count)"' data/reports_by_format.json
-          } > data/format_table.md
-
-          # Owner
-          {
-            echo "Owner | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.owner) | \(.count)"' data/reports_by_owner.json
-          } > data/owner_table.md
-
-          # Package
-          {
-            echo "Package | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.package) | \(.count)"' data/reports_by_package.json
-          } > data/package_table.md
-
-      - name: Build AI Executive Summary
-        run: |
-          MODEL="${{ github.event.inputs.model_name }}"
-          CONTEXT=$(jq -s -r '
-            .[0] as $stats |
-            .[1] as $folders |
-            .[2] as $formats |
-            .[3] as $owners |
-            .[4] as $packages |
-            "# Salesforce Reports Analysis Data\n\n" +
-            "## Overall Statistics\n" +
-            "- Total reports: \($stats.totalReports)\n" +
-            "- Never run: \($stats.neverRun) (\($stats.neverRun / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n" +
-            "- Stale reports (>180d): \($stats.staleReports) (\($stats.staleReports / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n\n" +
-            "## Top Folders by Report Count\n" +
-            ($folders | sort_by(.count) | reverse | .[0:5] | map("- \(.folder): \(.count) reports") | join("\n")) +
-            "\n\n## Report Formats\n" +
-            ($formats | map("- \(.format // "Unknown"): \(.count) reports") | join("\n")) +
-            "\n\n## Top Report Owners\n" +
-            ($owners | .[0:5] | map("- \(.owner): \(.count) reports") | join("\n")) +
-            "\n\n## Package (Namespace) Distribution\n" +
-            ($packages | map("- \(.package): \(.count) reports") | join("\n")) +
-            "\n\n## Analysis Request\n" +
-            "Based on this data, provide:\n" +
-            "1. Key insights about report usage, ownership concentration, and package health\n" +
-            "2. Actionable recommendations (e.g., consolidate underactive owners, review managed packages)\n" +
-            "3. Risks: too many unmanaged reports, stale reports in critical packages, etc.\n" +
-            "4. Best practices for governance and cleanup\n\n" +
-            "Keep the summary concise (3-5 paragraphs) and business-focused."
+            {
+              reports: ($reports | enrichReport),
+              usage: usageStats
+            }
           ' \
-            data/summary_stats.json \
-            data/reports_by_folder.json \
-            data/reports_by_format.json \
-            data/reports_by_owner.json \
-            data/reports_by_package.json)
-          echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md
+          "$DATA_DIR/reports_raw.json" \
+          "$DATA_DIR/report_folders.json" \
+          "$DATA_DIR/users.json" \
+          "$DATA_DIR/report_events.json" \
+          > "$DATA_DIR/reports_enriched.json"
 
-      - name: Build Final Markdown Report
+      ##############################################
+      # Upload Artifacts
+      ##############################################
+
+      - name: Upload Enriched Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports_enriched
+          path: $DATA_DIR/reports_enriched.json
+
+      ##############################################
+      # AI Analysis (optional)
+      ##############################################
+
+      - name: Run AI Analysis
         run: |
-          {
-            echo "# AI-Powered Reports Analysis"
-            echo
+          SUMMARY=$(jq -r '
+            def reportUsage(title; arr):
+              "\(title):\n" +
+              (arr | map("  - \(.reportId): \(.count) runs") | join("\n")) + "\n";
 
-            echo "## Executive Summary"
-            cat "$DATA_DIR/ai_summary.md"
-            echo
+            "## Report Usage Summary\n"
+            + reportUsage("Last Week"; .usage.lastWeek)
+            + reportUsage("Last Month"; .usage.lastMonth)
+            + reportUsage("Last Year"; .usage.lastYear)
+          ' $DATA_DIR/reports_enriched.json)
 
-            echo "## Summary Statistics"
-            echo "Metric | Value"
-            echo "--- | ---"
-            jq -r '[
-              "Total Reports | " + (.totalReports | tostring),
-              "Never Run | " + (.neverRun | tostring),
-              "Stale (>180 days) | " + (.staleReports | tostring)
-            ] | .[]' "$DATA_DIR/summary_stats.json"
-            echo
+          echo "$SUMMARY" > $DATA_DIR/report_analysis.md
 
-            echo "## Reports by Folder"
-            echo "Folder | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
-            echo
-
-            echo "## Reports by Format"
-            echo "Format | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.format // "Unknown") | \(.count)"' "$DATA_DIR/reports_by_format.json"
-            echo
-
-            echo "## Reports by Owner"
-            echo "Owner | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.owner) | \(.count)"' "$DATA_DIR/reports_by_owner.json"
-            echo
-
-            echo "## Reports by Package"
-            echo "Package | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.package) | \(.count)"' "$DATA_DIR/reports_by_package.json"
-            echo
-
-            echo "## Detailed Enriched Report (Preview - Top 10)"
-            echo "| Id | Name | Folder | Format | Owner | Package | Last Run (Days Ago) | Created (Days Ago) | Stale? |"
-            echo "|---|---|---|---|---|---|---|---|---|"
-            jq -r '.[0:10][] |
-              "| \(.Id) | \(.Name // "") | \(.FolderName // "Unspecified") | \(.Format // "") | \(.OwnerName // "") | \(.Package // "") | \(.LastRunDays // "null") | \(.CreatedDays // "null") | \(
-                if .LastRunDays != null and .LastRunDays > 180 then "Yes" else "No" end
-              ) |"' "$DATA_DIR/reports_enriched.json"
-            echo
-            echo "*(Full data available in artifacts)*"
-            echo
-
-            echo "## Appendix: Full Enriched Report (JSON)"
-            echo '```json'
-            cat "$DATA_DIR/reports_enriched.json"
-            echo '```'
-          } > final_report.md
-
-      - name: Upload Final Report
+      - name: Upload AI Analysis
         uses: actions/upload-artifact@v4
         with:
-          name: final_report
-          path: final_report.md
-
-      - name: Upload JSON and Markdown Data Files
-        uses: actions/upload-artifact@v4
-        with:
-          name: report_data
-          path: |
-            data/reports_enriched.json
-            data/summary_stats.json
-            data/reports_by_folder.json
-            data/reports_by_format.json
-            data/reports_by_owner.json
-            data/reports_by_package.json
-            data/ai_summary.md
-            data/folder_table.md
-            data/format_table.md
-            data/owner_table.md
-            data/package_table.md
+          name: report_analysis
+          path: $DATA_DIR/report_analysis.md
