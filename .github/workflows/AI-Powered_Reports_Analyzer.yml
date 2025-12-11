@@ -110,7 +110,7 @@ jobs:
           ollama serve &
           sleep 5
           ollama pull "${{ github.event.inputs.model_name }}"
-
+      
       - name: Enrich Reports
         run: |
           jq -s '
@@ -118,18 +118,18 @@ jobs:
             (.users // []) as $userList |
             ($folderList | map({(.Id): .Name}) | add // {}) as $folders |
             ($userList | map({(.Id): .Name}) | add // {}) as $users |
-
+      
             .reports |
             (.result.records // []) |
             map({
               Id: .Id,
               Name: .Name,
-              FolderName: $folders[.FolderId] // "Unspecified",
+              FolderName: (if $folders[.FolderId] then $folders[.FolderId] else "Unspecified" end),
               DeveloperName: .DeveloperName,
               Format: .Format,
               OwnerId: .OwnerId,
-              OwnerName: $users[.OwnerId] // "Unknown Owner",
-              Package: (.NamespacePrefix // "Unmanaged"),
+              OwnerName: (if $users[.OwnerId] then $users[.OwnerId] else "Unknown Owner" end),
+              Package: (if .NamespacePrefix then .NamespacePrefix else "Unmanaged" end),
               LastRunDays: (
                 if .LastRunDate == null then null
                 else ((now - ((.LastRunDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
@@ -147,6 +147,7 @@ jobs:
             --argjson users "$(cat data/users.json)" \
             > data/reports_enriched.json
 
+      
       - name: Generate Summary Stats
         run: |
           jq '{
