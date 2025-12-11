@@ -44,7 +44,7 @@ jobs:
       - name: Fetch Reports Metadata
         run: |
           # Reports via Tooling API (metadata-only)
-          sf tooling query --target-org "${{ github.event.inputs.org_alias }}" \
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT Id, Name, DeveloperName, FolderId, Format, CreatedDate, LastRunDate, OwnerId, NamespacePrefix FROM Report" \
             --result-format json > data/reports_raw.json
 
