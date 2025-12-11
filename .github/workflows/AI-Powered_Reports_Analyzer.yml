@@ -114,18 +114,13 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            # Inputs:
-            # .[0] = reports_raw.json     → { result: { records: [...] } }
-            # .[1] = report_folders.json  → { result: { records: [...] } } or { records: [...] }
-            # .[2] = users.json           → { result: { records: [...] } } or { records: [...] }
-      
             # Normalize folder and user lists
             (. [1] | if has("result") then .result.records else .records // [] end) as $folderList |
             (. [2] | if has("result") then .result.records else .records // [] end) as $userList |
       
-            # Build lookup maps
-            ($folderList | map({(.Id): .Name}) | add // {}) as $folders |
-            ($userList | map({(.Id): .Name}) | add // {}) as $users |
+            # Build lookup maps (filter out null Ids!)
+            ($folderList | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $folders |
+            ($userList   | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $users |
       
             # Process reports
             (. [0] | if has("result") then .result.records else .records // [] end) as $reports |
@@ -151,7 +146,6 @@ jobs:
               )
             })
           ' data/reports_raw.json data/report_folders.json data/users.json > data/reports_enriched.json
-
       
       - name: Generate Summary Stats
         run: |
