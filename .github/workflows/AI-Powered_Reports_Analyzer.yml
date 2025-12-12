@@ -57,7 +57,7 @@ jobs:
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
-
+      
       - name: 📦 Retrieve All Reports Metadata (All Folders)
         run: |
           echo "Fetching all report folders..."
@@ -70,7 +70,6 @@ jobs:
       
           mkdir -p data/report_metadata
       
-          # Loop through folders and retrieve reports from each
           for FOLDER in $(jq -r '.result.records[].Name' folders.json); do
             echo "Processing folder: $FOLDER"
       
@@ -87,12 +86,10 @@ jobs:
             </Package>
             EOF
       
-            # Retrieve
             sf project retrieve start \
               --target-org "${{ github.event.inputs.org_alias }}" \
               --manifest $PACKAGE_FILE || echo "Failed for folder $FOLDER"
       
-            # Copy results if found
             if [ -d "force-app/main/default/reports/${FOLDER}" ]; then
               mkdir -p "data/report_metadata/${FOLDER}"
               cp -r "force-app/main/default/reports/${FOLDER}/." "data/report_metadata/${FOLDER}/"
@@ -103,6 +100,7 @@ jobs:
       
           TOTAL=$(find data/report_metadata -name "*.report-meta.xml" | wc -l)
           echo "Retrieved $TOTAL report metadata files total."
+
             
       - name: Verify files exist
         run: ls -l data
