@@ -58,47 +58,52 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: 📦 Retrieve All Reports Metadata (All Folders)
+      - name: Retrieve All Reports Metadata (All Folders)
         run: |
-          echo "Fetching all report folders..."
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, Name FROM Folder WHERE Type = 'Report'" \
+          set -euo pipefail
+
+          echo "Fetching report folders..."
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --query "SELECT Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > folders.json
-      
-          FOLDER_COUNT=$(jq '.result.records | length' folders.json)
-          echo "Found $FOLDER_COUNT report folders"
-      
+
           mkdir -p data/report_metadata
-      
-          for FOLDER in $(jq -r '.result.records[].Name' folders.json); do
-            echo "Processing folder: $FOLDER"
-      
-            PACKAGE_FILE="pkg.xml"
-      
-            cat > "$PACKAGE_FILE" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<Package xmlns="http://soap.sforce.com/2006/04/metadata">
-  <types>
-    <members>${FOLDER}/*</members>
-    <name>Report</name>
-  </types>
-  <version>59.0</version>
-</Package>
-EOF
+
+          # Extract folder names safely (handles spaces and special chars)
+          jq -r '.result?.records[]?.Name // empty' folders.json | while IFS= read -r FOLDER; do
+            if [ -z "$FOLDER" ]; then continue; fi
+            echo "Processing folder: '$FOLDER'"
+
+            # Sanitize for filesystem (Salesforce uses underscores for spaces)
+            SAFE_FOLDER=$(printf '%s' "$FOLDER" | sed 's/ /_/g')
+
+            # Generate package.xml inline (no heredoc indentation risk)
+            printf '%s\n' \
+              '<?xml version="1.0" encoding="UTF-8"?>' \
+              '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' \
+              '  <types>' \
+              "    <members>$FOLDER/*</members>" \
+              '    <name>Report</name>' \
+              '  </types>' \
+              '  <version>59.0</version>' \
+              '</Package>' > pkg.xml
+
             sf project retrieve start \
               --target-org "${{ github.event.inputs.org_alias }}" \
-              --manifest $PACKAGE_FILE || echo "Failed for folder $FOLDER"
-      
-            if [ -d "force-app/main/default/reports/${FOLDER}" ]; then
-              mkdir -p "data/report_metadata/${FOLDER}"
-              cp -r "force-app/main/default/reports/${FOLDER}/." "data/report_metadata/${FOLDER}/"
+              --manifest pkg.xml || echo "Failed: $FOLDER"
+
+            # Copy if retrieved
+            if [ -d "force-app/main/default/reports/$SAFE_FOLDER" ]; then
+              mkdir -p "data/report_metadata/$SAFE_FOLDER"
+              cp -r "force-app/main/default/reports/$SAFE_FOLDER"/. "data/report_metadata/$SAFE_FOLDER/"
             fi
-      
-            rm -f $PACKAGE_FILE
+
+            rm -f pkg.xml
           done
-      
-          TOTAL=$(find data/report_metadata -name "*.report-meta.xml" | wc -l)
-          echo "Retrieved $TOTAL report metadata files total."
+
+          TOTAL=$(find data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
+          echo "Retrieved $TOTAL report metadata files."
 
             
       - name: Verify files exist
