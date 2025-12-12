@@ -58,47 +58,25 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
 
-      - name: 📦 Retrieve Full Reports Metadata
+      - name: 📦 Retrieve All Reports Metadata (Wildcard Only)
         run: |
-          # Ensure we have reports to retrieve
-          if [ ! -s "data/reports_raw.json" ]; then
-            echo "reports_raw.json is missing or empty. Skipping metadata retrieval."
-            exit 0
-          fi
-
-          # Count reports
-          REPORT_COUNT=$(jq 'if has("records") then .records | length else 0 end' data/reports_raw.json)
-          echo "Found $REPORT_COUNT reports to retrieve."
-
-          if [ "$REPORT_COUNT" -eq 0 ]; then
-            echo "No reports found. Skipping."
-            exit 0
-          fi
-
-          # Create SFDX project
           sf project generate --name "reports-metadata" --manifest
           cd ./reports-metadata
 
-          # Generate package.xml using jq (efficient, no shell loop)
-          jq -r '
-            def safe_devname: .DeveloperName // .Name | gsub("[^a-zA-Z0-9_.]"; "_");
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n  <types>"
-            +
-            (if has("records") then .records else [] end
-              | map(select(.DeveloperName != null))
-              | .[] | "    <members>\(safe_devname)</members>")
-            | join("\n")
-            +
-            "\n    <name>Report</name>\n  </types>\n  <version>59.0</version>\n</Package>"
-          ' ../../data/reports_raw.json > manifest/package.xml
+          # Use wildcard package.xml (only works in scratch/source-tracked orgs)
+          mkdir -p manifest
+          cat <<EOF > manifest/package.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+            <types>
+              <members>*</members>
+              <name>Report</name>
+            </types>
+            <version>59.0</version>
+          </Package>
+          EOF
 
-          # Optional: verify package.xml isn't empty
-          if ! grep -q "<members>" manifest/package.xml; then
-            echo "No valid report DeveloperNames found. Skipping retrieve."
-            exit 0
-          fi
-
-          # Retrieve
+          # Retrieve (assumes already authenticated from earlier step)
           sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
 
           # Save output
@@ -107,9 +85,8 @@ jobs:
             cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>/dev/null || true
           fi
 
-          # Report count
-          ACTUAL_COUNT=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
-          echo "Successfully retrieved $ACTUAL_COUNT report metadata files."
+          COUNT=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
+          echo "Retrieved $COUNT report metadata files."
             
       - name: Verify files exist
         run: ls -l data
