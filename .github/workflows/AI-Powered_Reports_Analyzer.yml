@@ -58,60 +58,63 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: Retrieve All Reports Metadata (All Folders)
+      - name: Retrieve All Reports Metadata
         run: |
           set -euo pipefail
 
-          echo "Fetching report folders..."
+          echo "Fetching all report DeveloperNames..."
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Name FROM Folder WHERE Type = 'Report'" \
-            --result-format json > folders.json
+            --query "SELECT DeveloperName FROM Report WHERE DeveloperName != null" \
+            --result-format json > all_reports.json
 
-          # Create a single valid SFDX project to work in
+          # Extract count robustly
+          COUNT=$(jq -r '
+            if has("result") and (.result | has("records")) then
+              .result.records | length
+            elif has("records") then
+              .records | length
+            else
+              0
+            end
+          ' all_reports.json)
+
+          echo "Found $COUNT reports."
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No reports to retrieve."
+            exit 0
+          fi
+
+          # Create a valid SF project
           sf project generate --name reports-project --manifest
           cd reports-project
 
-          # Create base output dir
+          # Generate package.xml with all DeveloperNames
+          jq -r '
+            def records:
+              if has("result") and (.result | has("records")) then .result.records
+              elif has("records") then .records
+              else [] end;
+
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n  <types>"
+            +
+            (records | .[] | "    <members>\(.DeveloperName)</members>")
+            | join("\n")
+            +
+            "\n    <name>Report</name>\n  </types>\n  <version>59.0</version>\n</Package>"
+          ' ../all_reports.json > manifest/package.xml
+
+          echo "Retrieving all report metadata..."
+          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
+
+          # Save output
           mkdir -p ../../data/report_metadata
+          if [ -d "force-app/main/default/reports" ]; then
+            cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>/dev/null || true
+          fi
 
-          # Process each folder
-          jq -r '.result?.records[]?.Name // empty' ../folders.json | while IFS= read -r FOLDER; do
-            [ -z "$FOLDER" ] && continue
-            echo "Processing folder: '$FOLDER'"
-
-            # Sanitize folder name for filesystem (Salesforce replaces spaces with underscores)
-            SAFE_FOLDER=$(printf '%s' "$FOLDER" | sed 's/ /_/g')
-
-            # Build manifest/package.xml
-            mkdir -p manifest
-            printf '%s\n' \
-              '<?xml version="1.0" encoding="UTF-8"?>' \
-              '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' \
-              '  <types>' \
-              "    <members>$FOLDER/*</members>" \
-              '    <name>Report</name>' \
-              '  </types>' \
-              '  <version>59.0</version>' \
-              '</Package>' > manifest/package.xml
-
-            # Retrieve — runs inside valid SF project
-            sf project retrieve start \
-              --target-org "${{ github.event.inputs.org_alias }}" \
-              --manifest manifest/package.xml || echo "⚠️ Failed folder: $FOLDER"
-
-            # Copy results if present
-            if [ -d "force-app/main/default/reports/$SAFE_FOLDER" ]; then
-              mkdir -p "../../data/report_metadata/$SAFE_FOLDER"
-              cp -r "force-app/main/default/reports/$SAFE_FOLDER"/. "../../data/report_metadata/$SAFE_FOLDER/"
-            fi
-
-            # Clean manifest for next iteration
-            rm -f manifest/package.xml
-          done
-
-          cd ..
-          TOTAL=$(find data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
+          TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
           echo "Retrieved $TOTAL report metadata files."
 
             
