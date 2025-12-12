@@ -58,33 +58,33 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: 📦 Retrieve All Reports Metadata
+      - name: 📦 Retrieve All Reports Metadata (Debug-Safe)
         run: |
           set -euo pipefail
 
-          echo "Fetching all report DeveloperNames..."
-          # Use a distinct filename to avoid collision
           REPORTS_JSON="sf_reports_list.json"
+          echo "Fetching all report DeveloperNames..."
 
-          # Run query and capture exit code
+          # Capture raw output and exit code
           if ! sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT DeveloperName FROM Report WHERE DeveloperName != null" \
-            --result-format json > "$REPORTS_JSON"; then
-            echo "❌ sf data query failed. Check authentication or org access."
-            exit 1
-          fi
-
-          # Quick sanity check: does it look like JSON?
-          if ! head -c 1 "$REPORTS_JSON" | grep -q '{\|\['; then
-            echo "❌ Output is not JSON. Contents:"
+            --result-format json > "$REPORTS_JSON" 2>&1; then
+            echo "❌ sf data query FAILED. Output:"
             cat "$REPORTS_JSON"
             exit 1
           fi
 
-          # Count reports safely
+          # Check if response is actually JSON (not XML error)
+          if head -c 200 "$REPORTS_JSON" | grep -q '<?xml'; then
+            echo "❌ Received XML instead of JSON. Likely an auth or API error:"
+            cat "$REPORTS_JSON"
+            exit 1
+          fi
+
+          # Now safely parse
           COUNT=$(jq -r '
-            if has("result") and (.result | type == "object") and (.result | has("records")) then
+            if has("result") and (.result | type == "object" and .result | has("records")) then
               .result.records | length
             elif has("records") and (.records | type == "array") then
               .records | length
@@ -95,25 +95,24 @@ jobs:
             end
           ' "$REPORTS_JSON")
 
-          echo "Found $COUNT reports."
+          echo "✅ Found $COUNT reports."
 
           if [ "$COUNT" -eq 0 ]; then
             echo "No reports to retrieve."
             exit 0
           fi
 
-          # Create SFDX project
+          # Generate project
           sf project generate --name reports-project --manifest
           cd reports-project
 
-          # Generate package.xml
+          # Build package.xml
           jq -r '
             def records:
               if has("result") and (.result | has("records")) then .result.records
               elif has("records") then .records
               elif type == "array" then .
               else [] end;
-
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n  <types>"
             +
             (records | map(select(.DeveloperName != null)) | .[] | "    <members>\(.DeveloperName)</members>")
@@ -122,18 +121,16 @@ jobs:
             "\n    <name>Report</name>\n  </types>\n  <version>59.0</version>\n</Package>"
           ' "../$REPORTS_JSON" > manifest/package.xml
 
-          echo "Retrieving metadata for $COUNT reports..."
+          echo "📦 Retrieving metadata for $COUNT reports..."
           sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
 
-          # Save output
           mkdir -p ../../data/report_metadata
           if [ -d "force-app/main/default/reports" ]; then
             cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>/dev/null || true
           fi
 
           TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
-          echo "✅ Retrieved $TOTAL report metadata files."
-
+          echo "✅ Successfully retrieved $TOTAL report metadata files."
             
       - name: Verify files exist
         run: ls -l data
