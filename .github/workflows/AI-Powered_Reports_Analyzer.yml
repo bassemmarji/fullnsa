@@ -57,6 +57,41 @@ jobs:
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
+
+      - name: Retrieve Full Reports Metadata
+        run: |
+          # Create a new SFDX project for metadata retrieval
+          sf project generate --name "reports-metadata" --manifest
+          cd ./reports-metadata
+
+          # Create package.xml with wildcard to fetch ALL reports
+          mkdir -p manifest
+          cat <<'EOF' > manifest/package.xml
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+            <types>
+              <members>*</members>
+              <name>Report</name>
+            </types>
+            <version>59.0</version>
+          </Package>
+          EOF
+
+          # Retrieve full report metadata
+          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
+
+          # Ensure reports directory exists even if empty
+          mkdir -p ../../data/report_metadata
+
+          # Copy retrieved report metadata (preserving folder structure)
+          if [ -d "force-app/main/default/reports" ]; then
+            cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>/dev/null || true
+          fi
+
+          # Optional: verify count
+          REPORT_COUNT=$(find ../../data/report_metadata -name "*.report-meta.xml" | wc -l)
+          echo "Retrieved $REPORT_COUNT report metadata files."
+            
       - name: Verify files exist
         run: ls -l data
 
