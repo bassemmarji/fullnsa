@@ -58,35 +58,51 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
 
-      - name: 📦 Retrieve All Reports Metadata (Wildcard Only)
+      - name: 📦 Retrieve All Reports Metadata (All Folders)
         run: |
-          sf project generate --name "reports-metadata" --manifest
-          cd ./reports-metadata
-
-          # Use wildcard package.xml (only works in scratch/source-tracked orgs)
-          mkdir -p manifest
-          cat <<EOF > manifest/package.xml
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-            <types>
-              <members>*</members>
-              <name>Report</name>
-            </types>
-            <version>59.0</version>
-          </Package>
-          EOF
-
-          # Retrieve (assumes already authenticated from earlier step)
-          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
-
-          # Save output
-          mkdir -p ../../data/report_metadata
-          if [ -d "force-app/main/default/reports" ]; then
-            cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>/dev/null || true
-          fi
-
-          COUNT=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
-          echo "Retrieved $COUNT report metadata files."
+          echo "Fetching all report folders..."
+          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
+            --query "SELECT Id, Name FROM Folder WHERE Type = 'Report'" \
+            --result-format json > folders.json
+      
+          FOLDER_COUNT=$(jq '.result.records | length' folders.json)
+          echo "Found $FOLDER_COUNT report folders"
+      
+          mkdir -p data/report_metadata
+      
+          # Loop through folders and retrieve reports from each
+          for FOLDER in $(jq -r '.result.records[].Name' folders.json); do
+            echo "Processing folder: $FOLDER"
+      
+            PACKAGE_FILE="pkg.xml"
+      
+            cat <<EOF > $PACKAGE_FILE
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+              <types>
+                <members>${FOLDER}/*</members>
+                <name>Report</name>
+              </types>
+              <version>59.0</version>
+            </Package>
+            EOF
+      
+            # Retrieve
+            sf project retrieve start \
+              --target-org "${{ github.event.inputs.org_alias }}" \
+              --manifest $PACKAGE_FILE || echo "Failed for folder $FOLDER"
+      
+            # Copy results if found
+            if [ -d "force-app/main/default/reports/${FOLDER}" ]; then
+              mkdir -p "data/report_metadata/${FOLDER}"
+              cp -r "force-app/main/default/reports/${FOLDER}/." "data/report_metadata/${FOLDER}/"
+            fi
+      
+            rm -f $PACKAGE_FILE
+          done
+      
+          TOTAL=$(find data/report_metadata -name "*.report-meta.xml" | wc -l)
+          echo "Retrieved $TOTAL report metadata files total."
             
       - name: Verify files exist
         run: ls -l data
