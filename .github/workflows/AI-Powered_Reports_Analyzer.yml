@@ -75,15 +75,15 @@ jobs:
       
             PACKAGE_FILE="pkg.xml"
       
-            cat <<EOF > $PACKAGE_FILE
-              <?xml version="1.0" encoding="UTF-8"?>
-              <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-                <types>
-                  <members>${FOLDER}/*</members>
-                  <name>Report</name>
-                </types>
-                <version>59.0</version>
-              </Package>
+            cat > $PACKAGE_FILE <<-EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+              <types>
+                <members>${FOLDER}/*</members>
+                <name>Report</name>
+              </types>
+              <version>59.0</version>
+            </Package>
             EOF
       
             sf project retrieve start \
