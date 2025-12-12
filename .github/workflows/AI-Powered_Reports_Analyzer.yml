@@ -58,26 +58,42 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: Retrieve All Reports Metadata
+      - name: 📦 Retrieve All Reports Metadata
         run: |
           set -euo pipefail
 
           echo "Fetching all report DeveloperNames..."
-          sf data query \
+          # Use a distinct filename to avoid collision
+          REPORTS_JSON="sf_reports_list.json"
+
+          # Run query and capture exit code
+          if ! sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT DeveloperName FROM Report WHERE DeveloperName != null" \
-            --result-format json > all_reports.json
+            --result-format json > "$REPORTS_JSON"; then
+            echo "❌ sf data query failed. Check authentication or org access."
+            exit 1
+          fi
 
-          # Extract count robustly
+          # Quick sanity check: does it look like JSON?
+          if ! head -c 1 "$REPORTS_JSON" | grep -q '{\|\['; then
+            echo "❌ Output is not JSON. Contents:"
+            cat "$REPORTS_JSON"
+            exit 1
+          fi
+
+          # Count reports safely
           COUNT=$(jq -r '
-            if has("result") and (.result | has("records")) then
+            if has("result") and (.result | type == "object") and (.result | has("records")) then
               .result.records | length
-            elif has("records") then
+            elif has("records") and (.records | type == "array") then
               .records | length
+            elif type == "array" then
+              length
             else
               0
             end
-          ' all_reports.json)
+          ' "$REPORTS_JSON")
 
           echo "Found $COUNT reports."
 
@@ -86,26 +102,27 @@ jobs:
             exit 0
           fi
 
-          # Create a valid SF project
+          # Create SFDX project
           sf project generate --name reports-project --manifest
           cd reports-project
 
-          # Generate package.xml with all DeveloperNames
+          # Generate package.xml
           jq -r '
             def records:
               if has("result") and (.result | has("records")) then .result.records
               elif has("records") then .records
+              elif type == "array" then .
               else [] end;
 
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n  <types>"
             +
-            (records | .[] | "    <members>\(.DeveloperName)</members>")
+            (records | map(select(.DeveloperName != null)) | .[] | "    <members>\(.DeveloperName)</members>")
             | join("\n")
             +
             "\n    <name>Report</name>\n  </types>\n  <version>59.0</version>\n</Package>"
-          ' ../all_reports.json > manifest/package.xml
+          ' "../$REPORTS_JSON" > manifest/package.xml
 
-          echo "Retrieving all report metadata..."
+          echo "Retrieving metadata for $COUNT reports..."
           sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
 
           # Save output
@@ -115,7 +132,7 @@ jobs:
           fi
 
           TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
-          echo "Retrieved $TOTAL report metadata files."
+          echo "✅ Retrieved $TOTAL report metadata files."
 
             
       - name: Verify files exist
