@@ -68,17 +68,23 @@ jobs:
             --query "SELECT Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > folders.json
 
-          mkdir -p data/report_metadata
+          # Create a single valid SFDX project to work in
+          sf project generate --name reports-project --manifest
+          cd reports-project
 
-          # Extract folder names safely (handles spaces and special chars)
-          jq -r '.result?.records[]?.Name // empty' folders.json | while IFS= read -r FOLDER; do
-            if [ -z "$FOLDER" ]; then continue; fi
+          # Create base output dir
+          mkdir -p ../../data/report_metadata
+
+          # Process each folder
+          jq -r '.result?.records[]?.Name // empty' ../folders.json | while IFS= read -r FOLDER; do
+            [ -z "$FOLDER" ] && continue
             echo "Processing folder: '$FOLDER'"
 
-            # Sanitize for filesystem (Salesforce uses underscores for spaces)
+            # Sanitize folder name for filesystem (Salesforce replaces spaces with underscores)
             SAFE_FOLDER=$(printf '%s' "$FOLDER" | sed 's/ /_/g')
 
-            # Generate package.xml inline (no heredoc indentation risk)
+            # Build manifest/package.xml
+            mkdir -p manifest
             printf '%s\n' \
               '<?xml version="1.0" encoding="UTF-8"?>' \
               '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' \
@@ -87,21 +93,24 @@ jobs:
               '    <name>Report</name>' \
               '  </types>' \
               '  <version>59.0</version>' \
-              '</Package>' > pkg.xml
+              '</Package>' > manifest/package.xml
 
+            # Retrieve — runs inside valid SF project
             sf project retrieve start \
               --target-org "${{ github.event.inputs.org_alias }}" \
-              --manifest pkg.xml || echo "Failed: $FOLDER"
+              --manifest manifest/package.xml || echo "⚠️ Failed folder: $FOLDER"
 
-            # Copy if retrieved
+            # Copy results if present
             if [ -d "force-app/main/default/reports/$SAFE_FOLDER" ]; then
-              mkdir -p "data/report_metadata/$SAFE_FOLDER"
-              cp -r "force-app/main/default/reports/$SAFE_FOLDER"/. "data/report_metadata/$SAFE_FOLDER/"
+              mkdir -p "../../data/report_metadata/$SAFE_FOLDER"
+              cp -r "force-app/main/default/reports/$SAFE_FOLDER"/. "../../data/report_metadata/$SAFE_FOLDER/"
             fi
 
-            rm -f pkg.xml
+            # Clean manifest for next iteration
+            rm -f manifest/package.xml
           done
 
+          cd ..
           TOTAL=$(find data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
           echo "Retrieved $TOTAL report metadata files."
 
