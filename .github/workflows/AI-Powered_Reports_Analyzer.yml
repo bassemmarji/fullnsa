@@ -35,10 +35,12 @@ jobs:
         run: |
           npm install -g @salesforce/cli
           sf --version
+
       - name: Authenticate to Salesforce
         run: |
           echo "${{ secrets.ORG_SFDX_URL }}" > authfile.txt
           sf org login sfdx-url --sfdx-url-file authfile.txt --alias "${{ github.event.inputs.org_alias }}"
+
       - name: Fetch Reports Metadata
         run: |
           # Reports (metadata-only)
@@ -174,22 +176,22 @@ jobs:
           # Build package.xml using printf for better control
           {
             cat << 'XML_HEADER'
-<?xml version="1.0" encoding="UTF-8"?>
-<Package xmlns="http://soap.sforce.com/2006/04/metadata">
-  <types>
-XML_HEADER
+              <?xml version="1.0" encoding="UTF-8"?>
+              <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+                <types>
+              XML_HEADER
             
             for name in "${DEVNAMES[@]}"; do
               printf '    <members>%s</members>\n' "$name"
             done
             
             cat << 'XML_FOOTER'
-    <name>Report</name>
-  </types>
-  <version>59.0</version>
-</Package>
-XML_FOOTER
-          } > manifest/package.xml
+                <name>Report</name>
+              </types>
+              <version>59.0</version>
+            </Package>
+            XML_FOOTER
+                      } > manifest/package.xml
           
           # Debug: Show the generated package.xml
           echo "📄 Generated package.xml (first 30 lines):"
