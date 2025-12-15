@@ -63,10 +63,11 @@ jobs:
       - name: 📦 Retrieve All Reports Metadata (Debug-Safe)
         run: |
           set -euo pipefail
+
           REPORTS_JSON="sf_reports_list.json"
           echo "Fetching all report DeveloperNames..."
-          
-          # Capture raw output and exit code
+
+          # Run query and capture output
           if ! sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT DeveloperName FROM Report WHERE DeveloperName != null" \
@@ -75,179 +76,112 @@ jobs:
             cat "$REPORTS_JSON"
             exit 1
           fi
-          
-          # Check if response is actually JSON (not XML error)
+
+          # Ensure response is JSON (not XML error)
           if head -c 200 "$REPORTS_JSON" | grep -q '<?xml'; then
-            echo "❌ Received XML instead of JSON. Likely an auth or API error:"
+            echo "❌ Received XML instead of JSON. Likely auth or API error:"
             cat "$REPORTS_JSON"
             exit 1
           fi
-          
-          # Debug: Show first few lines of response
+
           echo "📄 First 10 lines of query response:"
           head -10 "$REPORTS_JSON"
-          
-          # Now safely parse
-          COUNT=$(jq -r '
-            # Handle different response structures
-            if type == "object" then
-              if has("result") then
-                if .result | type == "object" then
-                  if .result | has("records") then
-                    .result.records | if type == "array" then length else 0 end
-                  else
-                    0
-                  end
-                elif .result | type == "array" then
-                  .result | length
-                else
-                  0
-                end
-              elif has("records") then
-                if .records | type == "array" then
-                  .records | length
-                else
-                  0
-                end
-              else
-                0
-              end
-            elif type == "array" then
-              length
-            else
-              0
-            end
-          ' "$REPORTS_JSON")
-          
+
+          # Count reports safely
+          COUNT=$(jq '.result.records | length' "$REPORTS_JSON")
           echo "✅ Found $COUNT reports."
-          
+
           if [ "$COUNT" -eq 0 ]; then
-            echo "⚠️  No reports to retrieve."
+            echo "⚠️ No reports to retrieve."
             exit 0
           fi
-          
-          # Generate project
+
+          # Generate temporary project
           sf project generate --name reports-project --manifest
           cd reports-project
-          
-          # Extract DeveloperNames to array
+
           echo "📋 Extracting DeveloperNames..."
+
+          # ✅ FIXED extractor (this was the bug)
           mapfile -t DEVNAMES < <(jq -r '
-            # Extract records array from various response structures
-            def extract_records:
-              if type == "object" then
-                if has("result") then
-                  if .result | type == "object" and (.result | has("records")) then
-                    .result.records
-                  elif .result | type == "array" then
-                    .result
-                  else
-                    []
-                  end
-                elif has("records") then
-                  if .records | type == "array" then
-                    .records
-                  else
-                    []
-                  end
-                else
-                  []
-                end
-              elif type == "array" then
-                .
-              else
-                []
-              end;
-            
-            extract_records 
-            | map(select(.DeveloperName != null and (.DeveloperName | type == "string"))) 
-            | .[]
+            .result.records[]
+            | select(.DeveloperName != null)
             | .DeveloperName
           ' "../$REPORTS_JSON")
-          
+
           echo "📊 Extracted ${#DEVNAMES[@]} DeveloperNames"
           echo "First 5: ${DEVNAMES[@]:0:5}"
-          
+
           if [ "${#DEVNAMES[@]}" -eq 0 ]; then
-            echo "⚠️  No valid DeveloperNames found. Skipping retrieval."
+            echo "⚠️ No valid DeveloperNames found. Skipping retrieval."
             exit 0
           fi
-          
-          # Build package.xml using printf for better control
+
+          # Build package.xml
           {
             cat << 'XML_HEADER'
-              <?xml version="1.0" encoding="UTF-8"?>
-              <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-                <types>
-              XML_HEADER
-            
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+              <types>
+            XML_HEADER
+
             for name in "${DEVNAMES[@]}"; do
               printf '    <members>%s</members>\n' "$name"
             done
-            
+
             cat << 'XML_FOOTER'
                 <name>Report</name>
               </types>
               <version>59.0</version>
             </Package>
             XML_FOOTER
-                      } > manifest/package.xml
-          
-          # Debug: Show the generated package.xml
+          } > manifest/package.xml
+
           echo "📄 Generated package.xml (first 30 lines):"
           head -30 manifest/package.xml
-          
-          # Count members in package.xml
+
           MEMBERS_COUNT=$(grep -c "<members>" manifest/package.xml || echo "0")
           echo "📊 Package.xml contains $MEMBERS_COUNT report members"
-          
+
           if [ "$MEMBERS_COUNT" -eq 0 ]; then
-            echo "⚠️  No valid report members found in package.xml. Skipping retrieval."
+            echo "⚠️ No report members found in package.xml. Skipping retrieval."
             exit 0
           fi
-          
-          echo "📦 Retrieving metadata for $COUNT reports..."
-          
-          # Try retrieve with verbose output
+
+          echo "📦 Retrieving metadata for $MEMBERS_COUNT reports..."
+
           if sf project retrieve start \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --manifest manifest/package.xml 2>&1 | tee retrieve_output.log; then
             echo "✅ Retrieve command completed"
           else
-            echo "⚠️  Retrieve command failed or returned no results"
+            echo "⚠️ Retrieve command failed"
             cat retrieve_output.log
           fi
-          
-          # Check what was actually retrieved
+
           echo "📂 Checking retrieved files..."
+
+          mkdir -p ../../data/report_metadata
+
           if [ -d "force-app/main/default/reports" ]; then
             echo "✅ Reports directory exists"
-            ls -la force-app/main/default/reports/ || echo "Directory is empty"
-          else
-            echo "⚠️  Reports directory not found. Checking entire force-app structure:"
-            find force-app -type f -name "*.report-meta.xml" 2>/dev/null || echo "No report metadata files found"
+            cp -rv force-app/main/default/reports/* ../../data/report_metadata/ || true
           fi
-          
-          mkdir -p ../../data/report_metadata
-          
-          # Copy with better error handling
-          if [ -d "force-app/main/default/reports" ]; then
-            cp -rv force-app/main/default/reports/* ../../data/report_metadata/ 2>&1 || echo "⚠️  No files to copy"
-          fi
-          
-          # Also try alternative locations
-          find force-app -type f -name "*.report-meta.xml" -exec cp {} ../../data/report_metadata/ \; 2>/dev/null || true
-          
-          TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
+
+          find force-app -type f -name "*.report-meta.xml" \
+            -exec cp {} ../../data/report_metadata/ \; 2>/dev/null || true
+
+          TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" | wc -l)
           echo "✅ Successfully retrieved $TOTAL report metadata files."
-          
+
           if [ "$TOTAL" -eq 0 ]; then
-            echo "⚠️  WARNING: No report metadata files were retrieved!"
-            echo "This could mean:"
-            echo "  - Reports are standard/managed and cannot be retrieved"
-            echo "  - User lacks permission to retrieve report metadata"
-            echo "  - Reports exist only as data records, not as metadata"
+            echo "⚠️ WARNING: No report metadata files were retrieved!"
+            echo "Possible reasons:"
+            echo "  - Reports are standard or managed"
+            echo "  - Insufficient metadata permissions"
+            echo "  - Reports exist only as data records"
           fi
+
             
       - name: Verify files exist
         run: ls -l data
