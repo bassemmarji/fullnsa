@@ -81,7 +81,11 @@ jobs:
             exit 1
           fi
           
-          # Now safely parse - FIXED VERSION
+          # Debug: Show first few lines of response
+          echo "📄 First 10 lines of query response:"
+          head -10 "$REPORTS_JSON"
+          
+          # Now safely parse
           COUNT=$(jq -r '
             # Handle different response structures
             if type == "object" then
@@ -116,7 +120,7 @@ jobs:
           echo "✅ Found $COUNT reports."
           
           if [ "$COUNT" -eq 0 ]; then
-            echo "No reports to retrieve."
+            echo "⚠️  No reports to retrieve."
             exit 0
           fi
           
@@ -124,7 +128,7 @@ jobs:
           sf project generate --name reports-project --manifest
           cd reports-project
           
-          # Build package.xml - FIXED VERSION
+          # Build package.xml with CORRECT <n> tag
           jq -r '
             # Extract records array from various response structures
             def extract_records:
@@ -159,19 +163,64 @@ jobs:
               | map("    <members>\(.DeveloperName)</members>") 
               | join("\n")
             ) +
-            "\n    <name>Report</name>\n  </types>\n  <version>59.0</version>\n</Package>"
+            "\n    <n>Report</n>\n  </types>\n  <version>59.0</version>\n</Package>"
           ' "../$REPORTS_JSON" > manifest/package.xml
           
+          # Debug: Show the generated package.xml
+          echo "📄 Generated package.xml (first 30 lines):"
+          head -30 manifest/package.xml
+          
+          # Count members in package.xml
+          MEMBERS_COUNT=$(grep -c "<members>" manifest/package.xml || echo "0")
+          echo "📊 Package.xml contains $MEMBERS_COUNT report members"
+          
+          if [ "$MEMBERS_COUNT" -eq 0 ]; then
+            echo "⚠️  No valid report members found in package.xml. Skipping retrieval."
+            exit 0
+          fi
+          
           echo "📦 Retrieving metadata for $COUNT reports..."
-          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml
+          
+          # Try retrieve with verbose output
+          if sf project retrieve start \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --manifest manifest/package.xml 2>&1 | tee retrieve_output.log; then
+            echo "✅ Retrieve command completed"
+          else
+            echo "⚠️  Retrieve command failed or returned no results"
+            cat retrieve_output.log
+          fi
+          
+          # Check what was actually retrieved
+          echo "📂 Checking retrieved files..."
+          if [ -d "force-app/main/default/reports" ]; then
+            echo "✅ Reports directory exists"
+            ls -la force-app/main/default/reports/ || echo "Directory is empty"
+          else
+            echo "⚠️  Reports directory not found. Checking entire force-app structure:"
+            find force-app -type f -name "*.report-meta.xml" 2>/dev/null || echo "No report metadata files found"
+          fi
           
           mkdir -p ../../data/report_metadata
+          
+          # Copy with better error handling
           if [ -d "force-app/main/default/reports" ]; then
-            cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>/dev/null || true
+            cp -rv force-app/main/default/reports/* ../../data/report_metadata/ 2>&1 || echo "⚠️  No files to copy"
           fi
+          
+          # Also try alternative locations
+          find force-app -type f -name "*.report-meta.xml" -exec cp {} ../../data/report_metadata/ \; 2>/dev/null || true
           
           TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
           echo "✅ Successfully retrieved $TOTAL report metadata files."
+          
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "⚠️  WARNING: No report metadata files were retrieved!"
+            echo "This could mean:"
+            echo "  - Reports are standard/managed and cannot be retrieved"
+            echo "  - User lacks permission to retrieve report metadata"
+            echo "  - Reports exist only as data records, not as metadata"
+          fi
             
       - name: Verify files exist
         run: ls -l data
