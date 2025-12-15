@@ -128,7 +128,14 @@ jobs:
           sf project generate --name reports-project --manifest
           cd reports-project
           
-          # Build package.xml with CORRECT <n> tag
+          # Build package.xml with CORRECT format
+          cat > manifest/package.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+            <types>
+          EOF
+          
+          # Add members from jq
           jq -r '
             # Extract records array from various response structures
             def extract_records:
@@ -156,15 +163,19 @@ jobs:
                 []
               end;
             
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n  <types>" +
-            (
-              extract_records 
-              | map(select(.DeveloperName != null and (.DeveloperName | type == "string"))) 
-              | map("    <members>\(.DeveloperName)</members>") 
-              | join("\n")
-            ) +
-            "\n    <n>Report</n>\n  </types>\n  <version>59.0</version>\n</Package>"
-          ' "../$REPORTS_JSON" > manifest/package.xml
+            extract_records 
+            | map(select(.DeveloperName != null and (.DeveloperName | type == "string"))) 
+            | map("      <members>\(.DeveloperName)</members>") 
+            | join("\n")
+          ' "../$REPORTS_JSON" >> manifest/package.xml
+          
+          # Close the XML
+          cat >> manifest/package.xml << 'EOF'
+              <name>Report</name>
+            </types>
+            <version>59.0</version>
+          </Package>
+          EOF
           
           # Debug: Show the generated package.xml
           echo "📄 Generated package.xml (first 30 lines):"
