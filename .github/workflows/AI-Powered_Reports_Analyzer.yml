@@ -114,24 +114,23 @@ jobs:
 
           # ⚠️ IMPORTANT: heredoc markers MUST NOT be indented
           {
-            cat <<'XML_HEADER'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-              <types>
-            XML_HEADER
-
+          cat <<'XML_HEADER'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+            <types>
+          XML_HEADER
+          
             for name in "${DEVNAMES[@]}"; do
               printf '    <members>%s</members>\n' "$name"
             done
-
-            cat <<'XML_FOOTER'
-                <name>Report</name>
-              </types>
-              <version>59.0</version>
-            </Package>
-            XML_FOOTER
+          
+          cat <<'XML_FOOTER'
+              <name>Report</name>
+            </types>
+            <version>59.0</version>
+          </Package>
+          XML_FOOTER
           } > manifest/package.xml
-
           echo "📄 Generated package.xml (first 30 lines):"
           head -30 manifest/package.xml
 
