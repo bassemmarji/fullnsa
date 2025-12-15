@@ -128,15 +128,9 @@ jobs:
           sf project generate --name reports-project --manifest
           cd reports-project
           
-          # Build package.xml with CORRECT format
-          cat > manifest/package.xml << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-            <types>
-          EOF
-          
-          # Add members from jq
-          jq -r '
+          # Extract DeveloperNames to array
+          echo "📋 Extracting DeveloperNames..."
+          mapfile -t DEVNAMES < <(jq -r '
             # Extract records array from various response structures
             def extract_records:
               if type == "object" then
@@ -165,17 +159,37 @@ jobs:
             
             extract_records 
             | map(select(.DeveloperName != null and (.DeveloperName | type == "string"))) 
-            | map("      <members>\(.DeveloperName)</members>") 
-            | join("\n")
-          ' "../$REPORTS_JSON" >> manifest/package.xml
+            | .[]
+            | .DeveloperName
+          ' "../$REPORTS_JSON")
           
-          # Close the XML
-          cat >> manifest/package.xml << 'EOF'
-              <name>Report</name>
-            </types>
-            <version>59.0</version>
-          </Package>
-          EOF
+          echo "📊 Extracted ${#DEVNAMES[@]} DeveloperNames"
+          echo "First 5: ${DEVNAMES[@]:0:5}"
+          
+          if [ "${#DEVNAMES[@]}" -eq 0 ]; then
+            echo "⚠️  No valid DeveloperNames found. Skipping retrieval."
+            exit 0
+          fi
+          
+          # Build package.xml using printf for better control
+          {
+            cat << 'XML_HEADER'
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+XML_HEADER
+            
+            for name in "${DEVNAMES[@]}"; do
+              printf '    <members>%s</members>\n' "$name"
+            done
+            
+            cat << 'XML_FOOTER'
+    <name>Report</name>
+  </types>
+  <version>59.0</version>
+</Package>
+XML_FOOTER
+          } > manifest/package.xml
           
           # Debug: Show the generated package.xml
           echo "📄 Generated package.xml (first 30 lines):"
