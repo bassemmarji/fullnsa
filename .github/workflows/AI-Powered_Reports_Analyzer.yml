@@ -115,24 +115,23 @@ jobs:
       
           # Generate correct package.xml
           {
-            cat <<'XML_HEADER'
-              <?xml version="1.0" encoding="UTF-8"?>
-              <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-                <types>
-              XML_HEADER
-      
-            while IFS= read -r member; do
-              # Escape & to &amp; (common in names), and other XML entities if needed
-              escaped=$(echo "$member" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-              printf '    <members>%s</members>\n' "$escaped"
-            done < ../report_members.txt
-      
-            cat <<'XML_FOOTER'
-                <name>Report</name>
-              </types>
-              <version>62.0</version>
-            </Package>
-            XML_FOOTER
+          cat <<'XML_HEADER'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+            <types>
+          XML_HEADER
+          
+          while IFS= read -r member; do
+            escaped=$(echo "$member" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            printf '    <members>%s</members>\n' "$escaped"
+          done < ../report_members.txt
+          
+          cat <<'XML_FOOTER'
+            <name>Report</name>
+          </types>
+          <version>62.0</version>
+          </Package>
+          XML_FOOTER
           } > manifest/package.xml
       
           echo "📄 Generated package.xml (first 40 lines):"
