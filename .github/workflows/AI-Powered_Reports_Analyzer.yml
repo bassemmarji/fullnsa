@@ -61,7 +61,7 @@ jobs:
             --result-format json > data/report_events.json
       
 
-      - name: 📦 Retrieve All Reports Metadata (Debug-Safe - Fixed with FolderName)
+      - name: Retrieve All Reports Metadata (Debug-Safe - Fixed with FolderName)
         run: |
           set -euo pipefail
       
@@ -94,7 +94,7 @@ jobs:
           # Generate members
           jq -r '
             .result.records[]
-            | select(.DeveloperName != null)
+            | select(.DeveloperName != null and (.NamespacePrefix // "") == "") 
             | .FolderName as $folder
             | .DeveloperName as $dev
             | if ($folder | ascii_downcase | contains("unfiled") or $folder == "" or $folder == null) then
@@ -102,8 +102,8 @@ jobs:
               else
                 "\($folder)/\($dev)"
               end
-          ' "../$REPORTS_FOR_RETRIEVE_JSON" > report_members.txt
-          
+          ' "../$REPORTS_FOR_RETRIEVE_JSON" > report_members_filtered.txt
+
           REPORT_MEMBERS_FILE="$(pwd)/report_members.txt"
           
           # Create temporary project
@@ -138,9 +138,8 @@ jobs:
           sf project retrieve start \
             --target-org "${{ github.event.inputs.org_alias }}" \
             --manifest manifest/package.xml \
-            --wait 60 \
-            --verbose || echo "⚠️ Retrieve completed with some warnings/errors (common for inaccessible or managed reports)"
-      
+            --wait 60 || echo "⚠️ Retrieve completed with some warnings/errors"
+            
           # Copy retrieved report metadata files back to data directory
           mkdir -p ../../data/report_metadata
           find force-app -type f -name "*.report-meta.xml" \
