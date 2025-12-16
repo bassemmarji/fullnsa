@@ -91,6 +91,7 @@ jobs:
       
           # Generate list of members: FolderName/ReportDeveloperName
           # Special handling: if FolderName is "Unfiled Public Reports" (or variations), use "unfiled$public"
+          # Generate members
           jq -r '
             .result.records[]
             | select(.DeveloperName != null)
@@ -102,18 +103,14 @@ jobs:
                 "\($folder)/\($dev)"
               end
           ' "../$REPORTS_FOR_RETRIEVE_JSON" > report_members.txt
-      
-          MEMBERS_COUNT=$(wc -l < report_members.txt | tr -d ' ')
-          echo "📊 Generated $MEMBERS_COUNT report members for package.xml"
-          echo "First 10 members:"
-          head -10 report_members.txt || true
-      
-          if [ "$MEMBERS_COUNT" -eq 0 ]; then
-            echo "⚠️ No valid report members generated. Skipping retrieve."
-            exit 0
-          fi
-      
-          # Generate correct package.xml
+          
+          REPORT_MEMBERS_FILE="$(pwd)/report_members.txt"
+          
+          # Create temporary project
+          sf project generate --name reports-project --manifest
+          cd reports-project
+          
+          # Use absolute path here 👇
           {
           cat <<'XML_HEADER'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -124,7 +121,7 @@ jobs:
           while IFS= read -r member; do
             escaped=$(echo "$member" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
             printf '    <members>%s</members>\n' "$escaped"
-          done < ../report_members.txt
+          done < "$REPORT_MEMBERS_FILE"
           
           cat <<'XML_FOOTER'
             <name>Report</name>
@@ -133,7 +130,7 @@ jobs:
           </Package>
           XML_FOOTER
           } > manifest/package.xml
-      
+
           echo "📄 Generated package.xml (first 40 lines):"
           head -40 manifest/package.xml
       
