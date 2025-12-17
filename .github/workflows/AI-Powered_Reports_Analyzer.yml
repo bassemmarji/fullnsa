@@ -60,126 +60,101 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: 📦 Retrieve All Reports Metadata (Fixed)
+      - name: Retrieve Reports with Folder Paths (Correct Format)
         run: |
           set -euo pipefail
       
           ROOT_DIR="$PWD"
-          REPORTS_JSON="sf_reports_list.json"
+          mkdir -p data
       
-          echo "🔍 Fetching reports with FolderName, DeveloperName, and NamespacePrefix..."
+          echo "🔍 Step 1: Fetch Reports + Folders..."
+          
+          # Get all reports with FolderName
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT FolderName, DeveloperName, NamespacePrefix FROM Report WHERE DeveloperName != null" \
-            --result-format json > "$REPORTS_JSON"
+            --query "SELECT Id, Name, DeveloperName, FolderName, NamespacePrefix FROM Report WHERE DeveloperName != null" \
+            --result-format json > data/reports_raw.json
       
-          echo "📄 First 10 lines of reports query response:"
-          head -10 "$REPORTS_JSON"
+          # Get Folder DeveloperNames (critical for path format)
+          sf data query \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --query "SELECT Id, DeveloperName, Name FROM Folder WHERE Type = 'Report'" \
+            --result-format json > data/folders.json
       
-          COUNT=$(jq -r '
-            if has("result") and (.result.records | type) == "array" then
-              .result.records | length
-            elif has("records") and (.records | type) == "array" then
-              .records | length
-            else
-              0
-            end
-          ' "$REPORTS_JSON")
+          echo "📊 Found reports:"
+          jq -r '.result.records | length' data/reports_raw.json
+          echo "📊 Found folders:"
+          jq -r '.result.records | length' data/folders.json
       
-          echo "✅ Found $COUNT reports with DeveloperName."
-      
-          if [ "$COUNT" -eq 0 ]; then
-            echo "⚠️  No reports to include in manifest."
-            exit 0
-          fi
-      
-          # Generate project ONCE at ROOT_DIR
+          # Step 2: Generate folderName/developerName paths
+          echo "🔍 Step 2: Building folder/report paths..."
+          
           sf project generate --name reports-project --manifest
           cd reports-project
       
-          # Create member list file inside the existing project directory
-          REPORT_MEMBERS_FILE="report_members.txt"
-          : > "$REPORT_MEMBERS_FILE"
-      
-          # Extract DeveloperNames into report_members.txt
+          # Create lookup: FolderName -> FolderDeveloperName
           jq -r '
-            if has("result") and (.result.records | type) == "array" then
-              .result.records[]
-            elif has("records") and (.records | type) == "array" then
-              .records[]
-            else
-              empty
-            end
-            | select(.DeveloperName != null and .DeveloperName != "")
-            | .DeveloperName
-          ' "$ROOT_DIR/$REPORTS_JSON" >> "$REPORT_MEMBERS_FILE"
+            # Build folder lookup map
+            (.[1].result.records // .[1].records // []) as $folders |
+            $folders | map({(.Name): .DeveloperName}) | add as $folderMap |
+            
+            # Process reports
+            (.[0].result.records // .[0].records // []) as $reports |
+            $reports[] |
+            select(.DeveloperName != null and .DeveloperName != "") |
+            (.FolderName // "Unspecified") as $folderName |
+            ($folderMap[$folderName // "Unspecified"] // $folderName // "Unspecified") as $folderDevName |
+            "\($folderDevName)/\(.DeveloperName)"
+          ' "$ROOT_DIR/data/reports_raw.json" "$ROOT_DIR/data/folders.json" > report_paths.txt
       
-          MEMBERS_COUNT=$(wc -l < "$REPORT_MEMBERS_FILE" | tr -d '[:space:]')
-          echo "📊 report_members.txt contains $MEMBERS_COUNT entries"
+          PATH_COUNT=$(wc -l < report_paths.txt | tr -d '[:space:]')
+          echo "✅ Generated $PATH_COUNT folder/report paths"
       
-          if [ "$MEMBERS_COUNT" -eq 0 ]; then
-            echo "❌ No valid report members found. Aborting metadata retrieval."
+          head -10 report_paths.txt
+      
+          if [ "$PATH_COUNT" -eq 0 ]; then
+            echo "⚠️ No valid paths generated. Exiting."
             exit 0
           fi
       
-          # Build package.xml
+          # Step 3: Build package.xml with paths
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
             echo '  <types>'
-            while IFS= read -r name; do
-              [ -z "$name" ] && continue
-              echo "    <members>$name</members>"
-            done < "$REPORT_MEMBERS_FILE"
+            while IFS= read -r path; do
+              [ -n "$path" ] && echo "    <members>$path</members>"
+            done < report_paths.txt
             echo '    <name>Report</name>'
             echo '  </types>'
             echo '  <version>59.0</version>'
             echo '</Package>'
           } > manifest/package.xml
       
-          echo "📄 Generated package.xml (first 30 lines):"
-          head -30 manifest/package.xml
+          MEMBERS_COUNT=$(grep -c "<members>" manifest/package.xml)
+          echo "📄 package.xml contains $MEMBERS_COUNT members"
       
-          MEMBERS_IN_XML=$(grep -c "<members>" manifest/package.xml || echo "0")
-          echo "📊 package.xml contains $MEMBERS_IN_XML <members> entries"
-      
-          if [ "$MEMBERS_IN_XML" -eq 0 ]; then
-            echo "❌ No <members> found in package.xml. Aborting retrieve."
-            exit 0
-          fi
-      
-          echo "📦 Retrieving metadata for $COUNT reports..."
+          # Step 4: Retrieve
+          echo "🚀 Retrieving $PATH_COUNT reports with folder paths..."
           if sf project retrieve start \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --manifest manifest/package.xml 2>&1 | tee retrieve_output.log; then
-            echo "✅ Retrieve command completed"
+            --manifest manifest/package.xml 2>&1 | tee retrieve.log; then
+            echo "✅ Retrieve completed"
           else
-            echo "⚠️  Retrieve command failed or returned no results"
-            cat retrieve_output.log
+            echo "⚠️ Some reports failed (expected for managed/standard)"
+            grep -i "not found\|failed" retrieve.log || true
           fi
       
-          echo "📂 Checking retrieved files..."
+          # Step 5: Copy results
           mkdir -p "$ROOT_DIR/data/report_metadata"
+          find force-app -type f -name "*.report" -o -name "*.report-meta.xml" \
+            -exec cp --parents {} "$ROOT_DIR/data/report_metadata/" \; 2>/dev/null || true
       
-          if [ -d "force-app/main/default/reports" ]; then
-            echo "✅ Reports directory exists"
-            ls -la force-app/main/default/reports/ || echo "Directory is empty"
-            cp -rv force-app/main/default/reports/* "$ROOT_DIR/data/report_metadata/" 2>&1 || echo "⚠️  No files to copy from reports directory"
-          else
-            echo "⚠️  Reports directory not found. Searching for *.report-meta.xml..."
-            find force-app -type f -name "*.report-meta.xml" -exec cp {} "$ROOT_DIR/data/report_metadata/" \; 2>/dev/null || true
-          fi
-      
-          TOTAL=$(find "$ROOT_DIR/data/report_metadata" -name "*.report-meta.xml" 2>/dev/null | wc -l)
-          echo "✅ Successfully collected $TOTAL report metadata files."
-      
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "⚠️  WARNING: No report metadata files were retrieved!"
-            echo "This could mean:"
-            echo "  - Reports are standard/managed and cannot be retrieved"
-            echo "  - User lacks permission to retrieve report metadata"
-            echo "  - Reports exist only as data records, not as metadata"
-          fi
+          TOTAL_FILES=$(find "$ROOT_DIR/data/report_metadata" -type f \( -name "*.report" -o -name "*.report-meta.xml" \) | wc -l)
+          echo "✅ Retrieved $TOTAL_FILES report files"
+          
+          ls -la "$ROOT_DIR/data/report_metadata" || echo "No metadata retrieved"
+
 
           
       - name: Verify files exist
