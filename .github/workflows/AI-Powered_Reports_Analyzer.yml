@@ -60,11 +60,12 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: Retrieve Reports with Folder Paths (jq FIXED v4 – GitHub compatible)
+      - name: Retrieve Reports with Folder Paths (jq FIXED v5 – SFDX SAFE)
         run: |
           set -euo pipefail
+      
           ROOT_DIR="$PWD"
-          mkdir -p data manifest
+          mkdir -p data manifest force-app
       
           echo "🔍 Step 1: Fetch Reports + Folders..."
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
@@ -75,7 +76,7 @@ jobs:
             --query "SELECT Id, DeveloperName, Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > data/folders.json
       
-          echo "🔍 Step 2: Build processed inputs..."
+          echo "🔍 Step 2: Normalize inputs..."
       
           jq '
             def records:
@@ -99,7 +100,7 @@ jobs:
             | from_entries
           ' data/folders.json > temp_folder_map.json
       
-          echo "🔍 Step 3: Combine reports + folders (jq 1.6 compatible)..."
+          echo "🔍 Step 3: Build folder/report paths (jq 1.6 compatible)..."
       
           jq -r --slurpfile folderMap temp_folder_map.json '
             .[] |
@@ -130,8 +131,8 @@ jobs:
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
             echo '  <types>'
-            while read -r path; do
-              echo "    <members>$path</members>"
+            while IFS= read -r path; do
+              [ -n "$path" ] && echo "    <members>$path</members>"
             done < report_paths.txt
             echo '    <name>Report</name>'
             echo '  </types>'
@@ -139,16 +140,35 @@ jobs:
             echo '</Package>'
           } > manifest/package.xml
       
+          echo "🧩 Ensuring SFDX project exists..."
+          if [ ! -f sfdx-project.json ]; then
+            cat <<EOF > sfdx-project.json
+      {
+        "packageDirectories": [
+          {
+            "path": "force-app",
+            "default": true
+          }
+        ],
+        "sourceApiVersion": "59.0"
+      }
+      EOF
+          fi
+      
           echo "📥 Retrieving reports..."
           sf project retrieve start \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --manifest manifest/package.xml || true
+            --manifest manifest/package.xml || echo "⚠️ Some reports failed to retrieve"
       
-          mkdir -p data/report_metadata
-          find force-app -type f -name "*.report*" -exec cp --parents {} data/report_metadata/ \; 2>/dev/null || true
+          echo "📁 Collecting retrieved metadata..."
+          mkdir -p "$ROOT_DIR/data/report_metadata"
+          find force-app -type f \
+            \( -name "*.report" -o -name "*.report-meta.xml" -o -name "*.reportFolder-meta.xml" \) \
+            -exec cp --parents {} "$ROOT_DIR/data/report_metadata/" \; 2>/dev/null || true
       
-          echo "✅ Retrieved $(find data/report_metadata -type f | wc -l) metadata files"
-
+          TOTAL=$(find "$ROOT_DIR/data/report_metadata" -type f | wc -l | tr -d '[:space:]')
+          echo "✅ Retrieved $TOTAL report metadata files"
+      
           
       - name: Verify files exist
         run: ls -l data
