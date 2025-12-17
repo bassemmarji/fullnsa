@@ -60,7 +60,7 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: Retrieve Reports with Folder Paths (jq FIXED v6 – HEREDOC SAFE)
+      - name: Retrieve Reports with Folder Paths (jq FIXED v6 – NO HEREDOC)
         shell: bash
         run: |
           set -euo pipefail
@@ -143,17 +143,16 @@ jobs:
       
           echo "🧩 Ensuring SFDX project exists..."
           if [ ! -f sfdx-project.json ]; then
-            cat > sfdx-project.json <<'EOF'
-            {
-              "packageDirectories": [
-                {
-                  "path": "force-app",
-                  "default": true
-                }
-              ],
-              "sourceApiVersion": "59.0"
-            }
-            EOF
+            printf '%s\n' \
+              '{' \
+              '  "packageDirectories": [' \
+              '    {' \
+              '      "path": "force-app",' \
+              '      "default": true' \
+              '    }' \
+              '  ],' \
+              '  "sourceApiVersion": "59.0"' \
+              '}' > sfdx-project.json
           fi
       
           echo "📥 Retrieving reports..."
@@ -169,7 +168,7 @@ jobs:
       
           TOTAL=$(find "$ROOT_DIR/data/report_metadata" -type f | wc -l | tr -d '[:space:]')
           echo "✅ Retrieved $TOTAL report metadata files"
-      
+            
           
       - name: Verify files exist
         run: ls -l data
