@@ -174,6 +174,10 @@ jobs:
         run: |
           set -euo pipefail
       
+          echo "🔧 Installing XML tools..."
+          sudo apt-get update -qq
+          sudo apt-get install -y libxml2-utils
+      
           REPORT_ROOT="data/report_metadata/force-app/main/default/reports"
           OUT="data/report_xml_analysis"
           mkdir -p "$OUT"
@@ -181,14 +185,15 @@ jobs:
           echo "report_path,report_name,api_version,base_object,field,field_type" \
             > "$OUT/report_fields.csv"
       
+          echo "🔍 Parsing report XML files..."
+      
           find "$REPORT_ROOT" -name "*.report-meta.xml" | while read -r file; do
             report_path="${file#*/reports/}"
             report_name="$(basename "$file" .report-meta.xml)"
       
-            api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || echo "")"
-            base_object="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || echo "")"
+            api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || true)"
+            base_object="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || true)"
       
-            # Extract ALL field references (columns, filters, formulas, buckets)
             xmllint --xpath '
               //columns/field/text() |
               //filter/field/text() |
@@ -218,21 +223,18 @@ jobs:
       
           echo "📊 Aggregations..."
       
-          # API versions
           awk -F',' '
             NR>1 { gsub(/"/,"",$3); count[$3]++ }
             END { for (v in count) print v "," count[v] }
           ' "$OUT/report_fields.csv" \
             | sort > "$OUT/reports_by_api_version.csv"
       
-          # Base objects
           awk -F',' '
             NR>1 { gsub(/"/,"",$4); count[$4]++ }
             END { for (o in count) print o "," count[o] }
           ' "$OUT/report_fields.csv" \
             | sort > "$OUT/reports_by_base_object.csv"
       
-          # Field usage
           awk -F',' '
             NR>1 {
               gsub(/"/,"",$5);
@@ -251,7 +253,7 @@ jobs:
       
           echo "✅ Report metadata extraction complete"
           ls -l "$OUT"
-
+      
           
       - name: Verify files exist
         run: ls -l data
