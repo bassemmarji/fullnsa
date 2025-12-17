@@ -60,6 +60,7 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
+
       - name: Retrieve Reports with Folder Paths (jq FIXED)
         run: |
           set -euo pipefail
@@ -75,39 +76,36 @@ jobs:
             --query "SELECT Id, DeveloperName, Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > data/folders.json
      
-          echo "🔍 Step 2: Building folder/report paths (FIXED)..."
+          echo "🔍 Step 2: Building folder/report paths (FIXED v2)..."
      
-          # Single jq call that handles both files, null DeveloperNames, and Unfiled Public Reports
           jq -r '
-            # Load reports (first input)
-            (input | 
-              if has("result") and (.result.records|type)=="array" then .result.records 
-              elif has("records") and (.records|type)=="array" then .records 
-              else [] 
-              end | 
-              map(select(.DeveloperName != null))
-            ) as $reports |
+            # Extract records safely (handle both old/new CLI output formats)
+            def get_records:
+              if has("result") and (.result.records | type == "array") then .result.records
+              elif has("records") and (.records | type == "array") then .records
+              else empty
+              end;
      
-            # Load folders (second input)
-            (input |
-              if has("result") and (.result.records|type)=="array" then .result.records 
-              elif has("records") and (.records|type)=="array" then .records 
-              else [] 
-              end
-            ) as $folders |
+            # Load reports
+            (input | get_records | map(select(.DeveloperName != null))) as $reports |
      
-            # Build map only from custom folders with non-null DeveloperName
+            # Load folders
+            (input | get_records) as $folders |
+     
+            # Build map: folder display Name -> DeveloperName (only for custom folders with non-null DeveloperName)
             ($folders | map(select(.DeveloperName != null) | {key: .Name, value: .DeveloperName}) | from_entries) as $customFolderMap |
      
-            # Detect if Unfiled Public Reports exists and map to special metadata name
-            (if ($folders | any(.Name == "Unfiled Public Reports")) then "unfiled$public" else "UnfiledPublic" end) as $unfiledDevName |
+            # Check if Unfiled Public Reports exists (covers both Classic and Lightning display names)
+            ($folders | any(.Name == "Unfiled Public Reports" or .Name == "Public Reports")) as $hasUnfiled |
      
             # Process each report
             $reports[] |
-            (if .FolderName == "Unfiled Public Reports" then $unfiledDevName
-             elif $customFolderMap[.FolderName] != null then $customFolderMap[.FolderName]
-             else "Unspecified"  # Private reports, My Personal, or unknown
-             end) as $folderDevName |
+            (
+              if .FolderName == "Unfiled Public Reports" or .FolderName == "Public Reports" or $hasUnfiled then "unfiled$public"
+              elif $customFolderMap[.FolderName] != null then $customFolderMap[.FolderName]
+              else "Unspecified"  # Private or unknown - skip retrieve
+              end
+            ) as $folderDevName |
             "\($folderDevName)/\(.DeveloperName)"
           ' "$ROOT_DIR/data/reports_raw.json" "$ROOT_DIR/data/folders.json" > report_paths.txt
      
@@ -116,7 +114,7 @@ jobs:
           head -10 report_paths.txt || true
      
           if [ "$PATH_COUNT" -eq 0 ]; then
-            echo "⚠️ No valid report paths generated. Skipping retrieve."
+            echo "⚠️ No retrievable public report paths generated. Skipping metadata retrieve."
             exit 0
           fi
      
@@ -133,14 +131,13 @@ jobs:
           } > manifest/package.xml
      
           echo "📦 Retrieving $PATH_COUNT reports..."
-          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml || echo "⚠️ Some reports may have failed to retrieve (common for private or restricted reports)"
+          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml || echo "⚠️ Some reports failed to retrieve (common for restricted or private reports)"
      
           mkdir -p "$ROOT_DIR/data/report_metadata"
           find force-app -type f \( -name "*.report" -o -name "*.report-meta.xml" \) -exec cp --parents {} "$ROOT_DIR/data/report_metadata/" \; 2>/dev/null || true
      
           TOTAL=$(find "$ROOT_DIR/data/report_metadata" -type f \( -name "*.report" -o -name "*.report-meta.xml" \) | wc -l)
-          echo "✅ Retrieved $TOTAL report metadata files into data/report_metadata/"
-
+          echo "✅ Retrieved $TOTAL report metadata files"
           
       - name: Verify files exist
         run: ls -l data
