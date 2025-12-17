@@ -63,84 +63,124 @@ jobs:
       - name: 📦 Retrieve All Reports Metadata (Fixed)
         run: |
           set -euo pipefail
+      
+          ROOT_DIR="$PWD"
           REPORTS_JSON="sf_reports_list.json"
-          
-          # Get DeveloperNames (simplified query parsing)
+      
+          echo "🔍 Fetching reports with FolderName, DeveloperName, and NamespacePrefix..."
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT DeveloperName FROM Report WHERE DeveloperName != null" \
+            --query "SELECT FolderName, DeveloperName, NamespacePrefix FROM Report WHERE DeveloperName != null" \
             --result-format json > "$REPORTS_JSON"
-          
-          # Extract DeveloperNames with simple jq (handles all response structures)
-          REPORT_NAMES=$(jq -r '
+      
+          echo "📄 First 10 lines of reports query response:"
+          head -10 "$REPORTS_JSON"
+      
+          COUNT=$(jq -r '
             if has("result") and (.result.records | type) == "array" then
-              .result.records[]?.DeveloperName // empty
-            elif (.records | type) == "array" then
-              .records[]?.DeveloperName // empty
+              .result.records | length
+            elif has("records") and (.records | type) == "array" then
+              .records | length
+            else
+              0
+            end
+          ' "$REPORTS_JSON")
+      
+          echo "✅ Found $COUNT reports with DeveloperName."
+      
+          if [ "$COUNT" -eq 0 ]; then
+            echo "⚠️  No reports to include in manifest."
+            exit 0
+          fi
+      
+          # Generate project ONCE at ROOT_DIR
+          sf project generate --name reports-project --manifest
+          cd reports-project
+      
+          # Create member list file inside the existing project directory
+          REPORT_MEMBERS_FILE="report_members.txt"
+          : > "$REPORT_MEMBERS_FILE"
+      
+          # Extract DeveloperNames into report_members.txt
+          jq -r '
+            if has("result") and (.result.records | type) == "array" then
+              .result.records[]
+            elif has("records") and (.records | type) == "array" then
+              .records[]
             else
               empty
             end
-            | select(. != null and . != "")
-          ' "$REPORTS_JSON")
-          
-          REPORT_COUNT=$(echo "$REPORT_NAMES" | wc -l)
-          echo "✅ Found $REPORT_COUNT report DeveloperNames"
-          
-          if [ "$REPORT_COUNT" -eq 0 ]; then
-            echo "⚠️ No reports with DeveloperName found. Skipping metadata retrieval."
+            | select(.DeveloperName != null and .DeveloperName != "")
+            | .DeveloperName
+          ' "$ROOT_DIR/$REPORTS_JSON" >> "$REPORT_MEMBERS_FILE"
+      
+          MEMBERS_COUNT=$(wc -l < "$REPORT_MEMBERS_FILE" | tr -d '[:space:]')
+          echo "📊 report_members.txt contains $MEMBERS_COUNT entries"
+      
+          if [ "$MEMBERS_COUNT" -eq 0 ]; then
+            echo "❌ No valid report members found. Aborting metadata retrieval."
             exit 0
           fi
-          
-          # Generate project
-          sf project generate --name reports-project --manifest
-          cd reports-project
-          
-          # Build package.xml with direct member insertion
-          cat > manifest/package.xml << EOF
-            <?xml version="1.0" encoding="UTF-8"?>
-            <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-              <types>
-            EOF
-                
-                echo "$REPORT_NAMES" | while IFS= read -r name; do
-                  echo "    <members>$name</members>"
-                done >> manifest/package.xml
-                
-                cat >> manifest/package.xml << EOF
-                <name>Report</name>
-              </types>
-              <version>59.0</version>
-            </Package>
-            EOF
-          
-          # Verify package.xml
-          MEMBERS_COUNT=$(grep -c "<members>" manifest/package.xml)
-          echo "📊 Package.xml contains $MEMBERS_COUNT members"
-          
-          if [ "$MEMBERS_COUNT" -eq 0 ]; then
-            echo "❌ No members in package.xml - cannot proceed"
-            exit 1
+      
+          # Build package.xml
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
+            echo '  <types>'
+            while IFS= read -r name; do
+              [ -z "$name" ] && continue
+              echo "    <members>$name</members>"
+            done < "$REPORT_MEMBERS_FILE"
+            echo '    <name>Report</name>'
+            echo '  </types>'
+            echo '  <version>59.0</version>'
+            echo '</Package>'
+          } > manifest/package.xml
+      
+          echo "📄 Generated package.xml (first 30 lines):"
+          head -30 manifest/package.xml
+      
+          MEMBERS_IN_XML=$(grep -c "<members>" manifest/package.xml || echo "0")
+          echo "📊 package.xml contains $MEMBERS_IN_XML <members> entries"
+      
+          if [ "$MEMBERS_IN_XML" -eq 0 ]; then
+            echo "❌ No <members> found in package.xml. Aborting retrieve."
+            exit 0
           fi
-          
-          # Retrieve metadata
-          echo "📦 Retrieving $REPORT_COUNT reports..."
+      
+          echo "📦 Retrieving metadata for $COUNT reports..."
           if sf project retrieve start \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --manifest manifest/package.xml; then
-            echo "✅ Retrieve successful"
+            --manifest manifest/package.xml 2>&1 | tee retrieve_output.log; then
+            echo "✅ Retrieve command completed"
           else
-            echo "⚠️ Retrieve failed - likely permission issue or managed reports"
+            echo "⚠️  Retrieve command failed or returned no results"
+            cat retrieve_output.log
           fi
-          
-          # Copy results
-          mkdir -p ../../data/report_metadata
+      
+          echo "📂 Checking retrieved files..."
+          mkdir -p "$ROOT_DIR/data/report_metadata"
+      
           if [ -d "force-app/main/default/reports" ]; then
-            cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>&1 || true
+            echo "✅ Reports directory exists"
+            ls -la force-app/main/default/reports/ || echo "Directory is empty"
+            cp -rv force-app/main/default/reports/* "$ROOT_DIR/data/report_metadata/" 2>&1 || echo "⚠️  No files to copy from reports directory"
+          else
+            echo "⚠️  Reports directory not found. Searching for *.report-meta.xml..."
+            find force-app -type f -name "*.report-meta.xml" -exec cp {} "$ROOT_DIR/data/report_metadata/" \; 2>/dev/null || true
           fi
-          find force-app -name "*.report-meta.xml" -exec cp {} ../../data/report_metadata/ \; 2>&1 || true
-          
-          TOTAL_METADATA=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
-          echo "✅ Retrieved $TOTAL_METADATA metadata files"
+      
+          TOTAL=$(find "$ROOT_DIR/data/report_metadata" -name "*.report-meta.xml" 2>/dev/null | wc -l)
+          echo "✅ Successfully collected $TOTAL report metadata files."
+      
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "⚠️  WARNING: No report metadata files were retrieved!"
+            echo "This could mean:"
+            echo "  - Reports are standard/managed and cannot be retrieved"
+            echo "  - User lacks permission to retrieve report metadata"
+            echo "  - Reports exist only as data records, not as metadata"
+          fi
+
           
       - name: Verify files exist
         run: ls -l data
