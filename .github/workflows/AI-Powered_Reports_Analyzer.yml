@@ -171,6 +171,7 @@ jobs:
             
       
       - name: Parse Salesforce Report XML
+        shell: bash
         run: |
           set -euo pipefail
       
@@ -191,7 +192,6 @@ jobs:
             api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || echo "")"
             base_object="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || echo "")"
       
-            # Extract all field references (columns, filters, formulas, buckets)
             FIELDS=$(xmllint --xpath '
               //columns/field/text() |
               //filter/field/text() |
@@ -221,18 +221,14 @@ jobs:
       
           echo "📊 Aggregating results..."
       
-          # Reports by API version
           awk -F',' 'NR>1 { gsub(/"/,"",$3); count[$3]++ } END { for (v in count) print v "," count[v] }' "$OUT/report_fields.csv" | sort > "$OUT/reports_by_api_version.csv"
       
-          # Reports by Base Object
           awk -F',' 'NR>1 { gsub(/"/,"",$4); count[$4]++ } END { for (o in count) print o "," count[o] }' "$OUT/report_fields.csv" | sort > "$OUT/reports_by_base_object.csv"
       
-          # Field usage summary
           awk -F',' 'NR>1 { gsub(/"/,"",$5); gsub(/"/,"",$6); key=$5 "|" $6; count[key]++ } END { for (k in count) { split(k,a,"|"); print a[1] "," a[2] "," count[k] } }' "$OUT/report_fields.csv" | sort > "$OUT/field_usage_summary.csv"
       
           echo "✅ Report XML parsing complete. Results in $OUT:"
           ls -l "$OUT"
-        shell: /usr/bin/bash --noprofile --norc -e -o pipefail
           
       - name: Verify files exist
         run: ls -l data
