@@ -60,7 +60,8 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-      - name: Retrieve Reports with Folder Paths (jq FIXED v5 – SFDX SAFE)
+      - name: Retrieve Reports with Folder Paths (jq FIXED v6 – HEREDOC SAFE)
+        shell: bash
         run: |
           set -euo pipefail
       
@@ -142,7 +143,7 @@ jobs:
       
           echo "🧩 Ensuring SFDX project exists..."
           if [ ! -f sfdx-project.json ]; then
-            cat <<EOF > sfdx-project.json
+            cat > sfdx-project.json <<'EOF'
             {
               "packageDirectories": [
                 {
