@@ -60,107 +60,87 @@ jobs:
             --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
             --result-format json > data/report_events.json
       
-
-      - name: Retrieve All Reports Metadata (Debug-Safe - Fixed with FolderName)
+      - name: 📦 Retrieve All Reports Metadata (Fixed)
         run: |
           set -euo pipefail
-      
-          # Temporary files
-          REPORTS_FOR_RETRIEVE_JSON="data/reports_for_retrieve.json"
-      
-          echo "🔍 Fetching reports with FolderName, DeveloperName, and NamespacePrefix..."
+          REPORTS_JSON="sf_reports_list.json"
+          
+          # Get DeveloperNames (simplified query parsing)
           sf data query \
             --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT FolderName, DeveloperName, NamespacePrefix FROM Report WHERE DeveloperName != null" \
-            --result-format json > "$REPORTS_FOR_RETRIEVE_JSON"
-      
-          echo "📄 First 10 lines of reports query response:"
-          head -10 "$REPORTS_FOR_RETRIEVE_JSON"
-      
-          REPORT_COUNT=$(jq '.result.records | length // 0' "$REPORTS_FOR_RETRIEVE_JSON")
-          echo "✅ Found $REPORT_COUNT reports with DeveloperName."
-      
+            --query "SELECT DeveloperName FROM Report WHERE DeveloperName != null" \
+            --result-format json > "$REPORTS_JSON"
+          
+          # Extract DeveloperNames with simple jq (handles all response structures)
+          REPORT_NAMES=$(jq -r '
+            if has("result") and (.result.records | type) == "array" then
+              .result.records[]?.DeveloperName // empty
+            elif (.records | type) == "array" then
+              .records[]?.DeveloperName // empty
+            else
+              empty
+            end
+            | select(. != null and . != "")
+          ' "$REPORTS_JSON")
+          
+          REPORT_COUNT=$(echo "$REPORT_NAMES" | wc -l)
+          echo "✅ Found $REPORT_COUNT report DeveloperNames"
+          
           if [ "$REPORT_COUNT" -eq 0 ]; then
-            echo "⚠️ No reports to retrieve."
+            echo "⚠️ No reports with DeveloperName found. Skipping metadata retrieval."
             exit 0
           fi
-      
-          # Create temporary project for retrieve
-          sf project generate --name reports-project --manifest
-          cd reports-project
-      
-          # Generate list of members: FolderName/ReportDeveloperName
-          # Special handling: if FolderName is "Unfiled Public Reports" (or variations), use "unfiled$public"
-          # Generate members
-          jq -r '
-            .result.records[]
-            | select(.DeveloperName != null and (.NamespacePrefix // "") == "") 
-            | .FolderName as $folder
-            | .DeveloperName as $dev
-            | if ($folder | ascii_downcase | contains("unfiled") or $folder == "" or $folder == null) then
-                "unfiled$public/\($dev)"
-              else
-                "\($folder)/\($dev)"
-              end
-          ' "../$REPORTS_FOR_RETRIEVE_JSON" > report_members_filtered.txt
-
-          REPORT_MEMBERS_FILE="$(pwd)/report_members.txt"
           
-          # Create temporary project
+          # Generate project
           sf project generate --name reports-project --manifest
           cd reports-project
           
-          # Use absolute path here 👇
-          {
-          cat <<'XML_HEADER'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-            <types>
-          XML_HEADER
+          # Build package.xml with direct member insertion
+          cat > manifest/package.xml << EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Package xmlns="http://soap.sforce.com/2006/04/metadata">
+              <types>
+            EOF
+                
+                echo "$REPORT_NAMES" | while IFS= read -r name; do
+                  echo "    <members>$name</members>"
+                done >> manifest/package.xml
+                
+                cat >> manifest/package.xml << EOF
+                <name>Report</name>
+              </types>
+              <version>59.0</version>
+            </Package>
+            EOF
           
-          while IFS= read -r member; do
-            escaped=$(echo "$member" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-            printf '    <members>%s</members>\n' "$escaped"
-          done < "$REPORT_MEMBERS_FILE"
+          # Verify package.xml
+          MEMBERS_COUNT=$(grep -c "<members>" manifest/package.xml)
+          echo "📊 Package.xml contains $MEMBERS_COUNT members"
           
-          cat <<'XML_FOOTER'
-            <name>Report</name>
-          </types>
-          <version>62.0</version>
-          </Package>
-          XML_FOOTER
-          } > manifest/package.xml
-
-          echo "📄 Generated package.xml (first 40 lines):"
-          head -40 manifest/package.xml
-      
-          echo "📦 Starting metadata retrieve..."
-          sf project retrieve start \
-            --target-org "${{ github.event.inputs.org_alias }}" \
-            --manifest manifest/package.xml \
-            --wait 60 || echo "⚠️ Retrieve completed with some warnings/errors"
-            
-          # Copy retrieved report metadata files back to data directory
-          mkdir -p ../../data/report_metadata
-          find force-app -type f -name "*.report-meta.xml" \
-            -exec cp {} ../../data/report_metadata/ \; 2>/dev/null || true
-          find force-app -type f -name "*.reportFolder-meta.xml" \
-            -exec cp {} ../../data/report_metadata/ \; 2>/dev/null || true  # In case folders are retrieved incidentally
-      
-          TOTAL=$(find ../../data/report_metadata -name "*.report-meta.xml" | wc -l)
-          echo "✅ Retrieved $TOTAL report metadata files."
-      
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "⚠️ WARNING: No report metadata retrieved."
-            echo "Possible reasons:"
-            echo " - Many reports are in managed packages or standard (not retrievable as custom metadata)"
-            echo " - Reports in private folders (not retrievable via Metadata API)"
-            echo " - Permission issues on some reports/folders"
-            echo " - FolderName contains special characters causing issues (check logs)"
-          else
-            echo "📂 Retrieved files preview:"
-            ls -l ../../data/report_metadata | head -15
+          if [ "$MEMBERS_COUNT" -eq 0 ]; then
+            echo "❌ No members in package.xml - cannot proceed"
+            exit 1
           fi
+          
+          # Retrieve metadata
+          echo "📦 Retrieving $REPORT_COUNT reports..."
+          if sf project retrieve start \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --manifest manifest/package.xml; then
+            echo "✅ Retrieve successful"
+          else
+            echo "⚠️ Retrieve failed - likely permission issue or managed reports"
+          fi
+          
+          # Copy results
+          mkdir -p ../../data/report_metadata
+          if [ -d "force-app/main/default/reports" ]; then
+            cp -r force-app/main/default/reports/* ../../data/report_metadata/ 2>&1 || true
+          fi
+          find force-app -name "*.report-meta.xml" -exec cp {} ../../data/report_metadata/ \; 2>&1 || true
+          
+          TOTAL_METADATA=$(find ../../data/report_metadata -name "*.report-meta.xml" 2>/dev/null | wc -l)
+          echo "✅ Retrieved $TOTAL_METADATA metadata files"
           
       - name: Verify files exist
         run: ls -l data
