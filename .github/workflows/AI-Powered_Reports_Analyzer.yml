@@ -143,16 +143,16 @@ jobs:
           echo "🧩 Ensuring SFDX project exists..."
           if [ ! -f sfdx-project.json ]; then
             cat <<EOF > sfdx-project.json
-      {
-        "packageDirectories": [
-          {
-            "path": "force-app",
-            "default": true
-          }
-        ],
-        "sourceApiVersion": "59.0"
-      }
-      EOF
+            {
+              "packageDirectories": [
+                {
+                  "path": "force-app",
+                  "default": true
+                }
+              ],
+              "sourceApiVersion": "59.0"
+            }
+            EOF
           fi
       
           echo "📥 Retrieving reports..."
