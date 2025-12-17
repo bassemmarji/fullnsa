@@ -169,6 +169,89 @@ jobs:
           TOTAL=$(find "$ROOT_DIR/data/report_metadata" -type f | wc -l | tr -d '[:space:]')
           echo "✅ Retrieved $TOTAL report metadata files"
             
+      - name: Parse Report XML Metadata (API, Objects, Fields)
+        shell: bash
+        run: |
+          set -euo pipefail
+      
+          REPORT_ROOT="data/report_metadata/force-app/main/default/reports"
+          OUT="data/report_xml_analysis"
+          mkdir -p "$OUT"
+      
+          echo "report_path,report_name,api_version,base_object,field,field_type" \
+            > "$OUT/report_fields.csv"
+      
+          find "$REPORT_ROOT" -name "*.report-meta.xml" | while read -r file; do
+            report_path="${file#*/reports/}"
+            report_name="$(basename "$file" .report-meta.xml)"
+      
+            api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || echo "")"
+            base_object="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || echo "")"
+      
+            # Extract ALL field references (columns, filters, formulas, buckets)
+            xmllint --xpath '
+              //columns/field/text() |
+              //filter/field/text() |
+              //summaryFormula/field/text() |
+              //rowLevelFormula/field/text() |
+              //bucketField/sourceColumnName/text()
+            ' "$file" 2>/dev/null \
+            | tr ' ' '\n' \
+            | sed '/^$/d' \
+            | sort -u \
+            | while read -r field; do
+      
+                if [[ "$field" == *__c ]]; then
+                  field_type="custom"
+                elif [[ "$field" =~ ^(IsDeleted|CreatedById|LastModifiedById)$ ]]; then
+                  field_type="system"
+                elif [[ "$field" =~ ^[A-Z][A-Za-z0-9_.]+$ ]]; then
+                  field_type="standard"
+                else
+                  field_type="legacy_or_unknown"
+                fi
+      
+                echo "\"$report_path\",\"$report_name\",\"$api_version\",\"$base_object\",\"$field\",\"$field_type\"" \
+                  >> "$OUT/report_fields.csv"
+            done
+          done
+      
+          echo "📊 Aggregations..."
+      
+          # API versions
+          awk -F',' '
+            NR>1 { gsub(/"/,"",$3); count[$3]++ }
+            END { for (v in count) print v "," count[v] }
+          ' "$OUT/report_fields.csv" \
+            | sort > "$OUT/reports_by_api_version.csv"
+      
+          # Base objects
+          awk -F',' '
+            NR>1 { gsub(/"/,"",$4); count[$4]++ }
+            END { for (o in count) print o "," count[o] }
+          ' "$OUT/report_fields.csv" \
+            | sort > "$OUT/reports_by_base_object.csv"
+      
+          # Field usage
+          awk -F',' '
+            NR>1 {
+              gsub(/"/,"",$5);
+              gsub(/"/,"",$6);
+              key=$5 "|" $6;
+              count[key]++
+            }
+            END {
+              for (k in count) {
+                split(k,a,"|");
+                print a[1] "," a[2] "," count[k]
+              }
+            }
+          ' "$OUT/report_fields.csv" \
+            | sort > "$OUT/field_usage_summary.csv"
+      
+          echo "✅ Report metadata extraction complete"
+          ls -l "$OUT"
+
           
       - name: Verify files exist
         run: ls -l data
