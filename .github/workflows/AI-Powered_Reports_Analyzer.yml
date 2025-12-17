@@ -475,5 +475,3 @@ jobs:
             data/format_table.md
             data/owner_table.md
             data/package_table.md
-          ollama pull "${{ github.event.inputs.model_name }}"
-          
