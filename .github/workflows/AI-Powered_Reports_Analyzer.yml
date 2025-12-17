@@ -17,7 +17,7 @@ env:
   DATA_DIR: "data"
 
 jobs:
- collect-metadata:
+collect-metadata:
   runs-on: ubuntu-latest
   steps:
     - name: Checkout
