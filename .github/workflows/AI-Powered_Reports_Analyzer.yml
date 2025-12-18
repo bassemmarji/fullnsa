@@ -241,26 +241,22 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            (. [1] | if has("result") then .result.records else .records // [] end) as $folderList |
             (. [2] | if has("result") then .result.records else .records // [] end) as $userList |
-            ($folderList | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $folders |
-            ($userList   | map(select(.Id != null) | {(.Id): .Name}) | add // {}) as $users |
+            ($userList | map({(.Id): .Name}) | add // {}) as $users |
             (. [0] | if has("result") then .result.records else .records // [] end) as $reports |
             $reports |
             map({
               Id: .Id,
               Name: .Name,
-              FolderName:
-                (if (.FolderId // null) != null and ($folders[.FolderId] // null) != null
-                 then $folders[.FolderId]
-                 else "Unspecified" end),
+              FolderName: (.FolderName // "Unspecified"),
               DeveloperName: .DeveloperName,
-              Format: .Format,
+              Format: (.Format // "Unknown"),
               OwnerId: .OwnerId,
               OwnerName:
-                (if (.OwnerId // null) != null and ($users[.OwnerId] // null) != null
+                (if .OwnerId != null and ($users[.OwnerId] // null) != null
                  then $users[.OwnerId]
-                 else "Unknown Owner" end),
+                 else (.Owner.Name // "Unknown Owner")
+                 end),
               Package: (.NamespacePrefix // "Unmanaged"),
               LastRunDays:
                 (if .LastRunDate == null then null
