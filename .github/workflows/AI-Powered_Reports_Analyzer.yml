@@ -182,8 +182,8 @@ jobs:
                }]' "$OUT/report_fields.json" > "$OUT/temp.json" && mv "$OUT/temp.json" "$OUT/report_fields.json"
           done
 
-          jq 'group_by(.api_version) | map({api_version: .[0].api_version, count: length})' "$OUT/report_fields.json" > "$OUT/reports_by_api_version.json"
-          jq 'group_by(.base_object) | map({base_object: .[0].base_object, count: length})' "$OUT/report_fields.json" > "$OUT/reports_by_base_object.json"
+          jq 'group_by(.api_version // "Unknown") | map({api_version: (.[0].api_version // "Unknown"), count: length})' "$OUT/report_fields.json" > "$OUT/reports_by_api_version.json"
+          jq 'group_by(.base_object // "Unknown") | map({base_object: (.[0].base_object // "Unknown"), count: length})' "$OUT/report_fields.json" > "$OUT/reports_by_base_object.json"
           jq '[.[] | .fields[] | {field: .field, type: .type}] | group_by(.field, .type) | map({field: .[0].field, type: .[0].type, count: length})' \
              "$OUT/report_fields.json" > "$OUT/field_usage_summary.json"
 
@@ -278,7 +278,11 @@ jobs:
           jq '{
             totalReports: length,
             neverRun: map(select(.LastRunDays == null)) | length,
-            staleReports: map(select(.LastRunDays != null and .LastRunDays > 180)) | length
+            staleReports: map(
+              select(
+                (.LastRunDays == null) or (.LastRunDays > 180)
+              )
+            ) | length
           }' data/reports_enriched.json > data/summary_stats.json
 
       - name: Reports by Folder
