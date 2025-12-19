@@ -70,48 +70,53 @@ jobs:
         run: |
           set -euo pipefail
           ROOT_DIR="$PWD"
-          mkdir -p ${{ env.DATA_DIR }} manifest force-app
-          
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, DeveloperName, Name FROM Folder WHERE Type = 'Report'" \
-            --result-format json > ${{ env.DATA_DIR }}/folders.json
-
-          jq 'def records: if has("result") then .result.records else .records // [] end;
-              records | map(select(.DeveloperName != null)) | map({DeveloperName: .DeveloperName, FolderName: (.FolderName // "Unspecified")})' \
+          mkdir -p manifest force-app
+      
+          # Build report list
+          jq '.result.records
+              | map(select(.DeveloperName != null))
+              | map({
+                  reportDev: .DeveloperName,
+                  folderName: (.FolderName // "Unfiled Public Reports")
+                })' \
             ${{ env.DATA_DIR }}/reports_raw.json > temp_reports.json
-
-          jq 'def records: if has("result") then .result.records else .records // [] end;
-              records | map(select(.DeveloperName != null)) | map({key: .Name, value: .DeveloperName}) | from_entries' \
-            ${{ env.DATA_DIR }}/folders.json > temp_folder_map.json
-
+      
+          # Build folder name → developerName map (REUSED, no new query)
+          jq '.result.records
+              | map({ key: .Name, value: .DeveloperName })
+              | from_entries' \
+            ${{ env.DATA_DIR }}/report_folders.json > temp_folder_map.json
+      
+          # Generate metadata paths
           jq -r --slurpfile folderMap temp_folder_map.json '
             .[] |
             (
-              if .FolderName == "Unfiled Public Reports" or .FolderName == "Public Reports"
+              if .folderName == "Unfiled Public Reports" or .folderName == "Public Reports"
               then "unfiled$public"
-              elif ($folderMap[0][.FolderName] // null) != null
-              then $folderMap[0][.FolderName]
+              elif ($folderMap[0][.folderName] // null) != null
+              then $folderMap[0][.folderName]
               else "Unspecified"
               end
             ) as $folderDev |
-            "\($folderDev)/\(.DeveloperName)"
+            "\($folderDev)/\(.reportDev)"
           ' temp_reports.json > report_paths.txt
-
+      
           rm temp_reports.json temp_folder_map.json
-
+      
           PATH_COUNT=$(wc -l < report_paths.txt | tr -d '[:space:]')
           echo "Generated $PATH_COUNT report paths"
-
+      
           if [ "$PATH_COUNT" -eq 0 ]; then
             echo "No report paths generated – skipping retrieve"
             exit 0
           fi
-
+      
+          # Build package.xml
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
             echo '  <types>'
-            while IFS= read -r path; do
+            while read -r path; do
               [ -n "$path" ] && echo "    <members>$path</members>"
             done < report_paths.txt
             echo '    <name>Report</name>'
@@ -119,17 +124,19 @@ jobs:
             echo '  <version>59.0</version>'
             echo '</Package>'
           } > manifest/package.xml
-
+      
           if [ ! -f sfdx-project.json ]; then
             printf '%s\n' '{ "packageDirectories": [{"path": "force-app","default": true }], "sourceApiVersion": "59.0"}' > sfdx-project.json
           fi
-
-          sf project retrieve start --target-org "${{ github.event.inputs.org_alias }}" --manifest manifest/package.xml || echo "Some reports failed to retrieve"
-
+      
+          sf project retrieve start \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --manifest manifest/package.xml || echo "Some reports failed to retrieve"
+      
           mkdir -p "$ROOT_DIR/${{ env.DATA_DIR }}/report_metadata"
-          find force-app -type f \( -name "*.report" -o -name "*.report-meta.xml" -o -name "*.reportFolder-meta.xml" \) \
+          find force-app -type f \( -name "*.report-meta.xml" -o -name "*.reportFolder-meta.xml" \) \
             -exec cp --parents {} "$ROOT_DIR/${{ env.DATA_DIR }}/report_metadata/" \; 2>/dev/null || true
-
+      
           TOTAL=$(find "$ROOT_DIR/${{ env.DATA_DIR }}/report_metadata" -type f | wc -l | tr -d '[:space:]')
           echo "Retrieved $TOTAL report metadata files"
 
@@ -140,50 +147,68 @@ jobs:
           REPORT_ROOT="${{ env.DATA_DIR }}/report_metadata/force-app/main/default/reports"
           OUT="${{ env.DATA_DIR }}/report_json_analysis"
           mkdir -p "$OUT"
-
+      
           echo "[]" > "$OUT/report_fields.json"
-
+      
           find "$REPORT_ROOT" -name "*.report-meta.xml" | while read -r file; do
             report_path="${file#*/reports/}"
             report_name="$(basename "$file" .report-meta.xml)"
-            api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || echo "")"
-            base_object="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || echo "")"
+      
+            api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || true)"
+            report_type="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || true)"
+      
+            api_version="${api_version:-Unknown}"
+            report_type="${report_type:-Unknown}"
+      
             FIELDS=$(xmllint --xpath '
               //columns/field/text() |
               //filter/field/text() |
               //summaryFormula/field/text() |
               //rowLevelFormula/field/text() |
               //bucketField/sourceColumnName/text()
-            ' "$file" 2>/dev/null || echo "")
-
+            ' "$file" 2>/dev/null || true)
+      
             FIELD_JSON="[]"
             if [[ -n "$FIELDS" ]]; then
-              FIELD_JSON=$(echo "$FIELDS" | tr ' ' '\n' | sed '/^$/d' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0) | {field: ., type:
-                (if test("__c$") then "custom"
-                 elif test("^(IsDeleted|CreatedById|LastModifiedById)$") then "system"
-                 elif test("^[A-Z][A-Za-z0-9_.]+$") then "standard"
-                 else "legacy_or_unknown" end)
-              })')
+              FIELD_JSON=$(echo "$FIELDS" | tr ' ' '\n' | sed '/^$/d' | sort -u |
+                jq -R -s -c 'split("\n") | map({
+                  field: .,
+                  type:
+                    (if test("__c$") then "custom"
+                     elif test("^(Id|CreatedById|LastModifiedById)$") then "system"
+                     elif test("^[A-Z][A-Za-z0-9_.]+$") then "standard"
+                     else "legacy_or_unknown" end)
+                })')
             fi
-
-            jq --arg path "$report_path" --arg name "$report_name" \
-               --arg api "$api_version" --arg base "$base_object" \
-               --argjson fields "$FIELD_JSON" '. += [{
+      
+            jq --arg path "$report_path" \
+               --arg name "$report_name" \
+               --arg api "$api_version" \
+               --arg rt "$report_type" \
+               --argjson fields "$FIELD_JSON" \
+               '. += [{
                  report_path: $path,
                  report_name: $name,
                  api_version: $api,
-                 base_object: $base,
+                 report_type: $rt,
                  fields: $fields
-               }]' "$OUT/report_fields.json" > "$OUT/temp.json" && mv "$OUT/temp.json" "$OUT/report_fields.json"
+               }]' "$OUT/report_fields.json" > "$OUT/tmp.json" && mv "$OUT/tmp.json" "$OUT/report_fields.json"
           done
-
-          jq 'group_by(.api_version // "Unknown") | map({api_version: (.[0].api_version // "Unknown"), count: length})' "$OUT/report_fields.json" > "$OUT/reports_by_api_version.json"
-          jq 'group_by(.base_object // "Unknown") | map({base_object: (.[0].base_object // "Unknown"), count: length})' "$OUT/report_fields.json" > "$OUT/reports_by_base_object.json"
-          jq '[.[] | .fields[] | {field: .field, type: .type}] | group_by(.field, .type) | map({field: .[0].field, type: .[0].type, count: length})' \
-             "$OUT/report_fields.json" > "$OUT/field_usage_summary.json"
-
-          echo "JSON parsing complete. Files in $OUT:"
+      
+          jq 'group_by(.api_version) | map({api_version: .[0].api_version, count: length})' \
+            "$OUT/report_fields.json" > "$OUT/reports_by_api_version.json"
+      
+          jq 'group_by(.report_type) | map({base_object: .[0].report_type, count: length})' \
+            "$OUT/report_fields.json" > "$OUT/reports_by_base_object.json"
+      
+          jq '[.[] | .fields[]?] |
+              group_by(.field, .type) |
+              map({field: .[0].field, type: .[0].type, count: length})' \
+            "$OUT/report_fields.json" > "$OUT/field_usage_summary.json"
+      
+          echo "JSON parsing complete:"
           ls -l "$OUT"
+      
 
       - name: Upload Metadata Artifact (JSON)
         uses: actions/upload-artifact@v4
