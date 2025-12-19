@@ -62,156 +62,8 @@ jobs:
             --result-format json > ${{ env.DATA_DIR }}/report_folders.json
 
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent LIMIT 50000" \
+            --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent WHERE CreatedDate = LAST_N_DAYS:365" \
             --result-format json > ${{ env.DATA_DIR }}/report_events.json
-
-      - name: Retrieve Reports with Folder Paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          ROOT_DIR="$PWD"
-          mkdir -p manifest force-app
-      
-          # Reports list (from already-fetched reports_raw.json)
-          jq '.result.records
-              | map(select(.DeveloperName != null))
-              | map({
-                  reportDev: .DeveloperName,
-                  folderName: (.FolderName // "Unfiled Public Reports")
-                })' \
-            ${{ env.DATA_DIR }}/reports_raw.json > temp_reports.json
-      
-          # Folder Name → DeveloperName map
-          # IMPORTANT: filter out null DeveloperName to avoid jq crash
-          jq '.result.records
-              | map(select(.DeveloperName != null and .Name != null))
-              | map({ key: .Name, value: .DeveloperName })
-              | from_entries' \
-            ${{ env.DATA_DIR }}/report_folders.json > temp_folder_map.json
-      
-          # Generate report metadata paths
-          jq -r --slurpfile folderMap temp_folder_map.json '
-            .[] |
-            (
-              if .folderName == "Unfiled Public Reports"
-                 or .folderName == "Public Reports"
-              then "unfiled$public"
-              elif ($folderMap[0][.folderName] // null) != null
-              then $folderMap[0][.folderName]
-              else "unfiled$public"
-              end
-            ) as $folderDev |
-            "\($folderDev)/\(.reportDev)"
-          ' temp_reports.json > report_paths.txt
-      
-          rm temp_reports.json temp_folder_map.json
-      
-          PATH_COUNT=$(wc -l < report_paths.txt | tr -d '[:space:]')
-          echo "Generated $PATH_COUNT report paths"
-      
-          if [ "$PATH_COUNT" -eq 0 ]; then
-            echo "No report paths generated – skipping retrieve"
-            exit 0
-          fi
-      
-          # Build package.xml
-          {
-            echo '<?xml version="1.0" encoding="UTF-8"?>'
-            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
-            echo '  <types>'
-            while IFS= read -r path; do
-              [ -n "$path" ] && echo "    <members>$path</members>"
-            done < report_paths.txt
-            echo '    <name>Report</name>'
-            echo '  </types>'
-            echo '  <version>59.0</version>'
-            echo '</Package>'
-          } > manifest/package.xml
-      
-          if [ ! -f sfdx-project.json ]; then
-            printf '%s\n' '{ "packageDirectories": [{"path": "force-app","default": true }], "sourceApiVersion": "59.0"}' > sfdx-project.json
-          fi
-      
-          sf project retrieve start \
-            --target-org "${{ github.event.inputs.org_alias }}" \
-            --manifest manifest/package.xml || echo "Some reports failed to retrieve"
-      
-          mkdir -p "$ROOT_DIR/${{ env.DATA_DIR }}/report_metadata"
-          find force-app -type f \( -name "*.report-meta.xml" -o -name "*.reportFolder-meta.xml" \) \
-            -exec cp --parents {} "$ROOT_DIR/${{ env.DATA_DIR }}/report_metadata/" \; 2>/dev/null || true
-      
-          TOTAL=$(find "$ROOT_DIR/${{ env.DATA_DIR }}/report_metadata" -type f | wc -l | tr -d '[:space:]')
-          echo "Retrieved $TOTAL report metadata files"
-
-      - name: Parse Salesforce Report XML (JSON)
-        shell: bash
-        run: |
-          set -euo pipefail
-          REPORT_ROOT="${{ env.DATA_DIR }}/report_metadata/force-app/main/default/reports"
-          OUT="${{ env.DATA_DIR }}/report_json_analysis"
-          mkdir -p "$OUT"
-      
-          echo "[]" > "$OUT/report_fields.json"
-      
-          find "$REPORT_ROOT" -name "*.report-meta.xml" | while read -r file; do
-            report_path="${file#*/reports/}"
-            report_name="$(basename "$file" .report-meta.xml)"
-      
-            api_version="$(xmllint --xpath 'string(//apiVersion)' "$file" 2>/dev/null || true)"
-            report_type="$(xmllint --xpath 'string(//reportType)' "$file" 2>/dev/null || true)"
-      
-            api_version="${api_version:-Unknown}"
-            report_type="${report_type:-Unknown}"
-      
-            FIELDS=$(xmllint --xpath '
-              //columns/field/text() |
-              //filter/field/text() |
-              //summaryFormula/field/text() |
-              //rowLevelFormula/field/text() |
-              //bucketField/sourceColumnName/text()
-            ' "$file" 2>/dev/null || true)
-      
-            FIELD_JSON="[]"
-            if [[ -n "$FIELDS" ]]; then
-              FIELD_JSON=$(echo "$FIELDS" | tr ' ' '\n' | sed '/^$/d' | sort -u |
-                jq -R -s -c 'split("\n") | map({
-                  field: .,
-                  type:
-                    (if test("__c$") then "custom"
-                     elif test("^(Id|CreatedById|LastModifiedById)$") then "system"
-                     elif test("^[A-Z][A-Za-z0-9_.]+$") then "standard"
-                     else "legacy_or_unknown" end)
-                })')
-            fi
-      
-            jq --arg path "$report_path" \
-               --arg name "$report_name" \
-               --arg api "$api_version" \
-               --arg rt "$report_type" \
-               --argjson fields "$FIELD_JSON" \
-               '. += [{
-                 report_path: $path,
-                 report_name: $name,
-                 api_version: $api,
-                 report_type: $rt,
-                 fields: $fields
-               }]' "$OUT/report_fields.json" > "$OUT/tmp.json" && mv "$OUT/tmp.json" "$OUT/report_fields.json"
-          done
-      
-          jq 'group_by(.api_version) | map({api_version: .[0].api_version, count: length})' \
-            "$OUT/report_fields.json" > "$OUT/reports_by_api_version.json"
-      
-          jq 'group_by(.report_type) | map({base_object: .[0].report_type, count: length})' \
-            "$OUT/report_fields.json" > "$OUT/reports_by_base_object.json"
-      
-          jq '[.[] | .fields[]?] |
-              group_by(.field, .type) |
-              map({field: .[0].field, type: .[0].type, count: length})' \
-            "$OUT/report_fields.json" > "$OUT/field_usage_summary.json"
-      
-          echo "JSON parsing complete:"
-          ls -l "$OUT"
-      
 
       - name: Upload Metadata Artifact (JSON)
         uses: actions/upload-artifact@v4
@@ -222,10 +74,6 @@ jobs:
             ${{ env.DATA_DIR }}/report_events.json
             ${{ env.DATA_DIR }}/users.json
             ${{ env.DATA_DIR }}/report_folders.json
-            ${{ env.DATA_DIR }}/report_json_analysis/report_fields.json
-            ${{ env.DATA_DIR }}/report_json_analysis/reports_by_api_version.json
-            ${{ env.DATA_DIR }}/report_json_analysis/reports_by_base_object.json
-            ${{ env.DATA_DIR }}/report_json_analysis/field_usage_summary.json
 
   ai-analysis:
     runs-on: ubuntu-latest
@@ -274,7 +122,12 @@ jobs:
               Format,
               OwnerName: ($users[.OwnerId] // "Unknown Owner"),
               Package: (.NamespacePrefix // "Unmanaged"),
-              LastRunDays: null,
+              LastRunDays:
+              (
+                if $events[.Id] == null then null
+                else ((now - ($events[.Id] | fromdateiso8601)) / 86400 | floor)
+                end
+              ),
               CreatedDays:
                 (
                   if .CreatedDate == null then null
@@ -282,7 +135,7 @@ jobs:
                     ((now - (
                       .CreatedDate
                       | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")
-                      | fromdateiso8601
+                      | fromdateiso8601?
                     )) / 86400 | floor)
                   end
                 )
@@ -325,22 +178,6 @@ jobs:
           jq 'group_by(.Package) | map({ package: .[0].Package, count: length }) | sort_by(.count) | reverse' \
             data/reports_enriched.json > data/reports_by_package.json
 
-      # --- New analyses from Parse Salesforce Report XML JSON ---
-      - name: Reports by API Version
-        run: |
-          jq '.' data/report_json_analysis/reports_by_api_version.json > data/reports_by_api_version.json
-
-      - name: Reports by Base Object
-        run: |
-          jq '.' data/report_json_analysis/reports_by_base_object.json > data/reports_by_base_object.json
-
-      - name: Field Usage Summary
-        run: |
-          jq '.' data/report_json_analysis/field_usage_summary.json > data/field_usage_summary.json
-
-      - name: Detailed Report Fields JSON
-        run: |
-          cp data/report_json_analysis/report_fields.json data/report_fields.json
 
       - name: Generate Summary Table (Markdown)
         run: |
@@ -454,22 +291,6 @@ jobs:
             echo "Package | Count"
             echo "--- | ---"
             jq -r '.[] | "\(.package) | \(.count)"' "$DATA_DIR/reports_by_package.json"
-            echo
-            echo "## Reports by API Version"
-            echo "API Version | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.api_version) | \(.count)"' "$DATA_DIR/reports_by_api_version.json"
-            echo
-            echo "## Reports by Base Object"
-            echo "Base Object | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.base_object) | \(.count)"' "$DATA_DIR/reports_by_base_object.json"
-            echo
-            echo "## Field Usage Summary"
-            echo "Field | Type | Count"
-            echo "--- | --- | ---"
-            jq -r '.[] | "\(.field) | \(.type) | \(.count)"' "$DATA_DIR/field_usage_summary.json"
-            echo
             echo "*(Full data available in artifacts)*"
           } > final_report.md
 
@@ -490,10 +311,6 @@ jobs:
             data/reports_by_format.json
             data/reports_by_owner.json
             data/reports_by_package.json
-            data/reports_by_api_version.json
-            data/reports_by_base_object.json
-            data/field_usage_summary.json
-            data/report_fields.json
             data/ai_summary.md
             data/folder_table.md
             data/format_table.md
