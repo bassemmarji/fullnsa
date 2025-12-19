@@ -61,9 +61,6 @@ jobs:
             --query "SELECT Id, Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > ${{ env.DATA_DIR }}/report_folders.json
 
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, CreatedDate, ReportId, UserId FROM ReportEvent WHERE CreatedDate = LAST_N_DAYS:365" \
-            --result-format json > ${{ env.DATA_DIR }}/report_events.json
 
       - name: Upload Metadata Artifact (JSON)
         uses: actions/upload-artifact@v4
@@ -71,7 +68,6 @@ jobs:
           name: raw_metadata_json
           path: |
             ${{ env.DATA_DIR }}/reports_raw.json
-            ${{ env.DATA_DIR }}/report_events.json
             ${{ env.DATA_DIR }}/users.json
             ${{ env.DATA_DIR }}/report_folders.json
 
@@ -112,7 +108,7 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            (.[2].result.records | map({(.Id): .Name}) | add) as $users |
+            (.[1].result.records | map({(.Id): .Name}) | add) as $users |
             (.[0].result.records) |
             map({
               Id,
@@ -122,27 +118,23 @@ jobs:
               Format,
               OwnerName: ($users[.OwnerId] // "Unknown Owner"),
               Package: (.NamespacePrefix // "Unmanaged"),
+
               LastRunDays:
-              (
-                if $events[.Id] == null then null
-                else ((now - ($events[.Id] | fromdateiso8601)) / 86400 | floor)
-                end
-              ),
+                (
+                  if .LastRunDate == null then null
+                  else ((now - (.LastRunDate | fromdateiso8601?)) / 86400 | floor)
+                  end
+                ),
+
               CreatedDays:
                 (
                   if .CreatedDate == null then null
-                  else
-                    ((now - (
-                      .CreatedDate
-                      | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")
-                      | fromdateiso8601?
-                    )) / 86400 | floor)
+                  else ((now - (.CreatedDate | fromdateiso8601?)) / 86400 | floor)
                   end
                 )
             })
           ' \
             data/reports_raw.json \
-            data/report_folders.json \
             data/users.json \
           > data/reports_enriched.json
 
