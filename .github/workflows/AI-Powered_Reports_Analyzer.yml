@@ -50,7 +50,7 @@ jobs:
       - name: Fetch Reports Metadata
         run: |
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, Name, DeveloperName, FolderName, Format, CreatedDate, LastRunDate, OwnerId, NamespacePrefix FROM Report" \
+            --query "SELECT Id, Name, DeveloperName, FolderName, Format, CreatedDate, LastRunDate, OwnerId, NamespacePrefix FROM Report WHERE DeveloperName != null" \
             --result-format json > ${{ env.DATA_DIR }}/reports_raw.json
 
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
@@ -71,11 +71,6 @@ jobs:
           set -euo pipefail
           ROOT_DIR="$PWD"
           mkdir -p ${{ env.DATA_DIR }} manifest force-app
-
-          echo "Fetching Reports + Folders..."
-          sf data query --target-org "${{ github.event.inputs.org_alias }}" \
-            --query "SELECT Id, Name, DeveloperName, FolderName, NamespacePrefix FROM Report WHERE DeveloperName != null" \
-            --result-format json > ${{ env.DATA_DIR }}/reports_raw.json
 
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT Id, DeveloperName, Name FROM Folder WHERE Type = 'Report'" \
