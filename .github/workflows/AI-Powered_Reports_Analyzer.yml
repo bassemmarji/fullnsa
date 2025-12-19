@@ -248,7 +248,16 @@ jobs:
               Package: (.NamespacePrefix // "Unmanaged"),
               LastRunDays: null,
               CreatedDays:
-                ((now - (.CreatedDate | fromdateiso8601)) / 86400 | floor)
+                (
+                  if .CreatedDate == null then null
+                  else
+                    ((now - (
+                      .CreatedDate
+                      | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")
+                      | fromdateiso8601
+                    )) / 86400 | floor)
+                  end
+                )
             })
           ' \
             data/reports_raw.json \
