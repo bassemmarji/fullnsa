@@ -215,7 +215,7 @@ jobs:
             | map({ package: .[0].Package, count: length })
             | sort_by(.count)
             | reverse
-          ' data/reports_by_package.json > data/reports_by_package.json
+          ' data/reports_enriched.json > data/reports_by_package.json
 
       - name: Generate Summary Table (Markdown)
         run: |
