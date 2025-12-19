@@ -1,4 +1,4 @@
-name: AI-Powered Reports Analyzer (Enhanced)
+name: AI-Powered Reports Analyzer
 
 on:
   workflow_dispatch:
