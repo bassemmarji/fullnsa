@@ -124,6 +124,14 @@ jobs:
               elif has("records") then .records
               else [] end;
 
+            # Function to parse Salesforce datetime format
+            def parse_sf_date:
+              if . == null then null
+              else
+                # Remove milliseconds and convert +0000 to Z
+                gsub("\\.\\d+"; "") | gsub("\\+0000"; "Z") | fromdateiso8601
+              end;
+
             (.[1] | records | map({(.Id): .Name}) | add // {}) as $users |
             (.[0] | records) |
             map({
@@ -138,14 +146,14 @@ jobs:
               LastRunDays:
                 (
                   if .LastRunDate == null then null
-                  else ((now - (.LastRunDate | fromdateiso8601)) / 86400 | floor)
+                  else ((now - (.LastRunDate | parse_sf_date)) / 86400 | floor)
                   end
                 ),
 
               CreatedDays:
                 (
                   if .CreatedDate == null then null
-                  else ((now - (.CreatedDate | fromdateiso8601)) / 86400 | floor)
+                  else ((now - (.CreatedDate | parse_sf_date)) / 86400 | floor)
                   end
                 )
             })
