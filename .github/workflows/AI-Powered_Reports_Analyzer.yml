@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           ROOT_DIR="$PWD"
           mkdir -p ${{ env.DATA_DIR }} manifest force-app
-
+          
           sf data query --target-org "${{ github.event.inputs.org_alias }}" \
             --query "SELECT Id, DeveloperName, Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > ${{ env.DATA_DIR }}/folders.json
@@ -236,33 +236,25 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            (. [2] | if has("result") then .result.records else .records // [] end) as $userList |
-            ($userList | map({(.Id): .Name}) | add // {}) as $users |
-            (. [0] | if has("result") then .result.records else .records // [] end) as $reports |
-            $reports |
+            (.[2].result.records | map({(.Id): .Name}) | add) as $users |
+            (.[0].result.records) |
             map({
-              Id: .Id,
-              Name: .Name,
+              Id,
+              Name,
               FolderName: (.FolderName // "Unspecified"),
-              DeveloperName: .DeveloperName,
-              Format: (.Format // "Unknown"),
-              OwnerId: .OwnerId,
-              OwnerName:
-                (if .OwnerId != null and ($users[.OwnerId] // null) != null
-                 then $users[.OwnerId]
-                 else (.Owner.Name // "Unknown Owner")
-                 end),
+              DeveloperName,
+              Format,
+              OwnerName: ($users[.OwnerId] // "Unknown Owner"),
               Package: (.NamespacePrefix // "Unmanaged"),
-              LastRunDays:
-                (if .LastRunDate == null then null
-                 else ((now - ((.LastRunDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                 end),
+              LastRunDays: null,
               CreatedDays:
-                (if .CreatedDate == null then null
-                 else ((now - ((.CreatedDate | sub("\\.\\d{3}[+-]\\d{4}$"; "Z")) | fromdateiso8601)) / 86400 | floor)
-                 end)
+                ((now - (.CreatedDate | fromdateiso8601)) / 86400 | floor)
             })
-          ' data/reports_raw.json data/report_folders.json data/users.json > data/reports_enriched.json
+          ' \
+            data/reports_raw.json \
+            data/report_folders.json \
+            data/users.json \
+          > data/reports_enriched.json
 
       - name: Generate Summary Stats
         run: |
