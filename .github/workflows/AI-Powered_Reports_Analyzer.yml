@@ -61,6 +61,10 @@ jobs:
             --query "SELECT Id, Name FROM Folder WHERE Type = 'Report'" \
             --result-format json > ${{ env.DATA_DIR }}/report_folders.json
 
+      - name: Debug Reports Raw
+        run: |
+          echo "Number of reports:"
+          jq '.result.records | length' data/reports_raw.json || echo "No result.records"
 
       - name: Upload Metadata Artifact (JSON)
         uses: actions/upload-artifact@v4
@@ -102,8 +106,15 @@ jobs:
           
       - name: Start Ollama Service
         run: |
-          ollama serve &
-          sleep 5
+          ollama serve > /dev/null 2>&1 &
+          sleep 10
+          # Verify Ollama is running
+          curl -s http://localhost:11434/api/tags || echo "Ollama not ready yet"
+
+      - name: Pull Ollama Model
+        run: |
+          echo "Pulling model: ${{ github.event.inputs.model_name }}"
+          ollama pull "${{ github.event.inputs.model_name }}"
 
       - name: Enrich Reports
         run: |
@@ -113,7 +124,7 @@ jobs:
               elif has("records") then .records
               else [] end;
 
-            (.[1] | records | map({(.Id): .Name}) | add) as $users |
+            (.[1] | records | map({(.Id): .Name}) | add // {}) as $users |
             (.[0] | records) |
             map({
               Id,
@@ -127,14 +138,14 @@ jobs:
               LastRunDays:
                 (
                   if .LastRunDate == null then null
-                  else ((now - (.LastRunDate | fromdateiso8601?)) / 86400 | floor)
+                  else ((now - (.LastRunDate | fromdateiso8601)) / 86400 | floor)
                   end
                 ),
 
               CreatedDays:
                 (
                   if .CreatedDate == null then null
-                  else ((now - (.CreatedDate | fromdateiso8601?)) / 86400 | floor)
+                  else ((now - (.CreatedDate | fromdateiso8601)) / 86400 | floor)
                   end
                 )
             })
@@ -147,12 +158,14 @@ jobs:
         run: |
           jq '{
             totalReports: length,
-            neverRun: map(select(.LastRunDays == null)) | length,
-            staleReports: map(
-              select(
-                (.LastRunDays == null) or (.LastRunDays > 180)
-              )
-            ) | length
+            neverRun: (map(select(.LastRunDays == null)) | length),
+            staleReports: (
+              map(
+                select(
+                  (.LastRunDays == null) or (.LastRunDays > 180)
+                )
+              ) | length
+            )
           }' data/reports_enriched.json > data/summary_stats.json
 
       - name: Reports by Folder
@@ -162,6 +175,7 @@ jobs:
             | sort
             | group_by(.)
             | map({ folder: .[0], count: length })
+            | sort_by(.count) | reverse
           ' data/reports_enriched.json > data/reports_by_folder.json
 
       - name: Reports by Format
@@ -193,8 +207,7 @@ jobs:
             | map({ package: .[0].Package, count: length })
             | sort_by(.count)
             | reverse
-          ' data/reports_enriched.json > data/reports_by_package.json
-
+          ' data/reports_by_package.json > data/reports_by_package.json
 
       - name: Generate Summary Table (Markdown)
         run: |
@@ -238,31 +251,66 @@ jobs:
       - name: Build AI Executive Summary
         run: |
           MODEL="${{ github.event.inputs.model_name }}"
+          
+          # Build context from data files
           CONTEXT=$(jq -s -r '
             .[0] as $stats |
             .[1] as $folders |
             .[2] as $formats |
             .[3] as $owners |
             .[4] as $packages |
+            
+            # Calculate percentages safely
+            ($stats.totalReports | if . == 0 then 1 else . end) as $total |
+            
             "# Salesforce Reports Analysis Data\n\n" +
             "## Overall Statistics\n" +
             "- Total reports: \($stats.totalReports)\n" +
-            "- Never run: \($stats.neverRun) (\($stats.neverRun / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n" +
-            "- Stale reports (>180d): \($stats.staleReports) (\($stats.staleReports / ($stats.totalReports | if . == 0 then 1 else . end) * 100 | floor)%)\n\n" +
-            "## Top Folders by Report Count\n" +
-            ($folders | sort_by(.count) | reverse | .[0:5] | map("- \(.folder): \(.count) reports") | join("\n")) +
-            "\n\n## Report Formats\n" +
-            ($formats | map("- \(.format // "Unknown"): \(.count) reports") | join("\n")) +
-            "\n\n## Top Report Owners\n" +
-            ($owners | .[0:5] | map("- \(.owner): \(.count) reports") | join("\n")) +
-            "\n\n## Package (Namespace) Distribution\n" +
-            ($packages | map("- \(.package): \(.count) reports") | join("\n")) +
-            "\n\n## Analysis Request\n" +
-            "Based on this data, provide:\n" +
-            "1. Key insights about report usage, ownership concentration, and package health\n" +
-            "2. Actionable recommendations (e.g., consolidate underactive owners, review managed packages)\n" +
-            "3. Risks: too many unmanaged reports, stale reports in critical packages, etc.\n" +
-            "4. Best practices for governance and cleanup\n\n" +
+            "- Never run: \($stats.neverRun) (\(($stats.neverRun / $total * 100) | floor)%)\n" +
+            "- Stale reports (>180d): \($stats.staleReports) (\(($stats.staleReports / $total * 100) | floor)%)\n\n" +
+            
+            (if ($folders | length) > 0 then
+              "## Top Folders by Report Count\n" +
+              ($folders | sort_by(.count) | reverse | .[0:5] | map("- \(.folder): \(.count) reports") | join("\n")) + "\n\n"
+            else
+              "## Top Folders by Report Count\nNo folders found.\n\n"
+            end) +
+            
+            (if ($formats | length) > 0 then
+              "## Report Formats\n" +
+              ($formats | map("- \(.format // "Unknown"): \(.count) reports") | join("\n")) + "\n\n"
+            else
+              "## Report Formats\nNo format data available.\n\n"
+            end) +
+            
+            (if ($owners | length) > 0 then
+              "## Top Report Owners\n" +
+              ($owners | .[0:5] | map("- \(.owner): \(.count) reports") | join("\n")) + "\n\n"
+            else
+              "## Top Report Owners\nNo owner data available.\n\n"
+            end) +
+            
+            (if ($packages | length) > 0 then
+              "## Package (Namespace) Distribution\n" +
+              ($packages | map("- \(.package): \(.count) reports") | join("\n")) + "\n\n"
+            else
+              "## Package (Namespace) Distribution\nNo package data available.\n\n"
+            end) +
+            
+            "## Analysis Request\n" +
+            (if $stats.totalReports == 0 then
+              "NOTE: There are currently no reports in the system.\n\n" +
+              "Please provide:\n" +
+              "1. Recommendations for establishing a reporting framework\n" +
+              "2. Best practices for report governance from the start\n" +
+              "3. Key considerations for report ownership and maintenance\n\n"
+            else
+              "Based on this data, provide:\n" +
+              "1. Key insights about report usage, ownership concentration, and package health\n" +
+              "2. Actionable recommendations (e.g., consolidate underactive owners, review managed packages)\n" +
+              "3. Risks: too many unmanaged reports, stale reports in critical packages, etc.\n" +
+              "4. Best practices for governance and cleanup\n\n"
+            end) +
             "Keep the summary concise (3-5 paragraphs) and business-focused."
           ' \
             data/summary_stats.json \
@@ -270,15 +318,27 @@ jobs:
             data/reports_by_format.json \
             data/reports_by_owner.json \
             data/reports_by_package.json)
-          echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md
+          
+          echo "$CONTEXT" > data/ai_context.txt
+          
+          # Call Ollama with error handling
+          if ! echo "$CONTEXT" | ollama run "$MODEL" > data/ai_summary.md 2>data/ai_error.log; then
+            echo "⚠️ AI analysis failed. Using fallback summary." > data/ai_summary.md
+            cat data/ai_error.log >> data/ai_summary.md
+          fi
 
       - name: Build Final Markdown Report
         run: |
           {
             echo "# AI-Powered Reports Analysis"
             echo
+            echo "**Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+            echo "**Org Alias:** ${{ github.event.inputs.org_alias }}"
+            echo "**Model:** ${{ github.event.inputs.model_name }}"
+            echo
             echo "## Executive Summary"
             cat "$DATA_DIR/ai_summary.md"
+            echo
             echo
             echo "## Summary Statistics"
             echo "Metric | Value"
@@ -289,25 +349,39 @@ jobs:
               "Stale (>180 days) | " + (.staleReports | tostring)
             ] | .[]' "$DATA_DIR/summary_stats.json"
             echo
-            echo "## Reports by Folder"
-            echo "Folder | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
-            echo
-            echo "## Reports by Format"
-            echo "Format | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.format // "Unknown") | \(.count)"' "$DATA_DIR/reports_by_format.json"
-            echo
-            echo "## Reports by Owner"
-            echo "Owner | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.owner) | \(.count)"' "$DATA_DIR/reports_by_owner.json"
-            echo
-            echo "## Reports by Package"
-            echo "Package | Count"
-            echo "--- | ---"
-            jq -r '.[] | "\(.package) | \(.count)"' "$DATA_DIR/reports_by_package.json"
+            
+            # Only show tables if there's data
+            TOTAL_REPORTS=$(jq '.totalReports' "$DATA_DIR/summary_stats.json")
+            
+            if [ "$TOTAL_REPORTS" -gt 0 ]; then
+              echo "## Reports by Folder"
+              echo "Folder | Count"
+              echo "--- | ---"
+              jq -r '.[] | "\(.folder) | \(.count)"' "$DATA_DIR/reports_by_folder.json"
+              echo
+              echo "## Reports by Format"
+              echo "Format | Count"
+              echo "--- | ---"
+              jq -r '.[] | "\(.format // "Unknown") | \(.count)"' "$DATA_DIR/reports_by_format.json"
+              echo
+              echo "## Reports by Owner"
+              echo "Owner | Count"
+              echo "--- | ---"
+              jq -r '.[] | "\(.owner) | \(.count)"' "$DATA_DIR/reports_by_owner.json"
+              echo
+              echo "## Reports by Package"
+              echo "Package | Count"
+              echo "--- | ---"
+              jq -r '.[] | "\(.package) | \(.count)"' "$DATA_DIR/reports_by_package.json"
+              echo
+            else
+              echo "## Reports Distribution"
+              echo
+              echo "_No reports found in the organization._"
+              echo
+            fi
+            
+            echo "---"
             echo "*(Full data available in artifacts)*"
           } > final_report.md
 
@@ -329,7 +403,15 @@ jobs:
             data/reports_by_owner.json
             data/reports_by_package.json
             data/ai_summary.md
+            data/ai_context.txt
             data/folder_table.md
             data/format_table.md
             data/owner_table.md
             data/package_table.md
+
+      - name: Display Report Summary
+        run: |
+          echo "=========================================="
+          echo "Report Generation Complete"
+          echo "=========================================="
+          cat final_report.md
