@@ -108,8 +108,13 @@ jobs:
       - name: Enrich Reports
         run: |
           jq -s '
-            (.[1].result.records | map({(.Id): .Name}) | add) as $users |
-            (.[0].result.records) |
+            def records:
+              if has("result") then .result.records
+              elif has("records") then .records
+              else [] end;
+
+            (.[1] | records | map({(.Id): .Name}) | add) as $users |
+            (.[0] | records) |
             map({
               Id,
               Name,
@@ -152,23 +157,43 @@ jobs:
 
       - name: Reports by Folder
         run: |
-          jq '[.[] | .FolderName // "Unspecified"] | group_by(.) | map({folder: .[0], count: length})' \
-            data/reports_enriched.json > data/reports_by_folder.json
+          jq '
+            map(.FolderName // "Unspecified")
+            | sort
+            | group_by(.)
+            | map({ folder: .[0], count: length })
+          ' data/reports_enriched.json > data/reports_by_folder.json
 
       - name: Reports by Format
         run: |
-          jq 'map(select(.Format != null)) | group_by(.Format) | map({ format: .[0].Format, count: length }) | sort_by(.count) | reverse' \
-            data/reports_enriched.json > data/reports_by_format.json
+          jq '
+            map(select(.Format != null))
+            | sort_by(.Format)
+            | group_by(.Format)
+            | map({ format: .[0].Format, count: length })
+            | sort_by(.count)
+            | reverse
+          ' data/reports_enriched.json > data/reports_by_format.json
 
       - name: Reports by Owner
         run: |
-          jq 'group_by(.OwnerName) | map({ owner: .[0].OwnerName, count: length }) | sort_by(.count) | reverse' \
-            data/reports_enriched.json > data/reports_by_owner.json
+          jq '
+            sort_by(.OwnerName)
+            | group_by(.OwnerName)
+            | map({ owner: .[0].OwnerName, count: length })
+            | sort_by(.count)
+            | reverse
+          ' data/reports_enriched.json > data/reports_by_owner.json
 
       - name: Reports by Package
         run: |
-          jq 'group_by(.Package) | map({ package: .[0].Package, count: length }) | sort_by(.count) | reverse' \
-            data/reports_enriched.json > data/reports_by_package.json
+          jq '
+            sort_by(.Package)
+            | group_by(.Package)
+            | map({ package: .[0].Package, count: length })
+            | sort_by(.count)
+            | reverse
+          ' data/reports_enriched.json > data/reports_by_package.json
 
 
       - name: Generate Summary Table (Markdown)
