@@ -72,7 +72,7 @@ jobs:
           ROOT_DIR="$PWD"
           mkdir -p manifest force-app
       
-          # Build report list
+          # Reports list (from already-fetched reports_raw.json)
           jq '.result.records
               | map(select(.DeveloperName != null))
               | map({
@@ -81,21 +81,24 @@ jobs:
                 })' \
             ${{ env.DATA_DIR }}/reports_raw.json > temp_reports.json
       
-          # Build folder name → developerName map (REUSED, no new query)
+          # Folder Name → DeveloperName map
+          # IMPORTANT: filter out null DeveloperName to avoid jq crash
           jq '.result.records
+              | map(select(.DeveloperName != null and .Name != null))
               | map({ key: .Name, value: .DeveloperName })
               | from_entries' \
             ${{ env.DATA_DIR }}/report_folders.json > temp_folder_map.json
       
-          # Generate metadata paths
+          # Generate report metadata paths
           jq -r --slurpfile folderMap temp_folder_map.json '
             .[] |
             (
-              if .folderName == "Unfiled Public Reports" or .folderName == "Public Reports"
+              if .folderName == "Unfiled Public Reports"
+                 or .folderName == "Public Reports"
               then "unfiled$public"
               elif ($folderMap[0][.folderName] // null) != null
               then $folderMap[0][.folderName]
-              else "Unspecified"
+              else "unfiled$public"
               end
             ) as $folderDev |
             "\($folderDev)/\(.reportDev)"
@@ -116,7 +119,7 @@ jobs:
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
             echo '  <types>'
-            while read -r path; do
+            while IFS= read -r path; do
               [ -n "$path" ] && echo "    <members>$path</members>"
             done < report_paths.txt
             echo '    <name>Report</name>'
