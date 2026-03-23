@@ -150,7 +150,7 @@ jobs:
                                 RelationshipName, ReferenceTo
                          FROM FieldDefinition 
                          WHERE EntityDefinition.DeveloperName = '$obj_name'
-                         AND (DataType = 'Lookup' OR DataType = 'MasterDetail')" \
+                         AND (DataType = 'Lookup' OR DataType = 'Master-Detail')" \
                 --use-tooling-api \
                 --target-org "$ORG_ALIAS" \
                 --result-format json > temp_rels.json
