@@ -15,7 +15,7 @@ on:
           - llama3:latest
           - gemma2:27b
         default: mistral
-        
+
 env:
   NODE_VERSION: "20"
   DATA_DIR: "data"
@@ -27,10 +27,10 @@ jobs:
     outputs:
       has_data: ${{ steps.check.outputs.has_data }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - name: Setup Node + Salesforce CLI
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -52,14 +52,14 @@ jobs:
           set -e
           echo "🚀 Starting metadata extraction..."
           mkdir -p "$DATA_DIR"
-      
+
           echo "🔑 Checking Salesforce org authentication..."
           if ! sf org display --target-org "${{ github.event.inputs.org_alias }}" > /dev/null 2>&1; then
             echo "❌ Org alias not found or not authenticated"
             exit 1
           fi
           echo "✅ Org authentication verified."
-      
+
           echo "📦 Querying custom objects..."
           if ! sf data query \
             --use-tooling-api \
@@ -69,41 +69,41 @@ jobs:
             > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
               echo "❌ Failed to fetch custom objects"; cat /tmp/query_objects.log; exit 1
           fi
-      
+
           object_count=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
           echo "✅ Retrieved $object_count custom objects."
-          
+
           if [ "$object_count" -eq 0 ]; then
             echo "⚠️ No custom objects found. Exiting safely."
             exit 0
           fi
-      
+
           echo "🔍 First 10 custom objects retrieved:"
           jq -r '.result.records[0:10] | .[] | .DeveloperName' "$DATA_DIR/objects.json"
-      
+
           object_names_quoted=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/.*/'&'/g" | paste -sd, -)
           echo "🔹 Objects prepared for queries (count: $object_count)"
-      
+
           echo "🧩 Querying field definitions (custom fields only)..."
           echo '{"result":{"records":[]}}' > "$DATA_DIR/fields.json"
-          
+
           batch_size=10
           object_array=($(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json"))
           total_objects=${#object_array[@]}
-          
+
           for ((i=0; i<total_objects; i+=batch_size)); do
             batch_objects=("${object_array[@]:i:batch_size}")
             batch_quoted=$(printf "'%s'," "${batch_objects[@]}" | sed 's/,$//')
-            
+
             echo "  📦 Batch $((i/batch_size + 1)): Querying ${#batch_objects[@]} objects..."
-            
+
             if sf data query \
               --use-tooling-api \
               --target-org "${{ github.event.inputs.org_alias }}" \
               --result-format json \
               --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label FROM FieldDefinition WHERE EntityDefinition.DeveloperName IN ($batch_quoted) AND QualifiedApiName LIKE '%__c' LIMIT 200" \
               > "$DATA_DIR/fields_batch.json" 2>/tmp/query_fields_batch.log; then
-              
+
               jq -s '.[0].result.records += .[1].result.records | .[0]' \
                 "$DATA_DIR/fields.json" "$DATA_DIR/fields_batch.json" > "$DATA_DIR/fields_temp.json"
               mv "$DATA_DIR/fields_temp.json" "$DATA_DIR/fields.json"
@@ -112,20 +112,20 @@ jobs:
               cat /tmp/query_fields_batch.log
             fi
           done
-          
+
           field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
           echo "✅ Retrieved $field_count custom fields from $total_objects objects."
-      
+
           echo "🔍 Sample fields retrieved:"
           jq -r '.result.records[0:5] | .[] | "\(.EntityDefinition.DeveloperName).\(.QualifiedApiName)"' "$DATA_DIR/fields.json"
-      
+
           echo "🔗 Extracting relationships..."
           jq '.result.records | map(select(.DataType == "Lookup" or .DataType == "MasterDetail")) | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo, dataType: .DataType, isIndexed: .IsIndexed})' \
             "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
-          
+
           rel_count=$(jq -r 'length' "$DATA_DIR/relationships.json")
           echo "✅ Extracted $rel_count relationship fields."
-      
+
           echo "🧠 Querying validation rules..."
           if ! sf data query \
             --use-tooling-api \
@@ -135,10 +135,10 @@ jobs:
             > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
               echo "❌ Failed to fetch validation rules"; cat /tmp/query_vrules.log; exit 1
           fi
-          
+
           vrule_count=$(jq -r '.result.records | length' "$DATA_DIR/validation_rules.json")
           echo "✅ Retrieved $vrule_count validation rules."
-      
+
           echo "⚙️ Querying triggers..."
           if ! sf data query \
             --use-tooling-api \
@@ -148,10 +148,10 @@ jobs:
             > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
               echo "❌ Failed to fetch triggers"; cat /tmp/query_triggers.log; exit 1
           fi
-          
+
           trigger_count=$(jq -r '.result.records | length' "$DATA_DIR/triggers.json")
           echo "✅ Retrieved $trigger_count triggers."
-      
+
           echo "🗂 Querying record types..."
           if ! sf data query \
             --use-tooling-api \
@@ -161,10 +161,10 @@ jobs:
             > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
               echo "❌ Failed to fetch record types"; cat /tmp/query_recordtypes.log; exit 1
           fi
-          
+
           rt_count=$(jq -r '.result.records | length' "$DATA_DIR/record_types.json")
           echo "✅ Retrieved $rt_count record types."
-      
+
           echo "🌊 Querying active flows..."
           if ! sf data query \
             --use-tooling-api \
@@ -174,10 +174,10 @@ jobs:
             > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
               echo "❌ Failed to fetch flows"; cat /tmp/query_flows.log; exit 1
           fi
-          
+
           flow_count=$(jq -r '.result.records | length' "$DATA_DIR/flows.json")
           echo "✅ Retrieved $flow_count active flows."
-      
+
           echo "🎉 Metadata extraction completed successfully."
           echo ""
           echo "📊 Summary:"
@@ -194,18 +194,18 @@ jobs:
         run: |
           object_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
           field_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
-          
+
           echo "Objects: $object_count, Fields: $field_count"
-          
+
           if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
             echo "✅ Data model metadata available"
             echo "has_data=true" >> $GITHUB_OUTPUT
           else
             echo "⚠️ No metadata found"
             echo "has_data=false" >> $GITHUB_OUTPUT
-          fi          
-          
-      - uses: actions/upload-artifact@v4
+          fi
+
+      - uses: actions/upload-artifact@v4.6.2
         if: always()
         with:
           name: data-model-metadata-lite
@@ -218,7 +218,7 @@ jobs:
     needs: collect-data
     if: needs.collect-data.outputs.has_data == 'true'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: data-model-metadata-lite
           path: ${{ env.DATA_DIR }}
@@ -351,7 +351,6 @@ jobs:
 
             def safe_count(x): if (x|type)=="array" then (x|length) else 0 end;
 
-            # Normalize all possible shapes
             ($fields | map(normalize(.)) | add // []) as $allFields |
             ($missing | map(normalize(.)) | add // []) as $miss |
             ($dup | map(normalize(.)) | add // []) as $dups |
@@ -368,14 +367,13 @@ jobs:
           echo "✅ Statistics calculated:"
           cat "$DATA_DIR/statistics.json" | jq .
 
-
       - name: 🧠 AI Analysis with Structured Output
         shell: bash
         run: |
           echo "🧠 Starting AI Analysis..."
           REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
           MODEL="${{ github.event.inputs.model_name }}"
-          
+
           stats=$(cat "$DATA_DIR/statistics.json")
           totalFields=$(jq -r .totalFields "$DATA_DIR/statistics.json")
           missCount=$(jq -r .missingIndexes "$DATA_DIR/statistics.json")
@@ -461,8 +459,8 @@ jobs:
           cat > "$REPORT_FILE" << EOF
           # 📊 Salesforce Data Model Analysis Report
 
-          **Model:** $MODEL  
-          **Generated:** $(date -u)  
+          **Model:** $MODEL
+          **Generated:** $(date -u)
           **Org:** ${{ github.event.inputs.org_alias }}
 
           ---
@@ -473,6 +471,7 @@ jobs:
           - \`duplicate_fields_structured.json\`
           - \`relationships_structured.json\`
           - \`statistics.json\`
+
           **AI Model:** $MODEL (Ollama)
           EOF
 
@@ -481,11 +480,10 @@ jobs:
 
       - name: Prepare Report Artifacts
         run: |
-          # Copy structured files to root for cleaner artifact
           cp "$DATA_DIR"/*_structured.json .
           cp "$DATA_DIR"/statistics.json .
-  
-      - uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@v4.6.2
         with:
           name: ai-data-model-report
           path: |
@@ -512,5 +510,6 @@ jobs:
             echo "| Duplicate Fields | $(jq -r .duplicateFields $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
             echo "| Risky Relationships | $(jq -r .riskyRelationships $DATA_DIR/statistics.json)/$(jq -r .totalRelationships $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
           fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📄 Full report available in artifacts." >> $GITHUB_STEP_SUMMARY
