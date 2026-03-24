@@ -19,11 +19,13 @@ on:
 env:
   NODE_VERSION: "20"
   DATA_DIR: "data"
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  
 jobs:
   collect-data:
     name: Collect Salesforce Metadata
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     outputs:
       has_data: ${{ steps.check.outputs.has_data }}
     steps:
@@ -215,6 +217,8 @@ jobs:
   analyze-ai:
     name: Analyze Data Model (AI)
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     needs: collect-data
     if: needs.collect-data.outputs.has_data == 'true'
     steps:
