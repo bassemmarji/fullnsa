@@ -17,7 +17,7 @@ on:
         default: mistral
         
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "20"  # Your scripts can still use Node 20; actions run on Node 24
   DATA_DIR: "data"
 
 jobs:
@@ -27,10 +27,12 @@ jobs:
     outputs:
       has_data: ${{ steps.check.outputs.has_data }}
     steps:
-      - uses: actions/checkout@v4
+      # ✅ Updated to Node.js 24 compatible version
+      - uses: actions/checkout@v6
 
       - name: Setup Node + Salesforce CLI
-        uses: actions/setup-node@v4
+        # ✅ Updated to Node.js 24 compatible version
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -205,7 +207,8 @@ jobs:
             echo "has_data=false" >> $GITHUB_OUTPUT
           fi          
           
-      - uses: actions/upload-artifact@v4
+      # ✅ Updated to Node.js 24 compatible version
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: data-model-metadata-lite
@@ -218,14 +221,15 @@ jobs:
     needs: collect-data
     if: needs.collect-data.outputs.has_data == 'true'
     steps:
-      - uses: actions/download-artifact@v4
+      # ✅ Updated to Node.js 24 compatible version
+      - uses: actions/download-artifact@v8
         with:
           name: data-model-metadata-lite
           path: ${{ env.DATA_DIR }}
 
       - name: Setup Ollama
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          curl -fsSL https://ollama.com/install.sh   | sh
           ollama serve &
           for i in {1..20}; do
             if curl -s http://localhost:11434/api/version >/dev/null; then
@@ -485,7 +489,8 @@ jobs:
           cp "$DATA_DIR"/*_structured.json .
           cp "$DATA_DIR"/statistics.json .
   
-      - uses: actions/upload-artifact@v4
+      # ✅ Updated to Node.js 24 compatible version
+      - uses: actions/upload-artifact@v7
         with:
           name: ai-data-model-report
           path: |
