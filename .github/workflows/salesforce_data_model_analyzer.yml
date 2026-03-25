@@ -1,1 +1,516 @@
+name: AI-Powered Data Model Analyzer
 
+on:
+  workflow_dispatch:
+    inputs:
+      org_alias:
+        description: "Salesforce org alias"
+        required: true
+        default: "Full-NSA"
+      model_name:
+        type: choice
+        description: "Ollama model to use"
+        options:
+          - mistral
+          - mistral:latest 
+        default: mistral
+        
+env:
+  NODE_VERSION: "20"  # Your scripts can still use Node 20; actions run on Node 24
+  DATA_DIR: "data"
+
+jobs:
+  collect-data:
+    name: Collect Salesforce Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      has_data: ${{ steps.check.outputs.has_data }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node + Salesforce CLI
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Salesforce CLI + jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @salesforce/cli
+
+      - name: Authenticate to Salesforce
+        run: |
+          echo "${{ secrets.ORG_SFDX_URL }}" | sf org login sfdx-url \
+            --alias "${{ github.event.inputs.org_alias }}" \
+            --sfdx-url-stdin
+
+      - name: 🔍 Query Salesforce Metadata
+        shell: bash
+        run: |
+          set -e
+          echo "🚀 Starting metadata extraction..."
+          mkdir -p "$DATA_DIR"
+      
+          echo "🔑 Checking Salesforce org authentication..."
+          if ! sf org display --target-org "${{ github.event.inputs.org_alias }}" > /dev/null 2>&1; then
+            echo "❌ Org alias not found or not authenticated"
+            exit 1
+          fi
+          echo "✅ Org authentication verified."
+      
+          echo "📦 Querying custom objects..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Id, DeveloperName, Label, NamespacePrefix, ExternalSharingModel, InternalSharingModel FROM EntityDefinition WHERE QualifiedApiName LIKE '%__c' AND IsCustomizable = true LIMIT 2000" \
+            > "$DATA_DIR/objects.json" 2>/tmp/query_objects.log; then
+              echo "❌ Failed to fetch custom objects"; cat /tmp/query_objects.log; exit 1
+          fi
+      
+          object_count=$(jq -r '.result.records | length' "$DATA_DIR/objects.json")
+          echo "✅ Retrieved $object_count custom objects."
+          
+          if [ "$object_count" -eq 0 ]; then
+            echo "⚠️ No custom objects found. Exiting safely."
+            exit 0
+          fi
+      
+          echo "🔍 First 10 custom objects retrieved:"
+          jq -r '.result.records[0:10] | .[] | .DeveloperName' "$DATA_DIR/objects.json"
+      
+          object_names_quoted=$(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json" | sed "s/.*/'&'/g" | paste -sd, -)
+          echo "🔹 Objects prepared for queries (count: $object_count)"
+      
+          echo "🧩 Querying field definitions (custom fields only)..."
+          echo '{"result":{"records":[]}}' > "$DATA_DIR/fields.json"
+          
+          batch_size=10
+          object_array=($(jq -r '.result.records[].DeveloperName' "$DATA_DIR/objects.json"))
+          total_objects=${#object_array[@]}
+          
+          for ((i=0; i<total_objects; i+=batch_size)); do
+            batch_objects=("${object_array[@]:i:batch_size}")
+            batch_quoted=$(printf "'%s'," "${batch_objects[@]}" | sed 's/,$//')
+            
+            echo "  📦 Batch $((i/batch_size + 1)): Querying ${#batch_objects[@]} objects..."
+            
+            if sf data query \
+              --use-tooling-api \
+              --target-org "${{ github.event.inputs.org_alias }}" \
+              --result-format json \
+              --query "SELECT QualifiedApiName, EntityDefinition.DeveloperName, DataType, IsIndexed, IsCalculated, IsNillable, Length, Precision, Scale, ReferenceTo, Label FROM FieldDefinition WHERE EntityDefinition.DeveloperName IN ($batch_quoted) AND QualifiedApiName LIKE '%__c' LIMIT 200" \
+              > "$DATA_DIR/fields_batch.json" 2>/tmp/query_fields_batch.log; then
+              
+              jq -s '.[0].result.records += .[1].result.records | .[0]' \
+                "$DATA_DIR/fields.json" "$DATA_DIR/fields_batch.json" > "$DATA_DIR/fields_temp.json"
+              mv "$DATA_DIR/fields_temp.json" "$DATA_DIR/fields.json"
+            else
+              echo "⚠️ Warning: Batch failed, continuing..."
+              cat /tmp/query_fields_batch.log
+            fi
+          done
+          
+          field_count=$(jq -r '.result.records | length' "$DATA_DIR/fields.json")
+          echo "✅ Retrieved $field_count custom fields from $total_objects objects."
+      
+          echo "🔍 Sample fields retrieved:"
+          jq -r '.result.records[0:5] | .[] | "\(.EntityDefinition.DeveloperName).\(.QualifiedApiName)"' "$DATA_DIR/fields.json"
+      
+          echo "🔗 Extracting relationships..."
+          jq '.result.records | map(select(.DataType == "Lookup" or .DataType == "MasterDetail")) | map({field: .QualifiedApiName, parent: .EntityDefinition.DeveloperName, referencedObject: .ReferenceTo, dataType: .DataType, isIndexed: .IsIndexed})' \
+            "$DATA_DIR/fields.json" > "$DATA_DIR/relationships.json"
+          
+          rel_count=$(jq -r 'length' "$DATA_DIR/relationships.json")
+          echo "✅ Extracted $rel_count relationship fields."
+      
+          echo "🧠 Querying validation rules..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT ValidationName, EntityDefinition.DeveloperName, Active, ErrorMessage, Description FROM ValidationRule WHERE Active = true AND EntityDefinition.DeveloperName IN ($object_names_quoted) LIMIT 2000" \
+            > "$DATA_DIR/validation_rules.json" 2>/tmp/query_vrules.log; then
+              echo "❌ Failed to fetch validation rules"; cat /tmp/query_vrules.log; exit 1
+          fi
+          
+          vrule_count=$(jq -r '.result.records | length' "$DATA_DIR/validation_rules.json")
+          echo "✅ Retrieved $vrule_count validation rules."
+      
+          echo "⚙️ Querying triggers..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Name, TableEnumOrId, Status, CreatedDate, LastModifiedDate FROM ApexTrigger WHERE TableEnumOrId IN ($object_names_quoted) LIMIT 2000" \
+            > "$DATA_DIR/triggers.json" 2>/tmp/query_triggers.log; then
+              echo "❌ Failed to fetch triggers"; cat /tmp/query_triggers.log; exit 1
+          fi
+          
+          trigger_count=$(jq -r '.result.records | length' "$DATA_DIR/triggers.json")
+          echo "✅ Retrieved $trigger_count triggers."
+      
+          echo "🗂 Querying record types..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT Name, SobjectType, Description, IsActive FROM RecordType WHERE SobjectType IN ($object_names_quoted) LIMIT 2000" \
+            > "$DATA_DIR/record_types.json" 2>/tmp/query_recordtypes.log; then
+              echo "❌ Failed to fetch record types"; cat /tmp/query_recordtypes.log; exit 1
+          fi
+          
+          rt_count=$(jq -r '.result.records | length' "$DATA_DIR/record_types.json")
+          echo "✅ Retrieved $rt_count record types."
+      
+          echo "🌊 Querying active flows..."
+          if ! sf data query \
+            --use-tooling-api \
+            --target-org "${{ github.event.inputs.org_alias }}" \
+            --result-format json \
+            --query "SELECT MasterLabel, Definition.DeveloperName, Description, Status, ProcessType, CreatedDate, LastModifiedDate FROM Flow WHERE Status = 'Active' LIMIT 2000" \
+            > "$DATA_DIR/flows.json" 2>/tmp/query_flows.log; then
+              echo "❌ Failed to fetch flows"; cat /tmp/query_flows.log; exit 1
+          fi
+          
+          flow_count=$(jq -r '.result.records | length' "$DATA_DIR/flows.json")
+          echo "✅ Retrieved $flow_count active flows."
+      
+          echo "🎉 Metadata extraction completed successfully."
+          echo ""
+          echo "📊 Summary:"
+          echo "  - Custom Objects: $object_count"
+          echo "  - Custom Fields: $field_count"
+          echo "  - Relationships: $rel_count"
+          echo "  - Validation Rules: $vrule_count"
+          echo "  - Triggers: $trigger_count"
+          echo "  - Record Types: $rt_count"
+          echo "  - Active Flows: $flow_count"
+
+      - name: Validate Data Availability
+        id: check
+        run: |
+          object_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/objects.json")
+          field_count=$(jq -r '.result.records // .records // [] | length' "$DATA_DIR/fields.json")
+          
+          echo "Objects: $object_count, Fields: $field_count"
+          
+          if [ "$object_count" -gt 0 ] && [ "$field_count" -gt 0 ]; then
+            echo "✅ Data model metadata available"
+            echo "has_data=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No metadata found"
+            echo "has_data=false" >> $GITHUB_OUTPUT
+          fi          
+          
+      # ✅ Updated to Node.js 24 compatible version
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: data-model-metadata-lite
+          path: ${{ env.DATA_DIR }}
+          retention-days: 7
+
+  analyze-ai:
+    name: Analyze Data Model (AI)
+    runs-on: ubuntu-latest
+    needs: collect-data
+    if: needs.collect-data.outputs.has_data == 'true'
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: data-model-metadata-lite
+          path: ${{ env.DATA_DIR }}
+
+      - name: Setup Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh   | sh
+          ollama serve &
+          for i in {1..20}; do
+            if curl -s http://localhost:11434/api/version >/dev/null; then
+              echo "✅ Ollama API ready"
+              break
+            fi
+            echo "⏳ Waiting for Ollama ($i/20)..."
+            sleep 3
+          done
+          if [ $i -eq 20 ]; then
+            echo "❌ Ollama failed to start"
+            exit 1
+          fi
+          ollama pull "${{ github.event.inputs.model_name }}"
+
+      - name: 📊 Pre-Analysis Generate Structured Data
+        shell: bash
+        run: |
+          echo "📊 Performing pre-analysis to generate structured findings..."
+
+          # === JSON Validation ===
+          echo "🔍 Validating metadata files..."
+          for f in "$DATA_DIR"/*.json; do
+            if [ ! -s "$f" ]; then
+              echo "⚠️ Empty file detected: $f — replacing with []"
+              echo "[]" > "$f"
+              continue
+            fi
+
+            # Check JSON validity
+            if ! jq empty "$f" >/dev/null 2>&1; then
+              echo "❌ Invalid JSON in $f — resetting to []"
+              echo "[]" > "$f"
+              continue
+            fi
+
+            # Replace numbers, nulls, or other invalid types
+            if jq -e 'type=="number" or type=="null" or type=="boolean"' "$f" >/dev/null; then
+              echo "⚠️ $f contained invalid type (number/null/bool) — resetting to []"
+              echo "[]" > "$f"
+            fi
+          done
+          echo "✅ JSON validation complete."
+
+          # === Helper Function to Normalize Records ===
+          safe_records() {
+            local file=$1
+            jq 'if type=="object" then
+                  if .result? and .result.records? then .result.records
+                  elif .records? then .records
+                  else [] end
+                elif type=="array" then .
+                else [] end' "$file"
+          }
+
+          # === 1. Missing Indexes Analysis ===
+          echo "🔍 Analyzing missing indexes..."
+          safe_records "$DATA_DIR/fields.json" | jq '
+            map(select(
+              (.DataType == "Text" or .DataType == "Number" or .DataType == "Lookup" or
+               .DataType == "MasterDetail" or .DataType == "Email" or .DataType == "Phone")
+              and (.IsIndexed != true)
+            )) |
+            map({
+              object: (.EntityDefinition.DeveloperName // "Unknown"),
+              field: (.QualifiedApiName // "Unknown"),
+              dataType: (.DataType // "Unknown"),
+              label: (.Label // ""),
+              risk: (if .DataType == "Lookup" or .DataType == "MasterDetail" then "HIGH"
+                     elif .DataType == "Text" and ((.Length // 0) > 255) then "MEDIUM"
+                     elif .DataType == "Email" or .DataType == "Phone" then "MEDIUM"
+                     else "LOW" end)
+            })' > "$DATA_DIR/missing_indexes_structured.json"
+
+          # === 2. Duplicate Fields Analysis ===
+          echo "🔍 Analyzing duplicate fields..."
+          safe_records "$DATA_DIR/fields.json" | jq '
+            group_by(.QualifiedApiName) |
+            map(select(length > 1)) |
+            map({
+              fieldName: (.[0].QualifiedApiName // "Unknown"),
+              occurrences: length,
+              objects: map(.EntityDefinition.DeveloperName // "Unknown"),
+              risk: (if length > 3 then "HIGH" elif length > 2 then "MEDIUM" else "LOW" end)
+            })' > "$DATA_DIR/duplicate_fields_structured.json"
+
+          # === 3. Relationship Analysis ===
+          echo "🔍 Analyzing relationships..."
+          if [ -s "$DATA_DIR/relationships.json" ]; then
+            jq 'if type=="array" then .
+                elif .result? and .result.records? then .result.records
+                else [] end |
+                map({
+                  parent: (.parent // "Unknown"),
+                  field: (.field // "Unknown"),
+                  referenced: (.referencedObject // "Unknown"),
+                  type: (.dataType // "Unknown"),
+                  indexed: (.isIndexed // false),
+                  risk: (if (.referencedObject // "Unknown") == "Unknown" then "HIGH"
+                         elif .dataType == "MasterDetail" and (.isIndexed == false) then "HIGH"
+                         elif .dataType == "Lookup" and (.isIndexed == false) then "MEDIUM"
+                         else "LOW" end)
+                })' "$DATA_DIR/relationships.json" > "$DATA_DIR/relationships_structured.json"
+          else
+            echo "[]" > "$DATA_DIR/relationships_structured.json"
+          fi
+
+          # === 4. Compute Global Statistics (Fully Safe) ===
+          echo "📊 Calculating statistics..."
+
+          jq -n \
+            --slurpfile fields "$DATA_DIR/fields.json" \
+            --slurpfile missing "$DATA_DIR/missing_indexes_structured.json" \
+            --slurpfile dup "$DATA_DIR/duplicate_fields_structured.json" \
+            --slurpfile rel "$DATA_DIR/relationships_structured.json" '
+            def normalize(x):
+              if (x|type)=="array" then x
+              elif (x|type)=="object" then
+                if x.result? and x.result.records? then x.result.records
+                elif x.records? then x.records
+                else [] end
+              else [] end;
+
+            def safe_count(x): if (x|type)=="array" then (x|length) else 0 end;
+
+            # Normalize all possible shapes
+            ($fields | map(normalize(.)) | add // []) as $allFields |
+            ($missing | map(normalize(.)) | add // []) as $miss |
+            ($dup | map(normalize(.)) | add // []) as $dups |
+            ($rel | map(normalize(.)) | add // []) as $rels |
+
+            {
+              totalFields: safe_count($allFields),
+              missingIndexes: safe_count($miss),
+              duplicateFields: safe_count($dups),
+              totalRelationships: safe_count($rels),
+              riskyRelationships: safe_count($rels | map(select(.risk=="HIGH" or .risk=="MEDIUM")))
+            }' > "$DATA_DIR/statistics.json"
+
+          echo "✅ Statistics calculated:"
+          cat "$DATA_DIR/statistics.json" | jq .
+
+
+      - name: 🧠 AI Analysis with Structured Output
+        shell: bash
+        run: |
+          echo "🧠 Starting AI Analysis..."
+          REPORT_FILE="data_model_analysis_$(date +%Y%m%d_%H%M%S).md"
+          MODEL="${{ github.event.inputs.model_name }}"
+          
+          stats=$(cat "$DATA_DIR/statistics.json")
+          totalFields=$(jq -r .totalFields "$DATA_DIR/statistics.json")
+          missCount=$(jq -r .missingIndexes "$DATA_DIR/statistics.json")
+          dupCount=$(jq -r .duplicateFields "$DATA_DIR/statistics.json")
+          riskyCount=$(jq -r .riskyRelationships "$DATA_DIR/statistics.json")
+          relCount=$(jq -r .totalRelationships "$DATA_DIR/statistics.json")
+
+          echo "📊 Quick Stats:"
+          echo "Fields: $totalFields | Missing Indexes: $missCount | Duplicates: $dupCount | Risky Relationships: $riskyCount/$relCount"
+
+          SYSTEM_PROMPT="You are a Salesforce Data Architect. Respond ONLY with Markdown tables and structured recommendations — no prose."
+          USER_PROMPT=$(cat << 'EOP'
+          Generate the following Markdown tables and sections based on the provided structured data:
+
+          ## 📊 Executive Summary
+
+          | Metric | Count | Risk % | Status |
+          |--------|-------|--------|--------|
+          | Missing Indexes | X | Y% | 🔴/🟡/🟢 |
+          | Duplicate Fields | X | Y% | 🔴/🟡/🟢 |
+          | Risky Relationships | X | Y% | 🔴/🟡/🟢 |
+
+          Risk Status thresholds:
+          - 🔴 HIGH if >20%
+          - 🟡 MEDIUM if 10–20%
+          - 🟢 LOW if <10%
+
+          ## 🔍 Missing Indexes (Top 10)
+
+          | Object | Field | Data Type | Risk Level | Impact |
+          |--------|-------|-----------|------------|--------|
+
+          ## 🧩 Duplicate Fields (Top 10)
+
+          | Field Name | Occurrences | Objects | Risk Level | Recommendation |
+          |------------|-------------|---------|------------|----------------|
+
+          ## 🔗 Invalid/Risky Relationships (Top 10)
+
+          | Parent Object | Field | Referenced Object | Type | Indexed | Risk | Issue |
+          |---------------|-------|-------------------|------|---------|------|-------|
+
+          ## ✅ Recommendations
+
+          Provide 3–5 bullet points with specific actions.
+          EOP
+          )
+
+          # Build Prompt
+          cat > prompt.txt << EOF
+          $USER_PROMPT
+
+          ### STATISTICS:
+          $stats
+
+          ### MISSING INDEXES (Sample):
+          $(jq -c '[limit(15; .[])]' "$DATA_DIR/missing_indexes_structured.json")
+
+          ### DUPLICATE FIELDS (Sample):
+          $(jq -c '[limit(15; .[])]' "$DATA_DIR/duplicate_fields_structured.json")
+
+          ### RELATIONSHIPS (Sample):
+          $(jq -c '[limit(15; .[])]' "$DATA_DIR/relationships_structured.json")
+          EOF
+
+          # Call Ollama
+          echo "📤 Sending prompt to Ollama..."
+          ollama_response=$(curl -s http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d @<(jq -n \
+              --arg model "$MODEL" \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg prompt "$(cat prompt.txt)" \
+              '{model:$model, system:$system, prompt:$prompt, options:{temperature:0.1, top_p:0.9, num_predict:2000}, stream:false}') \
+            | jq -r '.response // empty')
+
+          if [ -z "$ollama_response" ]; then
+            echo "❌ Ollama returned empty response"
+            exit 1
+          fi
+
+          # Save Markdown report
+          cat > "$REPORT_FILE" << EOF
+          # 📊 Salesforce Data Model Analysis Report
+
+          **Model:** $MODEL  
+          **Generated:** $(date -u)  
+          **Org:** ${{ github.event.inputs.org_alias }}
+
+          ---
+          $ollama_response
+          ---
+          ## 📁 Raw Data Files
+          - \`missing_indexes_structured.json\`
+          - \`duplicate_fields_structured.json\`
+          - \`relationships_structured.json\`
+          - \`statistics.json\`
+          **AI Model:** $MODEL (Ollama)
+          EOF
+
+          echo "✅ AI analysis complete"
+          cat "$REPORT_FILE"
+
+      - name: Prepare Report Artifacts
+        run: |
+          # Copy structured files to root for cleaner artifact
+          cp "$DATA_DIR"/*_structured.json .
+          cp "$DATA_DIR"/statistics.json .
+  
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ai-data-model-report
+          path: |
+            data_model_analysis_*.md
+            *_structured.json
+            statistics.json
+          retention-days: 14
+
+      - name: 📄 Generate GitHub Summary
+        run: |
+          REPORT=$(ls -t data_model_analysis_*.md | head -1)
+          echo "# 🧠 AI Data Model Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Model:** \`${{ github.event.inputs.model_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Org:** \`${{ github.event.inputs.org_alias }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Generated:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "$DATA_DIR/statistics.json" ]; then
+            echo "## 📊 Quick Stats" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Fields | $(jq -r .totalFields $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Missing Indexes | $(jq -r .missingIndexes $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Duplicate Fields | $(jq -r .duplicateFields $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Risky Relationships | $(jq -r .riskyRelationships $DATA_DIR/statistics.json)/$(jq -r .totalRelationships $DATA_DIR/statistics.json) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📄 Full report available in artifacts." >> $GITHUB_STEP_SUMMARY
