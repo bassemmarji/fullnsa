@@ -37,10 +37,10 @@ jobs:
 
     steps:
       - name: 'Checkout Repository'
-        uses: actions/checkout@v4
+        uses: actions/setup-node@v6
 
       - name: 'Install Node.js'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -118,7 +118,7 @@ jobs:
           cat $PROJECT_DIR/deploy-result.json | jq '.result.details.componentFailures[] | "- " + .componentType + ": " + .fullName + " ❌ (" + .problem + ")"' >> $GITHUB_STEP_SUMMARY || echo "No failures."
 
       - name: 'Upload Artifacts'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-artifacts
           path: |
