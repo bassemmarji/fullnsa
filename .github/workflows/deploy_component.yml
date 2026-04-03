@@ -70,19 +70,35 @@ jobs:
 
       - name: 'Collect Dependencies via Tooling API'
         run: |
-          echo "Querying MetadataComponentDependency for $COMPONENT_NAME ..."
+          echo "Querying MetadataComponentDependency for $COMPONENT_NAME from $SRC_ORG_ALIAS..."
+      
           sf data query \
             --target-org $SRC_ORG_ALIAS \
             --query "SELECT MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentName = '$COMPONENT_NAME'" \
             --use-tooling-api \
-            --json > $PROJECT_DIR/dependencies.json || echo "{}" > $PROJECT_DIR/dependencies.json
-          echo "Raw dependency output:"
+            --json > $PROJECT_DIR/dependencies.json 2>&1 || true
+      
+          # Validate the output contains expected structure, reset if not
+          if ! jq -e '.result.records' $PROJECT_DIR/dependencies.json > /dev/null 2>&1; then
+            echo "⚠️ Query failed or returned unexpected structure. Raw output:"
+            cat $PROJECT_DIR/dependencies.json
+            echo "{}" > $PROJECT_DIR/dependencies.json
+          fi
+      
+          echo "--- Raw dependency output ---"
           cat $PROJECT_DIR/dependencies.json
+      
+          RECORD_COUNT=$(jq '.result.totalSize // 0' $PROJECT_DIR/dependencies.json 2>/dev/null || echo "0")
+          echo "Total dependency records found: $RECORD_COUNT"
+      
           echo "## Dependencies for $COMPONENT_NAME" >> $GITHUB_STEP_SUMMARY
-          cat $PROJECT_DIR/dependencies.json \
-            | jq '.result.records[] | "- " + .RefMetadataComponentName + " (" + .RefMetadataComponentType + ")"' \
-            >> $GITHUB_STEP_SUMMARY || echo "No dependencies found."
-
+          if [ "$RECORD_COUNT" -gt "0" ]; then
+            jq '.result.records[] | "- " + .RefMetadataComponentName + " (" + .RefMetadataComponentType + ")"' \
+              $PROJECT_DIR/dependencies.json >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No dependencies found or query failed." >> $GITHUB_STEP_SUMMARY
+          fi
+    
       - name: 'Build package.xml from Dependencies'
         run: |
           cd $PROJECT_DIR
