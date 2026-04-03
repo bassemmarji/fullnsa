@@ -11,8 +11,12 @@ on:
         description: "Alias for the Destination Salesforce org"
         required: true
         default: "DstOrgAlias"
+      COMPONENT_TYPE:
+        description: "Metadata type (e.g., ApexClass, ApexTrigger, LightningComponentBundle)"
+        required: true
+        default: "ApexClass"
       COMPONENT_NAME:
-        description: "API name of the component to deploy (e.g., MyTrigger, MyLWCComponent)"
+        description: "API name of the component"
         required: true
       DRY_RUN:
         description: "Set to true to only list dependencies without retrieval or deployment"
@@ -26,6 +30,7 @@ on:
 env:
   SRC_ORG_ALIAS: ${{ github.event.inputs.SRC_ORG_ALIAS }}
   DST_ORG_ALIAS: ${{ github.event.inputs.DST_ORG_ALIAS }}
+  COMPONENT_TYPE: ${{ github.event.inputs.COMPONENT_TYPE }}
   COMPONENT_NAME: ${{ github.event.inputs.COMPONENT_NAME }}
   DRY_RUN: ${{ github.event.inputs.DRY_RUN }}
   VALIDATE_ONLY: ${{ github.event.inputs.VALIDATE_ONLY }}
@@ -65,7 +70,7 @@ jobs:
           sf project generate --name "deployment-project" --manifest
           cd $PROJECT_DIR
           echo "Generating package.xml for component $COMPONENT_NAME ..."
-          sf project generate manifest --metadata "$COMPONENT_NAME"
+          sf project generate manifest --metadata "$COMPONENT_TYPE:$COMPONENT_NAME"
 
       - name: 'Collect Dependencies for Selected Component'
         run: |
