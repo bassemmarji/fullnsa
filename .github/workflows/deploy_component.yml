@@ -74,11 +74,10 @@ jobs:
       
           sf data query \
             --target-org $SRC_ORG_ALIAS \
-            --query "SELECT MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentName = '$COMPONENT_NAME'" \
+            --query "SELECT MetadataComponentId, MetadataComponent.Name, MetadataComponent.Type, RefMetadataComponentId, RefMetadataComponent.Name, RefMetadataComponent.Type FROM MetadataComponentDependency WHERE MetadataComponent.Name = '$COMPONENT_NAME'" \
             --use-tooling-api \
             --json > $PROJECT_DIR/dependencies.json 2>&1 || true
       
-          # Validate the output contains expected structure, reset if not
           if ! jq -e '.result.records' $PROJECT_DIR/dependencies.json > /dev/null 2>&1; then
             echo "⚠️ Query failed or returned unexpected structure. Raw output:"
             cat $PROJECT_DIR/dependencies.json
@@ -93,7 +92,7 @@ jobs:
       
           echo "## Dependencies for $COMPONENT_NAME" >> $GITHUB_STEP_SUMMARY
           if [ "$RECORD_COUNT" -gt "0" ]; then
-            jq '.result.records[] | "- " + .RefMetadataComponentName + " (" + .RefMetadataComponentType + ")"' \
+            jq '.result.records[] | "- " + .RefMetadataComponent.Name + " (" + .RefMetadataComponent.Type + ")"' \
               $PROJECT_DIR/dependencies.json >> $GITHUB_STEP_SUMMARY
           else
             echo "No dependencies found or query failed." >> $GITHUB_STEP_SUMMARY
@@ -173,23 +172,29 @@ jobs:
             sf project deploy validate \
               --target-org $DST_ORG_ALIAS \
               --source-dir force-app \
-              --json > deploy-result.json || true
+              --json > deploy-result.json 2>&1 || true
           else
             sf project deploy start \
               --target-org $DST_ORG_ALIAS \
               --source-dir force-app \
-              --json > deploy-result.json || true
+              --json > deploy-result.json 2>&1 || true
           fi
-          echo "Raw deploy output:"
+          echo "--- Raw deploy output ---"
           cat deploy-result.json
-          echo "## Deployment Results" >> $GITHUB_STEP_SUMMARY
-          cat deploy-result.json \
-            | jq '.result.files[] | "- " + .fullName + " (" + .type + ")"' \
-            >> $GITHUB_STEP_SUMMARY \
-            || cat deploy-result.json \
-            | jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' \
-            >> $GITHUB_STEP_SUMMARY \
-            || echo "No deployed components."
+      
+          # Check if deployment failed at the top level
+          DEPLOY_STATUS=$(jq -r '.status // 1' deploy-result.json)
+          if [ "$DEPLOY_STATUS" != "0" ]; then
+            echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+            jq -r '.message // "Unknown error"' deploy-result.json >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ Deployment Results" >> $GITHUB_STEP_SUMMARY
+            jq '.result.files[] | "- " + .fullName + " (" + .type + ")"' deploy-result.json \
+              >> $GITHUB_STEP_SUMMARY \
+              || jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' deploy-result.json \
+              >> $GITHUB_STEP_SUMMARY \
+              || echo "No deployed components listed." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: 'Generate Deployment Report'
         run: |
@@ -198,7 +203,19 @@ jobs:
           echo "### Source Org: $SRC_ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
           echo "### Destination Org: $DST_ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
           echo "### Mode: $([ "$VALIDATE_ONLY" == "true" ] && echo "Validation Only" || echo "Full Deploy")" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Details:" >> $GITHUB_STEP_SUMMARY
+      
+          DEPLOY_STATUS=$(jq -r '.status // 1' $PROJECT_DIR/deploy-result.json)
+          if [ "$DEPLOY_STATUS" != "0" ]; then
+            echo "### ❌ Deployment failed:" >> $GITHUB_STEP_SUMMARY
+            jq -r '.message // "Unknown error"' $PROJECT_DIR/deploy-result.json >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ Successes:" >> $GITHUB_STEP_SUMMARY
+            jq '.result.details.componentSuccesses[] | "- " + .componentType + ": " + .fullName + " ✅"' \
+              $PROJECT_DIR/deploy-result.json >> $GITHUB_STEP_SUMMARY || echo "No success details."
+            echo "### Failures (if any):" >> $GITHUB_STEP_SUMMARY
+            jq '.result.details.componentFailures[] | "- " + .componentType + ": " + .fullName + " ❌ (" + .problem + ")"' \
+              $PROJECT_DIR/deploy-result.json >> $GITHUB_STEP_SUMMARY || echo "No failures."
+          fi
           cat $PROJECT_DIR/deploy-result.json \
             | jq '.result.details.componentSuccesses[] | "- " + .componentType + ": " + .fullName + " ✅"' \
             >> $GITHUB_STEP_SUMMARY || echo "No success details."
