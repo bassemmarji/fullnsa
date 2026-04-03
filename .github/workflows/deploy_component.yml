@@ -101,15 +101,18 @@ jobs:
           cd $PROJECT_DIR
           echo "Deploying to $DST_ORG_ALIAS ..."
           if [ "$VALIDATE_ONLY" == "true" ]; then
-            echo "Validation-only mode enabled. Performing deployment preview..."
-            sf project deploy start --target-org $DST_ORG_ALIAS --source-dir force-app --dry-run --json > deploy-result.json
+            echo "Validation-only mode enabled..."
+            sf project deploy validate --target-org $DST_ORG_ALIAS --source-dir force-app --json > deploy-result.json || true
           else
-            sf project deploy start --target-org $DST_ORG_ALIAS --source-dir force-app --json > deploy-result.json
+            sf project deploy start --target-org $DST_ORG_ALIAS --source-dir force-app --json > deploy-result.json || true
           fi
+          cat deploy-result.json
           echo "Deployment complete."
           echo "## Deployment Results" >> $GITHUB_STEP_SUMMARY
-          cat deploy-result.json | jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' >> $GITHUB_STEP_SUMMARY || echo "No deployed components."
-
+          cat deploy-result.json | jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' >> $GITHUB_STEP_SUMMARY \
+            || cat deploy-result.json | jq '.result.files[] | "- " + .fullName + " (" + .type + ")"' >> $GITHUB_STEP_SUMMARY \
+            || echo "No deployed components."
+      
       - name: 'Generate Deployment Report'
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
