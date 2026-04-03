@@ -42,59 +42,111 @@ jobs:
 
     steps:
       - name: 'Checkout Repository'
-        uses: actions/setup-node@v6
+        uses: actions/checkout@v4
 
       - name: 'Install Node.js'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: 'Install Salesforce CLI'
         run: npm install @salesforce/cli --global
 
-      - name: 'Verify Salesforce CLI and Plugins'
+      - name: 'Verify Salesforce CLI'
         run: |
-          npm update --global @salesforce/cli
-          sf plugins:update
           sf --version
           sf plugins --core
 
       - name: 'Authenticate Source & Destination Orgs'
         run: |
-          echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --set-default --sfdx-url-stdin
-          echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --set-default --sfdx-url-stdin
+          echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $SRC_ORG_ALIAS --sfdx-url-stdin
+          echo "${{ secrets.DST_ORG_SFDX_URL }}" | sf org login sfdx-url --alias $DST_ORG_ALIAS --sfdx-url-stdin
           sf org list
 
-      - name: 'Create Project and Manifest'
+      - name: 'Create Salesforce Project'
         run: |
           sf project generate --name "deployment-project" --manifest
-          cd $PROJECT_DIR
-          echo "Generating package.xml for component $COMPONENT_NAME ..."
-          sf project generate manifest --metadata "$COMPONENT_TYPE:$COMPONENT_NAME"
+          echo "Project created."
 
-      - name: 'Collect Dependencies for Selected Component'
+      - name: 'Collect Dependencies via Tooling API'
+        run: |
+          echo "Querying MetadataComponentDependency for $COMPONENT_NAME ..."
+          sf data query \
+            --target-org $SRC_ORG_ALIAS \
+            --query "SELECT MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentName = '$COMPONENT_NAME'" \
+            --use-tooling-api \
+            --json > $PROJECT_DIR/dependencies.json || echo "{}" > $PROJECT_DIR/dependencies.json
+          echo "Raw dependency output:"
+          cat $PROJECT_DIR/dependencies.json
+          echo "## Dependencies for $COMPONENT_NAME" >> $GITHUB_STEP_SUMMARY
+          cat $PROJECT_DIR/dependencies.json \
+            | jq '.result.records[] | "- " + .RefMetadataComponentName + " (" + .RefMetadataComponentType + ")"' \
+            >> $GITHUB_STEP_SUMMARY || echo "No dependencies found."
+
+      - name: 'Build package.xml from Dependencies'
         run: |
           cd $PROJECT_DIR
-          echo "Collecting dependencies for $COMPONENT_NAME ..."
-          sf dependency:list --source-dir force-app --json > dependencies.json || echo "{}" > dependencies.json
-          echo "## Dependencies for $COMPONENT_NAME" >> $GITHUB_STEP_SUMMARY
-          cat dependencies.json | jq '.result.components[] | "- " + .fullName' >> $GITHUB_STEP_SUMMARY || echo "No dependencies found."
+          echo "Building package.xml for $COMPONENT_NAME and its dependencies..."
+          python3 - <<'EOF'
+          import json, os
+
+          with open("dependencies.json") as f:
+              data = json.load(f)
+
+          records = data.get("result", {}).get("records", [])
+
+          type_map = {}
+
+          # Always include the main component
+          comp_name = os.environ["COMPONENT_NAME"]
+          comp_type = os.environ["COMPONENT_TYPE"]
+          type_map.setdefault(comp_type, set()).add(comp_name)
+
+          # Add all dependencies
+          for r in records:
+              t = r.get("RefMetadataComponentType")
+              n = r.get("RefMetadataComponentName")
+              if t and n:
+                  type_map.setdefault(t, set()).add(n)
+
+          lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+          lines.append('<Package xmlns="http://soap.sforce.com/2006/04/metadata">')
+          for t, names in sorted(type_map.items()):
+              lines.append("    <types>")
+              for n in sorted(names):
+                  lines.append(f"        <members>{n}</members>")
+              lines.append(f"        <name>{t}</name>")
+              lines.append("    </types>")
+          lines.append("    <version>59.0</version>")
+          lines.append("</Package>")
+
+          with open("manifest/package.xml", "w") as f:
+              f.write("\n".join(lines))
+
+          print("package.xml written:")
+          print("\n".join(lines))
+          EOF
 
       - name: 'Dry Run Check'
         if: ${{ env.DRY_RUN == 'true' }}
         run: |
           echo "🧩 Dry Run mode enabled. Listing components that would be retrieved and deployed..."
           echo "### Components to Deploy:" >> $GITHUB_STEP_SUMMARY
-          cat $PROJECT_DIR/dependencies.json | jq '.result.components[] | "- " + .fullName' >> $GITHUB_STEP_SUMMARY || echo "No dependencies."
+          cat $PROJECT_DIR/dependencies.json \
+            | jq '.result.records[] | "- " + .RefMetadataComponentName + " (" + .RefMetadataComponentType + ")"' \
+            >> $GITHUB_STEP_SUMMARY || echo "No dependencies found."
           echo "⏹️ Dry run complete. No metadata was retrieved or deployed."
           exit 0
 
       - name: 'Retrieve Component and Dependencies'
         run: |
           cd $PROJECT_DIR
-          echo "Retrieving component and dependencies from $SRC_ORG_ALIAS ..."
-          sf project retrieve start --target-org $SRC_ORG_ALIAS --manifest manifest/package.xml
-          echo "Retrieval complete."
+          echo "Retrieving metadata from $SRC_ORG_ALIAS using package.xml..."
+          sf project retrieve start \
+            --target-org $SRC_ORG_ALIAS \
+            --manifest manifest/package.xml
+          echo "Retrieval complete. Files retrieved:"
+          find force-app -type f | sort
 
       - name: 'Deploy to Destination Org'
         run: |
@@ -102,17 +154,27 @@ jobs:
           echo "Deploying to $DST_ORG_ALIAS ..."
           if [ "$VALIDATE_ONLY" == "true" ]; then
             echo "Validation-only mode enabled..."
-            sf project deploy validate --target-org $DST_ORG_ALIAS --source-dir force-app --json > deploy-result.json || true
+            sf project deploy validate \
+              --target-org $DST_ORG_ALIAS \
+              --source-dir force-app \
+              --json > deploy-result.json || true
           else
-            sf project deploy start --target-org $DST_ORG_ALIAS --source-dir force-app --json > deploy-result.json || true
+            sf project deploy start \
+              --target-org $DST_ORG_ALIAS \
+              --source-dir force-app \
+              --json > deploy-result.json || true
           fi
+          echo "Raw deploy output:"
           cat deploy-result.json
-          echo "Deployment complete."
           echo "## Deployment Results" >> $GITHUB_STEP_SUMMARY
-          cat deploy-result.json | jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' >> $GITHUB_STEP_SUMMARY \
-            || cat deploy-result.json | jq '.result.files[] | "- " + .fullName + " (" + .type + ")"' >> $GITHUB_STEP_SUMMARY \
+          cat deploy-result.json \
+            | jq '.result.files[] | "- " + .fullName + " (" + .type + ")"' \
+            >> $GITHUB_STEP_SUMMARY \
+            || cat deploy-result.json \
+            | jq '.result.deployedSource[] | "- " + .fullName + " (" + .type + ")"' \
+            >> $GITHUB_STEP_SUMMARY \
             || echo "No deployed components."
-      
+
       - name: 'Generate Deployment Report'
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
@@ -121,12 +183,16 @@ jobs:
           echo "### Destination Org: $DST_ORG_ALIAS" >> $GITHUB_STEP_SUMMARY
           echo "### Mode: $([ "$VALIDATE_ONLY" == "true" ] && echo "Validation Only" || echo "Full Deploy")" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment Details:" >> $GITHUB_STEP_SUMMARY
-          cat $PROJECT_DIR/deploy-result.json | jq '.result.details.componentSuccesses[] | "- " + .componentType + ": " + .fullName + " ✅"' >> $GITHUB_STEP_SUMMARY || echo "No success details."
+          cat $PROJECT_DIR/deploy-result.json \
+            | jq '.result.details.componentSuccesses[] | "- " + .componentType + ": " + .fullName + " ✅"' \
+            >> $GITHUB_STEP_SUMMARY || echo "No success details."
           echo "### Failures (if any):" >> $GITHUB_STEP_SUMMARY
-          cat $PROJECT_DIR/deploy-result.json | jq '.result.details.componentFailures[] | "- " + .componentType + ": " + .fullName + " ❌ (" + .problem + ")"' >> $GITHUB_STEP_SUMMARY || echo "No failures."
+          cat $PROJECT_DIR/deploy-result.json \
+            | jq '.result.details.componentFailures[] | "- " + .componentType + ": " + .fullName + " ❌ (" + .problem + ")"' \
+            >> $GITHUB_STEP_SUMMARY || echo "No failures."
 
       - name: 'Upload Artifacts'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-artifacts
           path: |
