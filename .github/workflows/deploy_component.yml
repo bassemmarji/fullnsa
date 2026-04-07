@@ -116,34 +116,25 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Collect Dependencies via Tooling API'
         run: |
-          echo "Querying MetadataComponentDependency for '$COMPONENT_NAME' from '$SRC_ORG_ALIAS'..."
-
+          echo "Querying MetadataComponentDependency for '$COMPONENT_NAME'..."
+      
           sf data query \
             --target-org "$SRC_ORG_ALIAS" \
-            --query "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, \
-                     RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType \
-                     FROM MetadataComponentDependency \
-                     WHERE MetadataComponentName = '$COMPONENT_NAME'" \
+            --query "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentType = '$COMPONENT_TYPE'" \
             --use-tooling-api \
-            --json > "$PROJECT_DIR/dependencies.json" 2>&1 || true
-
-          if ! jq -e '.result.records' "$PROJECT_DIR/dependencies.json" > /dev/null 2>&1; then
-            echo "⚠️  Query failed or returned unexpected structure. Raw output:"
-            cat "$PROJECT_DIR/dependencies.json"
-            echo "{}" > "$PROJECT_DIR/dependencies.json"
-          fi
-
-          echo "--- Raw dependency output ---"
-          cat "$PROJECT_DIR/dependencies.json"
-
-          RECORD_COUNT=$(jq '.result.totalSize // 0' "$PROJECT_DIR/dependencies.json" 2>/dev/null || echo "0")
-          echo "Total dependency records found: $RECORD_COUNT"
-
+            --json > "$PROJECT_DIR/dependencies_raw.json" 2>&1 || true
+      
+          # Filter using jq
+          jq --arg name "$COMPONENT_NAME" \
+            '{result: {records: [.result.records[] | select(.MetadataComponentName == $name)], totalSize: ([.result.records[] | select(.MetadataComponentName == $name)] | length)}}' \
+            "$PROJECT_DIR/dependencies_raw.json" > "$PROJECT_DIR/dependencies.json"
+      
+          RECORD_COUNT=$(jq '.result.totalSize // 0' "$PROJECT_DIR/dependencies.json")
+          echo "Found $RECORD_COUNT dependencies for $COMPONENT_NAME"
+      
           echo "## Dependencies for \`$COMPONENT_NAME\`" >> $GITHUB_STEP_SUMMARY
-
           if [ "$RECORD_COUNT" -gt "0" ]; then
-            # Enhancement 5: use flat field names in jq (RefMetadataComponentName, not .RefMetadataComponent.Name)
-            jq -r '.result.records[] | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
+            jq -r '.result.records[] | "- \`" + .RefMetadataComponentName + "\` (" + .RefMetadataComponentType + ")"' \
               "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY
           else
             echo "No dependencies found or query failed." >> $GITHUB_STEP_SUMMARY
