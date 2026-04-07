@@ -134,7 +134,7 @@ jobs:
       
           echo "## Dependencies for \`$COMPONENT_NAME\`" >> $GITHUB_STEP_SUMMARY
           if [ "$RECORD_COUNT" -gt "0" ]; then
-            jq -r '.result.records[] | "- \`" + .RefMetadataComponentName + "\` (" + .RefMetadataComponentType + ")"' \
+            jq -r '.result.records[] | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
               "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY
           else
             echo "No dependencies found or query failed." >> $GITHUB_STEP_SUMMARY
@@ -193,15 +193,13 @@ jobs:
         run: |
           if [ "$DRY_RUN" == "true" ]; then
             echo "skip_deploy=true" >> $GITHUB_OUTPUT
-
             echo "🧩 Dry Run mode — listing components that would be retrieved and deployed."
             echo "### Components to Deploy (dry run)" >> $GITHUB_STEP_SUMMARY
-
-            # Enhancement 5: correct flat field names
+            
             jq -r '.result.records[] | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
               "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY \
               || echo "No dependencies found." >> $GITHUB_STEP_SUMMARY
-
+            
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⏹ Dry run complete — no metadata was retrieved or deployed." >> $GITHUB_STEP_SUMMARY
             echo "⏹ Dry run complete. No metadata was retrieved or deployed."
