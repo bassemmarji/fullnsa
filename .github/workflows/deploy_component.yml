@@ -184,7 +184,7 @@ jobs:
           ' dependencies.json > /tmp/package_structure.json
       
           # ───────────────────────────────────────────────────────────────────────
-          # Generate XML from jq output
+          # Generate XML from jq output (FIXED: use \(.) not \(.name))
           # ───────────────────────────────────────────────────────────────────────
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
@@ -194,11 +194,11 @@ jobs:
             if [ -s /tmp/package_structure.json ] && jq -e 'length > 0' /tmp/package_structure.json > /dev/null 2>&1; then
               jq -r '.[] | 
                 "    <types>\n" + 
-                (.members | map("        <members>\(.name)</members>") | join("\n")) + "\n" +
+                (.members | map("        <members>\(.)</members>") | join("\n")) + "\n" +
                 "        <name>\(.type)</name>\n" +
                 "    </types>"' /tmp/package_structure.json
             else
-              echo "⚠️  No deployable components found — generating empty package.xml"
+              echo "⚠️  No deployable components found — generating empty package.xml" >&2
             fi
             
             echo '    <version>59.0</version>'
@@ -215,6 +215,8 @@ jobs:
           TYPE_COUNT=$(jq 'length' /tmp/package_structure.json 2>/dev/null || echo "0")
           MEMBER_COUNT=$(jq '[.[].members | length] | add // 0' /tmp/package_structure.json 2>/dev/null || echo "0")
           echo "📊 Summary: $TYPE_COUNT metadata types, $MEMBER_COUNT total members"
+        env:
+          TEST_CLASS_NAMES_DEPLOY: ${{ github.event.inputs.TEST_CLASS_NAMES_DEPLOY }}
 
       # ───────────────────────────────────────────────────────────────────────
       # Dry-run now uses a job output variable (skip_deploy)
