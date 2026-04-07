@@ -261,32 +261,44 @@ jobs:
         if: steps.dry_run_check.outputs.skip_deploy != 'true'
         run: |
           cd "$PROJECT_DIR"
-          echo "Deploying to '$DST_ORG_ALIAS'..."
-
-          # Build optional test flags (Enhancement 9)
+          echo "🚀 Deploying to '$DST_ORG_ALIAS'..."
+      
+          # ───────────────────────────────────────────────────────────────────────
+          # Build optional test flags
+          # ───────────────────────────────────────────────────────────────────────
           TEST_FLAGS=""
           if [ "$RUN_TESTS" == "true" ]; then
+            if [ -z "$TEST_CLASS_NAMES" ]; then
+              echo "❌ Error: TEST_CLASS_NAMES is required when RUN_TESTS=true"
+              exit 1
+            fi
             # Convert comma-separated list to space-separated for --tests
             TEST_NAMES=$(echo "$TEST_CLASS_NAMES" | tr ',' ' ' | xargs)
             TEST_FLAGS="--test-level RunSpecifiedTests --tests $TEST_NAMES"
             echo "🧪 Apex test gate enabled. Running: $TEST_NAMES"
           fi
-
+      
+          # ───────────────────────────────────────────────────────────────────────
           # Choose deploy vs validate subcommand
+          # ───────────────────────────────────────────────────────────────────────
           if [ "$VALIDATE_ONLY" == "true" ]; then
             DEPLOY_CMD="validate"
             echo "🔍 Validation-only mode — no changes will be applied."
           else
             DEPLOY_CMD="start"
+            echo "✅ Full deployment mode — changes will be applied."
           fi
-
+      
+          # ───────────────────────────────────────────────────────────────────────
+          # Retry logic for transient errors only
+          # ───────────────────────────────────────────────────────────────────────
           MAX_ATTEMPTS=3
           DEPLOY_EXIT=0
-
+      
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
-            echo "--- Deploy attempt $attempt of $MAX_ATTEMPTS ---"
-
-            # Enhancement 4: capture exit code without masking it with || true
+            echo "─── Deploy attempt $attempt of $MAX_ATTEMPTS ───"
+      
+            # Capture exit code without masking errors
             set +e
             sf project deploy $DEPLOY_CMD \
               --target-org "$DST_ORG_ALIAS" \
@@ -295,45 +307,109 @@ jobs:
               --json > deploy-result.json 2>&1
             DEPLOY_EXIT=$?
             set -e
-
-            echo "--- Raw deploy output ---"
-            cat deploy-result.json
-
+      
+            # Log raw output for debugging (truncated if too large)
+            echo "📋 Deploy response (first 200 lines):"
+            head -200 deploy-result.json
+      
             if [ "$DEPLOY_EXIT" -eq 0 ]; then
               echo "✅ Deploy succeeded on attempt $attempt."
               break
             fi
-
-            # Retry only on likely transient errors (network / timeout).
-            # Hard Salesforce compilation errors should not be retried.
-            ERROR_MSG=$(jq -r '.message // ""' deploy-result.json 2>/dev/null || true)
-            if echo "$ERROR_MSG" | grep -qiE "timeout|ETIMEDOUT|socket|network|unavailable"; then
+      
+            # Check if error is transient (network/timeout) — only retry those
+            ERROR_MSG=$(jq -r '.message // ""' deploy-result.json 2>/dev/null || echo "Unknown error")
+            if echo "$ERROR_MSG" | grep -qiE "timeout|ETIMEDOUT|socket|network|unavailable|connection"; then
               if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-                echo "⚠️  Transient error detected. Waiting 15 s before retry..."
+                echo "⚠️  Transient error detected: $ERROR_MSG"
+                echo "⏳ Waiting 15s before retry..."
                 sleep 15
+                continue
               else
                 echo "❌ Deploy failed after $MAX_ATTEMPTS attempts (transient errors)."
               fi
             else
-              echo "❌ Deploy failed with a non-transient error — not retrying."
+              echo "❌ Deploy failed with non-transient error — not retrying."
+              echo "   Error: $ERROR_MSG"
               break
             fi
           done
-
-          # Propagate failure so the job is marked failed and the report step
-          # can record it via if: always()
+      
+          # ───────────────────────────────────────────────────────────────────────
+          # Handle failure: log details and exit
+          # ───────────────────────────────────────────────────────────────────────
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
             echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
-            jq -r '.message // "Unknown error"' deploy-result.json >> $GITHUB_STEP_SUMMARY
+            echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+            echo "| Error | \`\`\`$ERROR_MSG\`\`\` |" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract component failures if available
+            FAILURES=$(jq -r '.result.details.componentFailures[]? | 
+                             "• `" + .componentType + "." + .fullName + "`: " + .problem' \
+                      deploy-result.json 2>/dev/null || true)
+            if [ -n "$FAILURES" ]; then
+              echo "| Failures | <pre>$FAILURES</pre> |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> 🔍 Check the 'Deploy to Destination Org' step logs for full details." >> $GITHUB_STEP_SUMMARY
+            
             exit $DEPLOY_EXIT
           fi
-
+      
+          # ───────────────────────────────────────────────────────────────────────
+          # Success: Generate clean, deduplicated results summary
+          # ───────────────────────────────────────────────────────────────────────
           echo "## ✅ Deployment Results" >> $GITHUB_STEP_SUMMARY
-          jq -r '.result.files[] | "- `" + .fullName + "` (" + .type + ")"' \
-            deploy-result.json >> $GITHUB_STEP_SUMMARY \
-            || jq -r '.result.deployedSource[] | "- `" + .fullName + "` (" + .type + ")"' \
-            deploy-result.json >> $GITHUB_STEP_SUMMARY \
-            || echo "No deployed components listed." >> $GITHUB_STEP_SUMMARY
+          
+          # Use .result.details.componentSuccesses for structured, reliable output
+          SUCCESS_COUNT=$(jq '.result.details.componentSuccesses | length // 0' deploy-result.json 2>/dev/null || echo "0")
+          
+          if [ "$SUCCESS_COUNT" -gt "0" ]; then
+            echo "### Deployed Components ($SUCCESS_COUNT)" >> $GITHUB_STEP_SUMMARY
+            jq -r '.result.details.componentSuccesses[] | 
+                   "- `" + .componentType + "`: `" + .fullName + "` ✅"' \
+              deploy-result.json | sort -u >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ℹ️  No component success details available in response." >> $GITHUB_STEP_SUMMARY
+          fi
+      
+          # Test results (if tests were run)
+          if [ "$RUN_TESTS" == "true" ]; then
+            echo "### Test Execution" >> $GITHUB_STEP_SUMMARY
+            
+            # Successes
+            TEST_SUCCESSES=$(jq -r '.result.details.runTestResult.successes[]? | 
+                                   "- ✅ `" + .name + "." + .methodName + "`"' \
+                            deploy-result.json 2>/dev/null || true)
+            if [ -n "$TEST_SUCCESSES" ]; then
+              echo "#### Passed" >> $GITHUB_STEP_SUMMARY
+              echo "$TEST_SUCCESSES" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Failures
+            TEST_FAILURES=$(jq -r '.result.details.runTestResult.failures[]? | 
+                                  "- ❌ `" + .name + "." + .methodName + "`: " + .message' \
+                           deploy-result.json 2>/dev/null || true)
+            if [ -n "$TEST_FAILURES" ]; then
+              echo "#### Failed" >> $GITHUB_STEP_SUMMARY
+              echo "$TEST_FAILURES" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Coverage summary
+            COVERAGE=$(jq -r '.result.details.runTestResult.codeCoverage[]? | 
+                             "`" + .name + "`: " + (.numLinesCovered | tostring) + "/" + (.numLinesUncovered | tostring) + " covered"' \
+                      deploy-result.json 2>/dev/null || true)
+            if [ -n "$COVERAGE" ]; then
+              echo "#### Coverage" >> $GITHUB_STEP_SUMMARY
+              echo "$COVERAGE" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+      
+          # Package.xml deployment confirmation
+          echo "### Manifest" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ package.xml processed successfully" >> $GITHUB_STEP_SUMMARY
 
       - name: 'Generate Deployment Report'
         if: always()
