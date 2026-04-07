@@ -35,13 +35,19 @@ on:
         description: "Set to true for validation-only deployment (no changes applied)"
         required: false
         default: "false"
-      # Optional Apex test gate inputs
       RUN_TESTS:
         description: "Set to true to run Apex tests before deploying"
         required: false
         default: "false"
       TEST_CLASS_NAMES:
         description: "Comma-separated Apex test class names (required when RUN_TESTS=true)"
+        required: false
+        default: ""
+      # ───────────────────────────────────────────────────────────────────────
+      # NEW: Test classes to deploy (not discovered via dependency graph)
+      # ───────────────────────────────────────────────────────────────────────
+      TEST_CLASS_NAMES_DEPLOY:
+        description: "Comma-separated test class names to deploy (e.g., AccountRatingHandlerTest)"
         required: false
         default: ""
 
@@ -95,7 +101,6 @@ jobs:
           sf --version
           sf plugins --core
 
-
       - name: 'Authenticate Source & Destination Orgs'
         run: |
           echo "${{ secrets.SRC_ORG_SFDX_URL }}" | sf org login sfdx-url \
@@ -110,44 +115,44 @@ jobs:
           echo "Project created."
 
       # ───────────────────────────────────────────────────────────────────────
-      # Use the correct flat Tooling API field names.
-      #   Wrong  : RefMetadataComponent.Name / RefMetadataComponent.Type
-      #   Correct: RefMetadataComponentName  / RefMetadataComponentType
+      # Collect Dependencies via Tooling API
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Collect Dependencies via Tooling API'
         run: |
-          echo "Querying MetadataComponentDependency for '$COMPONENT_NAME'..."
-      
+          echo "🔍 Querying MetadataComponentDependency for '$COMPONENT_NAME'..."
+
+          # Query with relaxed filters (avoid name filter in WHERE clause)
           sf data query \
             --target-org "$SRC_ORG_ALIAS" \
             --query "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentType = '$COMPONENT_TYPE'" \
             --use-tooling-api \
             --json > "$PROJECT_DIR/dependencies_raw.json" 2>&1 || true
-      
-          # Filter using jq
+
+          # Filter using jq (backticks are literal in single quotes, no escape needed)
           jq --arg name "$COMPONENT_NAME" \
-            '{result: {records: [.result.records[] | select(.MetadataComponentName == $name)], totalSize: ([.result.records[] | select(.MetadataComponentName == $name)] | length)}}' \
+            '{result: {records: [.result.records[]? | select(.MetadataComponentName == $name)], totalSize: ([.result.records[]? | select(.MetadataComponentName == $name)] | length)}}' \
             "$PROJECT_DIR/dependencies_raw.json" > "$PROJECT_DIR/dependencies.json"
-      
+
           RECORD_COUNT=$(jq '.result.totalSize // 0' "$PROJECT_DIR/dependencies.json")
           echo "Found $RECORD_COUNT dependencies for $COMPONENT_NAME"
-      
+
           echo "## Dependencies for \`$COMPONENT_NAME\`" >> $GITHUB_STEP_SUMMARY
           if [ "$RECORD_COUNT" -gt "0" ]; then
-            jq -r '.result.records[] | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
+            jq -r '.result.records[]? | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
               "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY
           else
             echo "No dependencies found or query failed." >> $GITHUB_STEP_SUMMARY
           fi
 
+      # ───────────────────────────────────────────────────────────────────────
+      # Build package.xml from Dependencies (jq-only, no Python)
+      # ───────────────────────────────────────────────────────────────────────
       - name: 'Build package.xml from Dependencies'
         run: |
           cd "$PROJECT_DIR"
           echo "📦 Building package.xml for '$COMPONENT_NAME' and its dependencies..."
-      
-          # ───────────────────────────────────────────────────────────────────────
-          # Build members list per type using jq (pure jq, no Python)
-          # ───────────────────────────────────────────────────────────────────────
+
+          # Build members list per type using jq
           jq --arg comp_name "$COMPONENT_NAME" \
              --arg comp_type "$COMPONENT_TYPE" \
              --arg test_classes "$TEST_CLASS_NAMES_DEPLOY" '
@@ -182,10 +187,8 @@ jobs:
               })
             | sort_by(.type)
           ' dependencies.json > /tmp/package_structure.json
-      
-          # ───────────────────────────────────────────────────────────────────────
-          # Generate XML from jq output (FIXED: use \(.) not \(.name))
-          # ───────────────────────────────────────────────────────────────────────
+
+          # Generate XML from jq output (use \(.) not \(.name) for string arrays)
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
@@ -204,10 +207,8 @@ jobs:
             echo '    <version>59.0</version>'
             echo '</Package>'
           } > manifest/package.xml
-      
-          # ───────────────────────────────────────────────────────────────────────
+
           # Log output for verification
-          # ───────────────────────────────────────────────────────────────────────
           echo "📦 Generated package.xml:"
           cat manifest/package.xml
           
@@ -216,10 +217,13 @@ jobs:
           MEMBER_COUNT=$(jq '[.[].members | length] | add // 0' /tmp/package_structure.json 2>/dev/null || echo "0")
           echo "📊 Summary: $TYPE_COUNT metadata types, $MEMBER_COUNT total members"
         env:
+          # ───────────────────────────────────────────────────────────────────────
+          # STEP-LEVEL ENV ONLY (not in global job env:)
+          # ───────────────────────────────────────────────────────────────────────
           TEST_CLASS_NAMES_DEPLOY: ${{ github.event.inputs.TEST_CLASS_NAMES_DEPLOY }}
 
       # ───────────────────────────────────────────────────────────────────────
-      # Dry-run now uses a job output variable (skip_deploy)
+      # Dry-run check
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Dry Run Check'
         id: dry_run_check
@@ -229,7 +233,7 @@ jobs:
             echo "🧩 Dry Run mode — listing components that would be retrieved and deployed."
             echo "### Components to Deploy (dry run)" >> $GITHUB_STEP_SUMMARY
             
-            jq -r '.result.records[] | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
+            jq -r '.result.records[]? | "- `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ")"' \
               "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY \
               || echo "No dependencies found." >> $GITHUB_STEP_SUMMARY
             
@@ -242,8 +246,7 @@ jobs:
           fi
 
       # ───────────────────────────────────────────────────────────────────────
-      # Retry wrapper around sf project retrieve.
-      # Up to 3 attempts with a 15-second back-off between failures.
+      # Retrieve Component and Dependencies
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Retrieve Component and Dependencies'
         if: steps.dry_run_check.outputs.skip_deploy != 'true'
@@ -272,15 +275,16 @@ jobs:
           echo "Files retrieved:"
           find force-app -type f | sort
 
+      # ───────────────────────────────────────────────────────────────────────
+      # Deploy to Destination Org
+      # ───────────────────────────────────────────────────────────────────────
       - name: 'Deploy to Destination Org'
         if: steps.dry_run_check.outputs.skip_deploy != 'true'
         run: |
           cd "$PROJECT_DIR"
           echo "🚀 Deploying to '$DST_ORG_ALIAS'..."
-      
-          # ───────────────────────────────────────────────────────────────────────
+
           # Build optional test flags
-          # ───────────────────────────────────────────────────────────────────────
           TEST_FLAGS=""
           if [ "$RUN_TESTS" == "true" ]; then
             if [ -z "$TEST_CLASS_NAMES" ]; then
@@ -292,10 +296,8 @@ jobs:
             TEST_FLAGS="--test-level RunSpecifiedTests --tests $TEST_NAMES"
             echo "🧪 Apex test gate enabled. Running: $TEST_NAMES"
           fi
-      
-          # ───────────────────────────────────────────────────────────────────────
+
           # Choose deploy vs validate subcommand
-          # ───────────────────────────────────────────────────────────────────────
           if [ "$VALIDATE_ONLY" == "true" ]; then
             DEPLOY_CMD="validate"
             echo "🔍 Validation-only mode — no changes will be applied."
@@ -303,16 +305,13 @@ jobs:
             DEPLOY_CMD="start"
             echo "✅ Full deployment mode — changes will be applied."
           fi
-      
-          # ───────────────────────────────────────────────────────────────────────
-          # Retry logic for transient errors only
-          # ───────────────────────────────────────────────────────────────────────
+
           MAX_ATTEMPTS=3
           DEPLOY_EXIT=0
-      
+
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
-            echo "─── Deploy attempt $attempt of $MAX_ATTEMPTS ───"
-      
+            echo "--- Deploy attempt $attempt of $MAX_ATTEMPTS ---"
+
             # Capture exit code without masking errors
             set +e
             sf project deploy $DEPLOY_CMD \
@@ -322,16 +321,16 @@ jobs:
               --json > deploy-result.json 2>&1
             DEPLOY_EXIT=$?
             set -e
-      
+
             # Log raw output for debugging (truncated if too large)
             echo "📋 Deploy response (first 200 lines):"
             head -200 deploy-result.json
-      
+
             if [ "$DEPLOY_EXIT" -eq 0 ]; then
               echo "✅ Deploy succeeded on attempt $attempt."
               break
             fi
-      
+
             # Check if error is transient (network/timeout) — only retry those
             ERROR_MSG=$(jq -r '.message // ""' deploy-result.json 2>/dev/null || echo "Unknown error")
             if echo "$ERROR_MSG" | grep -qiE "timeout|ETIMEDOUT|socket|network|unavailable|connection"; then
@@ -339,7 +338,6 @@ jobs:
                 echo "⚠️  Transient error detected: $ERROR_MSG"
                 echo "⏳ Waiting 15s before retry..."
                 sleep 15
-                continue
               else
                 echo "❌ Deploy failed after $MAX_ATTEMPTS attempts (transient errors)."
               fi
@@ -349,10 +347,8 @@ jobs:
               break
             fi
           done
-      
-          # ───────────────────────────────────────────────────────────────────────
+
           # Handle failure: log details and exit
-          # ───────────────────────────────────────────────────────────────────────
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
             echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
             echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
@@ -372,24 +368,25 @@ jobs:
             
             exit $DEPLOY_EXIT
           fi
-      
-          # ───────────────────────────────────────────────────────────────────────
+
           # Success: Generate clean, deduplicated results summary
-          # ───────────────────────────────────────────────────────────────────────
           echo "## ✅ Deployment Results" >> $GITHUB_STEP_SUMMARY
           
-          # Use .result.details.componentSuccesses for structured, reliable output
-          SUCCESS_COUNT=$(jq '.result.details.componentSuccesses | length // 0' deploy-result.json 2>/dev/null || echo "0")
+          # Filter out package.xml and empty componentType entries
+          SUCCESS_COUNT=$(jq '[.result.details.componentSuccesses[]? | 
+                             select(.componentType != "" and .componentType != null and .fullName != "package.xml")] | length' \
+                          deploy-result.json 2>/dev/null || echo "0")
           
           if [ "$SUCCESS_COUNT" -gt "0" ]; then
             echo "### Deployed Components ($SUCCESS_COUNT)" >> $GITHUB_STEP_SUMMARY
-            jq -r '.result.details.componentSuccesses[] | 
+            jq -r '.result.details.componentSuccesses[]? | 
+                   select(.componentType != "" and .componentType != null and .fullName != "package.xml") |
                    "- `" + .componentType + "`: `" + .fullName + "` ✅"' \
               deploy-result.json | sort -u >> $GITHUB_STEP_SUMMARY
           else
             echo "> ℹ️  No component success details available in response." >> $GITHUB_STEP_SUMMARY
           fi
-      
+
           # Test results (if tests were run)
           if [ "$RUN_TESTS" == "true" ]; then
             echo "### Test Execution" >> $GITHUB_STEP_SUMMARY
@@ -421,11 +418,14 @@ jobs:
               echo "$COVERAGE" >> $GITHUB_STEP_SUMMARY
             fi
           fi
-      
+
           # Package.xml deployment confirmation
           echo "### Manifest" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ package.xml processed successfully" >> $GITHUB_STEP_SUMMARY
 
+      # ───────────────────────────────────────────────────────────────────────
+      # Generate Deployment Report
+      # ───────────────────────────────────────────────────────────────────────
       - name: 'Generate Deployment Report'
         if: always()
         run: |
@@ -451,8 +451,9 @@ jobs:
               jq -r '.message // "Unknown error"' "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY
             else
               echo "### ✅ Successes" >> $GITHUB_STEP_SUMMARY
-              jq -r '.result.details.componentSuccesses[]
-                     | "- `" + .componentType + "`: `" + .fullName + "` ✅"' \
+              jq -r '.result.details.componentSuccesses[]?
+                     | select(.componentType != "" and .fullName != "package.xml") |
+                     "- `" + .componentType + "`: `" + .fullName + "` ✅"' \
                 "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
                 || echo "No success details available." >> $GITHUB_STEP_SUMMARY
 
@@ -478,6 +479,9 @@ jobs:
               >> $GITHUB_STEP_SUMMARY
           fi
 
+      # ───────────────────────────────────────────────────────────────────────
+      # Upload Artifacts
+      # ───────────────────────────────────────────────────────────────────────
       - name: 'Upload Artifacts'
         if: always()
         uses: actions/upload-artifact@v7
@@ -486,4 +490,5 @@ jobs:
           path: |
             ${{ env.PROJECT_DIR }}/dependencies.json
             ${{ env.PROJECT_DIR }}/deploy-result.json
+            ${{ env.PROJECT_DIR }}/manifest/package.xml
           if-no-files-found: warn
