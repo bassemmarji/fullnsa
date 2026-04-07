@@ -144,29 +144,47 @@ jobs:
         run: |
           cd "$PROJECT_DIR"
           echo "Building package.xml for '$COMPONENT_NAME' and its dependencies..."
-
           python3 - <<'EOF'
           import json, os
-
+      
+          # Non-deployable types that appear in dependency queries
+          NON_DEPLOYABLE_TYPES = {
+              'StandardEntity',      # Standard objects (Account, Contact, etc.)
+              'CustomEntity',        # Sometimes appears for custom objects  
+              'FieldSet',
+              'RecordType',
+              'WebLink',
+              'ListView',            # Requires parent object
+              'CompactLayout',       # Requires parent object
+          }
+      
           with open("dependencies.json") as f:
               data = json.load(f)
-
+      
           records = data.get("result", {}).get("records", [])
           type_map = {}
-
-          # Always include the main component itself
+      
+          # Include main component if deployable
           comp_name = os.environ["COMPONENT_NAME"]
           comp_type = os.environ["COMPONENT_TYPE"]
-          type_map.setdefault(comp_type, set()).add(comp_name)
-
-          # Add all discovered dependencies
-          # Enhancement 5: field names are flat (RefMetadataComponentType / RefMetadataComponentName)
+          if comp_type not in NON_DEPLOYABLE_TYPES:
+              type_map.setdefault(comp_type, set()).add(comp_name)
+              print(f"✅ Included main component: {comp_type}:{comp_name}")
+          else:
+              print(f"⚠️  Skipping non-deployable main component: {comp_type}:{comp_name}")
+      
+          # Add dependencies, filtering non-deployable types
           for r in records:
               t = r.get("RefMetadataComponentType")
               n = r.get("RefMetadataComponentName")
               if t and n:
+                  if t in NON_DEPLOYABLE_TYPES:
+                      print(f"⚠️  Skipping non-deployable dependency: {t}:{n}")
+                      continue
                   type_map.setdefault(t, set()).add(n)
-
+                  print(f"✅ Included dependency: {t}:{n}")
+      
+          # Generate package.xml
           lines = ['<?xml version="1.0" encoding="UTF-8"?>']
           lines.append('<Package xmlns="http://soap.sforce.com/2006/04/metadata">')
           for t, names in sorted(type_map.items()):
@@ -177,11 +195,11 @@ jobs:
               lines.append("    </types>")
           lines.append("    <version>59.0</version>")
           lines.append("</Package>")
-
+      
           with open("manifest/package.xml", "w") as f:
               f.write("\n".join(lines))
-
-          print("package.xml written:")
+      
+          print("\n📦 Generated package.xml:")
           print("\n".join(lines))
           EOF
 
