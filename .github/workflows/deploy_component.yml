@@ -74,7 +74,7 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Cache Salesforce CLI'
         id: cache-sf-cli
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm-global
           key: sf-cli-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
