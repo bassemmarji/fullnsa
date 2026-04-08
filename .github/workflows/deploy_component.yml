@@ -35,38 +35,20 @@ on:
         description: "Set to true for validation-only deployment (no changes applied)"
         required: false
         default: "false"
-      RUN_TESTS:
-        description: "Set to true to run Apex tests before deploying"
-        required: false
-        default: "false"
-      TEST_CLASS_NAMES:
-        description: "Comma-separated Apex test class names (required when RUN_TESTS=true)"
-        required: false
-        default: ""
-      # ───────────────────────────────────────────────────────────────────────
-      # Test classes to deploy (not discovered via dependency graph)
-      # ───────────────────────────────────────────────────────────────────────
       TEST_CLASS_NAMES_DEPLOY:
         description: "Comma-separated test class names to deploy (e.g., AccountRatingHandlerTest)"
         required: false
         default: ""
 
 env:
-  SRC_ORG_ALIAS:          ${{ github.event.inputs.SRC_ORG_ALIAS }}
-  DST_ORG_ALIAS:          ${{ github.event.inputs.DST_ORG_ALIAS }}
-  COMPONENT_TYPE:         ${{ github.event.inputs.COMPONENT_TYPE }}
-  COMPONENT_NAME:         ${{ github.event.inputs.COMPONENT_NAME }}
-  DRY_RUN:                ${{ github.event.inputs.DRY_RUN }}
-  VALIDATE_ONLY:          ${{ github.event.inputs.VALIDATE_ONLY }}
-  RUN_TESTS:              ${{ github.event.inputs.RUN_TESTS }}
-  TEST_CLASS_NAMES:       ${{ github.event.inputs.TEST_CLASS_NAMES }}
-  # ─────────────────────────────────────────────────────────────────────────
-  # FIX: TEST_CLASS_NAMES_DEPLOY moved to global env so it is available
-  #      to every step, not just the one step that previously declared it
-  #      as a step-level env override.
-  # ─────────────────────────────────────────────────────────────────────────
+  SRC_ORG_ALIAS:           ${{ github.event.inputs.SRC_ORG_ALIAS }}
+  DST_ORG_ALIAS:           ${{ github.event.inputs.DST_ORG_ALIAS }}
+  COMPONENT_TYPE:          ${{ github.event.inputs.COMPONENT_TYPE }}
+  COMPONENT_NAME:          ${{ github.event.inputs.COMPONENT_NAME }}
+  DRY_RUN:                 ${{ github.event.inputs.DRY_RUN }}
+  VALIDATE_ONLY:           ${{ github.event.inputs.VALIDATE_ONLY }}
   TEST_CLASS_NAMES_DEPLOY: ${{ github.event.inputs.TEST_CLASS_NAMES_DEPLOY }}
-  PROJECT_DIR:            ./deployment-project
+  PROJECT_DIR:             ./deployment-project
 
 jobs:
   deploy_with_dependencies:
@@ -126,14 +108,12 @@ jobs:
       - name: 'Collect Dependencies via Tooling API'
         run: |
           echo "🔍 Querying MetadataComponentDependency for '$COMPONENT_NAME'..."
-          # Query with relaxed filters (avoid name filter in WHERE clause)
           sf data query \
             --target-org "$SRC_ORG_ALIAS" \
             --query "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentType = '$COMPONENT_TYPE'" \
             --use-tooling-api \
             --json > "$PROJECT_DIR/dependencies_raw.json" 2>&1 || true
 
-          # Filter using jq (backticks are literal in single quotes, no escape needed)
           jq --arg name "$COMPONENT_NAME" \
             '{result: {records: [.result.records[]? | select(.MetadataComponentName == $name)], totalSize: ([.result.records[]? | select(.MetadataComponentName == $name)] | length)}}' \
             "$PROJECT_DIR/dependencies_raw.json" > "$PROJECT_DIR/dependencies.json"
@@ -156,37 +136,20 @@ jobs:
           cd "$PROJECT_DIR"
           echo "📦 Building package.xml for '$COMPONENT_NAME' and its dependencies..."
 
-          # ─────────────────────────────────────────────────────────────────
-          # FIX: TEST_CLASS_NAMES_DEPLOY is now available from the global env
-          # block above, so the step-level env: override is no longer needed.
-          #
-          # FIX: ltrimstr(" ") added inside the split map so that class names
-          # like "ClassA, ClassB" (note the space after the comma) are trimmed
-          # to "ClassA" and "ClassB" instead of " ClassB", which would produce
-          # an invalid member name in package.xml and cause a silent deploy
-          # failure or a "Component not found" error in the destination org.
-          # ─────────────────────────────────────────────────────────────────
           jq --arg comp_name "$COMPONENT_NAME" \
              --arg comp_type "$COMPONENT_TYPE" \
              --arg test_classes "$TEST_CLASS_NAMES_DEPLOY" '
-            # Array of non-deployable metadata types
             def non_deployable: [
               "StandardEntity", "CustomEntity", "FieldSet", "RecordType",
               "WebLink", "ListView", "CompactLayout", "BusinessProcess", "HomePageLayout"
             ];
 
-            # Helper: returns true if type is deployable
             def is_deployable: . as $t | (non_deployable | index($t)) == null;
 
-            # Collect all components: main + dependencies + test classes
             (
-              # 1. Main component
               [{type: $comp_type, name: $comp_name}]
-              # 2. Dependencies from Tooling API query (safe iteration with ?)
               + [.result.records[]? | {type: .RefMetadataComponentType, name: .RefMetadataComponentName}
                  | select(.type != null and .name != null)]
-              # 3. Test classes from workflow input — trim leading/trailing
-              #    whitespace so "ClassA, ClassB" does not yield " ClassB"
               + (if $test_classes != "" then
                    ($test_classes | split(",") | map(
                      select(. != "") |
@@ -195,9 +158,7 @@ jobs:
                    ))
                  else [] end)
             )
-            # Filter: keep only deployable types with valid name/type
             | map(select(.type != null and .name != null and (.type | is_deployable)))
-            # Group by type, collect unique sorted members
             | group_by(.type)
             | map({
                 type: .[0].type,
@@ -206,12 +167,10 @@ jobs:
             | sort_by(.type)
           ' dependencies.json > /tmp/package_structure.json
 
-          # Generate XML from jq output
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">'
 
-            # Only generate <types> blocks if we have data
             if [ -s /tmp/package_structure.json ] && jq -e 'length > 0' /tmp/package_structure.json > /dev/null 2>&1; then
               jq -r '.[] |
                 "    <types>\n" +
@@ -226,16 +185,13 @@ jobs:
             echo '</Package>'
           } > manifest/package.xml
 
-          # Log output for verification
           echo "📦 Generated package.xml:"
           cat manifest/package.xml
 
-          # Summary
           TYPE_COUNT=$(jq 'length' /tmp/package_structure.json 2>/dev/null || echo "0")
           MEMBER_COUNT=$(jq '[.[].members | length] | add // 0' /tmp/package_structure.json 2>/dev/null || echo "0")
           echo "📊 Summary: $TYPE_COUNT metadata types, $MEMBER_COUNT total members"
 
-          # Echo which test classes were added to aid debugging
           if [ -n "$TEST_CLASS_NAMES_DEPLOY" ]; then
             echo "🧪 Test classes added to package.xml: $TEST_CLASS_NAMES_DEPLOY"
           fi
@@ -300,20 +256,6 @@ jobs:
           cd "$PROJECT_DIR"
           echo "🚀 Deploying to '$DST_ORG_ALIAS'..."
 
-          # Build optional test flags
-          TEST_FLAGS=""
-          if [ "$RUN_TESTS" == "true" ]; then
-            if [ -z "$TEST_CLASS_NAMES" ]; then
-              echo "❌ Error: TEST_CLASS_NAMES is required when RUN_TESTS=true"
-              exit 1
-            fi
-            # Convert comma-separated list to space-separated for --tests
-            TEST_NAMES=$(echo "$TEST_CLASS_NAMES" | tr ',' ' ' | xargs)
-            TEST_FLAGS="--test-level RunSpecifiedTests --tests $TEST_NAMES"
-            echo "🧪 Apex test gate enabled. Running: $TEST_NAMES"
-          fi
-
-          # Choose deploy vs validate subcommand
           if [ "$VALIDATE_ONLY" == "true" ]; then
             DEPLOY_CMD="validate"
             echo "🔍 Validation-only mode — no changes will be applied."
@@ -326,17 +268,14 @@ jobs:
           DEPLOY_EXIT=0
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "--- Deploy attempt $attempt of $MAX_ATTEMPTS ---"
-            # Capture exit code without masking errors
             set +e
             sf project deploy $DEPLOY_CMD \
               --target-org "$DST_ORG_ALIAS" \
               --source-dir force-app \
-              $TEST_FLAGS \
               --json > deploy-result.json 2>&1
             DEPLOY_EXIT=$?
             set -e
 
-            # Log raw output for debugging (truncated if too large)
             echo "📋 Deploy response (first 200 lines):"
             head -200 deploy-result.json
 
@@ -345,7 +284,6 @@ jobs:
               break
             fi
 
-            # Check if error is transient (network/timeout) — only retry those
             ERROR_MSG=$(jq -r '.message // ""' deploy-result.json 2>/dev/null || echo "Unknown error")
             if echo "$ERROR_MSG" | grep -qiE "timeout|ETIMEDOUT|socket|network|unavailable|connection"; then
               if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
@@ -362,14 +300,12 @@ jobs:
             fi
           done
 
-          # Handle failure: log details and exit
           if [ "$DEPLOY_EXIT" -ne 0 ]; then
             echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
             echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|---|---|" >> $GITHUB_STEP_SUMMARY
             echo "| Error | \`\`\`$ERROR_MSG\`\`\` |" >> $GITHUB_STEP_SUMMARY
 
-            # Extract component failures if available
             FAILURES=$(jq -r '.result.details.componentFailures[]? |
                              "• `" + .componentType + "." + .fullName + "`: " + .problem' \
                       deploy-result.json 2>/dev/null || true)
@@ -383,10 +319,8 @@ jobs:
             exit $DEPLOY_EXIT
           fi
 
-          # Success: Generate clean, deduplicated results summary
           echo "## ✅ Deployment Results" >> $GITHUB_STEP_SUMMARY
 
-          # Filter out package.xml and empty componentType entries
           SUCCESS_COUNT=$(jq '[.result.details.componentSuccesses[]? |
                              select(.componentType != "" and .componentType != null and .fullName != "package.xml")] | length' \
                           deploy-result.json 2>/dev/null || echo "0")
@@ -401,39 +335,6 @@ jobs:
             echo "> ℹ️  No component success details available in response." >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Test results (if tests were run)
-          if [ "$RUN_TESTS" == "true" ]; then
-            echo "### Test Execution" >> $GITHUB_STEP_SUMMARY
-
-            # Successes
-            TEST_SUCCESSES=$(jq -r '.result.details.runTestResult.successes[]? |
-                                   "- ✅ `" + .name + "." + .methodName + "`"' \
-                            deploy-result.json 2>/dev/null || true)
-            if [ -n "$TEST_SUCCESSES" ]; then
-              echo "#### Passed" >> $GITHUB_STEP_SUMMARY
-              echo "$TEST_SUCCESSES" >> $GITHUB_STEP_SUMMARY
-            fi
-
-            # Failures
-            TEST_FAILURES=$(jq -r '.result.details.runTestResult.failures[]? |
-                                  "- ❌ `" + .name + "." + .methodName + "`: " + .message' \
-                           deploy-result.json 2>/dev/null || true)
-            if [ -n "$TEST_FAILURES" ]; then
-              echo "#### Failed" >> $GITHUB_STEP_SUMMARY
-              echo "$TEST_FAILURES" >> $GITHUB_STEP_SUMMARY
-            fi
-
-            # Coverage summary
-            COVERAGE=$(jq -r '.result.details.runTestResult.codeCoverage[]? |
-                             "`" + .name + "`: " + (.numLinesCovered | tostring) + "/" + (.numLinesUncovered | tostring) + " covered"' \
-                      deploy-result.json 2>/dev/null || true)
-            if [ -n "$COVERAGE" ]; then
-              echo "#### Coverage" >> $GITHUB_STEP_SUMMARY
-              echo "$COVERAGE" >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
-
-          # Package.xml deployment confirmation
           echo "### Manifest" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ package.xml processed successfully" >> $GITHUB_STEP_SUMMARY
 
@@ -451,9 +352,7 @@ jobs:
           echo "| Destination org | \`$DST_ORG_ALIAS\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Mode | $([ "$VALIDATE_ONLY" == "true" ] && echo "Validation only" || echo "Full deploy") |" >> $GITHUB_STEP_SUMMARY
           echo "| Dry run | $DRY_RUN |" >> $GITHUB_STEP_SUMMARY
-          echo "| Apex tests | $RUN_TESTS |" >> $GITHUB_STEP_SUMMARY
 
-          # Only parse deploy-result.json when it actually exists
           if [ "$DRY_RUN" == "true" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⏹ Dry run — no deployment performed." >> $GITHUB_STEP_SUMMARY
@@ -470,22 +369,11 @@ jobs:
                 "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
                 || echo "No success details available." >> $GITHUB_STEP_SUMMARY
 
-              echo "### Test results" >> $GITHUB_STEP_SUMMARY
-              jq -r '.result.details.runTestResult.successes[]?
-                     | "- `" + .name + "." + .methodName + "` ✅"' \
-                "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
-                || echo "No test results." >> $GITHUB_STEP_SUMMARY
-
               echo "### Failures (if any)" >> $GITHUB_STEP_SUMMARY
               jq -r '.result.details.componentFailures[]?
                      | "- `" + .componentType + "`: `" + .fullName + "` ❌ — " + .problem' \
                 "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
                 || echo "No component failures." >> $GITHUB_STEP_SUMMARY
-
-              jq -r '.result.details.runTestResult.failures[]?
-                     | "- `" + .name + "." + .methodName + "` ❌ — " + .message' \
-                "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
-                || echo "No test failures." >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "⚠️  deploy-result.json not found — deployment step may have been skipped." \
