@@ -39,11 +39,8 @@ on:
         description: "Set to true to run Apex tests before deploying"
         required: false
         default: "false"
-      # ───────────────────────────────────────────────────────────────────────
-      # Test classes to deploy (optional manual override)
-      # ───────────────────────────────────────────────────────────────────────
       TEST_CLASS_NAMES_DEPLOY:
-        description: "Comma-separated test class names to deploy (e.g., AccountRatingHandlerTest). Leave empty to auto-discover."
+        description: "Comma-separated test class names to deploy. Leave empty to auto-discover."
         required: false
         default: ""
 
@@ -63,10 +60,10 @@ jobs:
 
     steps:
       - name: 'Checkout Repository'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: 'Install Node.js'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -75,7 +72,7 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Cache Salesforce CLI'
         id: cache-sf-cli
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: ~/.npm-global
           key: sf-cli-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
@@ -110,41 +107,57 @@ jobs:
           echo "Project created."
 
       # ───────────────────────────────────────────────────────────────────────
-      # Collect Dependencies via Tooling API (CORRECTED: finds what component depends ON)
+      # Collect Dependencies via Tooling API
+      # Uses multiple query approaches to find dependencies
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Collect Dependencies via Tooling API'
+        id: collect_deps
         run: |
-          echo "🔍 Querying dependencies that '$COMPONENT_NAME' references..."
+          echo "🔍 Querying dependencies for '$COMPONENT_NAME' ($COMPONENT_TYPE)..."
 
-          # CORRECTED: Find components that our component DEPENDS ON (downstream dependencies)
-          # MetadataComponent* = our component, RefMetadataComponent* = what it references
+          # Create an empty JSON structure
+          echo '{"result":{"records":[],"totalSize":0}}' > "$PROJECT_DIR/dependencies.json"
+          
+          # Try different field name variations based on API version
+          # Approach 1: Standard query (what our component depends on)
           sf data query \
             --target-org "$SRC_ORG_ALIAS" \
-            --query "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentType = '$COMPONENT_TYPE' AND MetadataComponentName = '$COMPONENT_NAME'" \
+            --query "SELECT Id, MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE MetadataComponentType = '$COMPONENT_TYPE' AND MetadataComponentName = '$COMPONENT_NAME'" \
             --use-tooling-api \
-            --json > "$PROJECT_DIR/dependencies_raw.json" 2>&1 || true
+            --json > "$PROJECT_DIR/deps_query1.json" 2>/dev/null || true
 
-          # Parse and validate JSON structure
-          if jq -e '.result.records' "$PROJECT_DIR/dependencies_raw.json" > /dev/null 2>&1; then
-            cp "$PROJECT_DIR/dependencies_raw.json" "$PROJECT_DIR/dependencies.json"
-          else
-            echo '{"result":{"records":[],"totalSize":0}}' > "$PROJECT_DIR/dependencies.json"
+          # Approach 2: Reverse query (what depends on our component - useful for tests)
+          sf data query \
+            --target-org "$SRC_ORG_ALIAS" \
+            --query "SELECT Id, MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE RefMetadataComponentType = '$COMPONENT_TYPE' AND RefMetadataComponentName = '$COMPONENT_NAME'" \
+            --use-tooling-api \
+            --json > "$PROJECT_DIR/deps_query2.json" 2>/dev/null || true
+
+          # Parse and merge results from both queries
+          if jq -e '.result.records' "$PROJECT_DIR/deps_query1.json" > /dev/null 2>&1; then
+            jq -s '.[0].result.records + .[1].result.records | {result: {records: ., totalSize: length}}' \
+              "$PROJECT_DIR/deps_query1.json" "$PROJECT_DIR/deps_query2.json" > "$PROJECT_DIR/dependencies.json" 2>/dev/null || true
           fi
 
           RECORD_COUNT=$(jq '.result.totalSize // 0' "$PROJECT_DIR/dependencies.json")
-          echo "Found $RECORD_COUNT dependencies for $COMPONENT_NAME"
+          echo "Found $RECORD_COUNT dependency records for $COMPONENT_NAME"
+          echo "dep_count=$RECORD_COUNT" >> $GITHUB_OUTPUT
 
           echo "## Dependencies for \`$COMPONENT_NAME\`" >> $GITHUB_STEP_SUMMARY
           if [ "$RECORD_COUNT" -gt "0" ]; then
-            # Display the referenced components (what we need to deploy)
-            jq -r '.result.records[]? | "- \`" + .RefMetadataComponentName + "\` (" + .RefMetadataComponentType + ")"' \
+            echo "| Type | Component Name | Depends On |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------------|------------|" >> $GITHUB_STEP_SUMMARY
+            jq -r '.result.records[]? | "| " + .MetadataComponentType + " | `" + .MetadataComponentName + "` | `" + .RefMetadataComponentName + "` (" + .RefMetadataComponentType + ") |"' \
               "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY
           else
-            echo "No dependencies found." >> $GITHUB_STEP_SUMMARY
+            echo "No dependencies found. This might mean:" >> $GITHUB_STEP_SUMMARY
+            echo "- The component has no dependencies" >> $GITHUB_STEP_SUMMARY
+            echo "- The Tooling API doesn't have dependency data for this component type" >> $GITHUB_STEP_SUMMARY
+            echo "- The component name or type might need to be verified" >> $GITHUB_STEP_SUMMARY
           fi
 
       # ───────────────────────────────────────────────────────────────────────
-      # Auto-discover Test Classes via Tooling API (CORRECT: finds tests that reference our component)
+      # Auto-discover Test Classes via Tooling API
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Auto-discover Test Classes'
         id: discover_tests
@@ -152,18 +165,55 @@ jobs:
         run: |
           echo "🧪 Auto-discovering test classes that reference '$COMPONENT_NAME'..."
           
-          # CORRECT: Find test classes that reference our component
-          # RefMetadataComponentName = our component, MetadataComponentName = the test class
-          TEST_QUERY="SELECT MetadataComponentName FROM MetadataComponentDependency 
+          # Query for test classes that reference our component
+          # Using the correct field names from MetadataComponentDependency
+          TEST_QUERY="SELECT MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType 
+                      FROM MetadataComponentDependency 
                       WHERE RefMetadataComponentName = '$COMPONENT_NAME' 
+                      AND RefMetadataComponentType = '$COMPONENT_TYPE'
                       AND MetadataComponentType = 'ApexClass'
                       AND MetadataComponentName LIKE '%Test%'"
           
-          TEST_CLASSES=$(sf data query \
+          # Also try the reverse relationship
+          TEST_QUERY2="SELECT MetadataComponentName, MetadataComponentType, RefMetadataComponentName, RefMetadataComponentType 
+                       FROM MetadataComponentDependency 
+                       WHERE MetadataComponentName = '$COMPONENT_NAME'
+                       AND MetadataComponentType = '$COMPONENT_TYPE'
+                       AND RefMetadataComponentType = 'ApexClass'
+                       AND RefMetadataComponentName LIKE '%Test%'"
+          
+          TEST_CLASSES=""
+          
+          # Try first query
+          TEMP_TESTS=$(sf data query \
             --target-org "$SRC_ORG_ALIAS" \
             --query "$TEST_QUERY" \
             --use-tooling-api \
             --json 2>/dev/null | jq -r '.result.records[]?.MetadataComponentName // empty' || echo "")
+          
+          if [ -n "$TEMP_TESTS" ]; then
+            TEST_CLASSES="$TEMP_TESTS"
+          else
+            # Try second query
+            TEMP_TESTS=$(sf data query \
+              --target-org "$SRC_ORG_ALIAS" \
+              --query "$TEST_QUERY2" \
+              --use-tooling-api \
+              --json 2>/dev/null | jq -r '.result.records[]?.RefMetadataComponentName // empty' || echo "")
+            if [ -n "$TEMP_TESTS" ]; then
+              TEST_CLASSES="$TEMP_TESTS"
+            fi
+          fi
+          
+          # Alternative: Query ApexClass where Body contains the component name
+          if [ -z "$TEST_CLASSES" ]; then
+            echo "  Trying alternative test discovery via SOQL LIKE query..."
+            ALT_QUERY="SELECT Id, Name FROM ApexClass WHERE Name LIKE '%Test%' AND Body LIKE '%$COMPONENT_NAME%'"
+            TEST_CLASSES=$(sf data query \
+              --target-org "$SRC_ORG_ALIAS" \
+              --query "$ALT_QUERY" \
+              --json 2>/dev/null | jq -r '.result.records[]?.Name // empty' || echo "")
+          fi
           
           # Format as comma-separated string (remove duplicates and empty lines)
           DISCOVERED_TESTS=$(echo "$TEST_CLASSES" | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//')
@@ -181,7 +231,7 @@ jobs:
           fi
 
       # ───────────────────────────────────────────────────────────────────────
-      # Build package.xml from Dependencies (CORRECTED: extracts RefMetadataComponent* fields)
+      # Build package.xml from Dependencies
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Build package.xml from Dependencies'
         run: |
@@ -192,7 +242,7 @@ jobs:
           DISCOVERED_TESTS="${{ steps.discover_tests.outputs.discovered_test_classes }}"
           MANUAL_TESTS="$TEST_CLASS_NAMES_DEPLOY"
 
-          # Build members list per type using jq
+          # Build members list per type using jq with proper escaping
           jq --arg comp_name "$COMPONENT_NAME" \
              --arg comp_type "$COMPONENT_TYPE" \
              --arg manual_tests "$MANUAL_TESTS" \
@@ -200,7 +250,8 @@ jobs:
             # Array of non-deployable metadata types
             def non_deployable: [
               "StandardEntity", "CustomEntity", "FieldSet", "RecordType", 
-              "WebLink", "ListView", "CompactLayout", "BusinessProcess", "HomePageLayout"
+              "WebLink", "ListView", "CompactLayout", "BusinessProcess", 
+              "HomePageLayout", "FlexiPage", "Report", "Dashboard"
             ];
             
             # Helper: returns true if type is deployable
@@ -216,9 +267,12 @@ jobs:
             (
               # 1. Main component (the component being deployed)
               [{type: $comp_type, name: $comp_name}] 
-              # 2. Dependencies - components that our component references (CORRECTED FIELD NAMES)
-              + [.result.records[]? | {type: .RefMetadataComponentType, name: .RefMetadataComponentName} 
-                 | select(.type != null and .name != null)]
+              # 2. Dependencies - collect unique referenced components
+              + [.result.records[]? | 
+                 # Include both directions of dependencies
+                 {type: .RefMetadataComponentType, name: .RefMetadataComponentName},
+                 {type: .MetadataComponentType, name: .MetadataComponentName}
+                 | select(.type != null and .name != null and .type != $comp_type and .name != $comp_name)]
               # 3. Manual Test classes from workflow input
               + ($manual_tests | parse_tests)
               # 4. Auto-discovered Test classes
@@ -276,9 +330,14 @@ jobs:
             echo "🧩 Dry Run mode — listing components that would be retrieved and deployed."
             echo "### Components to Deploy (dry run)" >> $GITHUB_STEP_SUMMARY
             
-            jq -r '.result.records[]? | "- \`" + .RefMetadataComponentName + "\` (" + .RefMetadataComponentType + ")"' \
-              "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY \
-              || echo "No dependencies found." >> $GITHUB_STEP_SUMMARY
+            if [ -f "$PROJECT_DIR/dependencies.json" ] && [ "$(jq '.result.totalSize // 0' "$PROJECT_DIR/dependencies.json")" -gt "0" ]; then
+              echo "| Type | Component Name |" >> $GITHUB_STEP_SUMMARY
+              echo "|------|---------------|" >> $GITHUB_STEP_SUMMARY
+              jq -r '.result.records[]? | "| " + .RefMetadataComponentType + " | `" + .RefMetadataComponentName + "` |"' \
+                "$PROJECT_DIR/dependencies.json" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "No dependencies found." >> $GITHUB_STEP_SUMMARY
+            fi
             
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⏹ Dry run complete — no metadata was retrieved or deployed." >> $GITHUB_STEP_SUMMARY
@@ -302,7 +361,8 @@ jobs:
             echo "--- Retrieve attempt $attempt of $MAX_ATTEMPTS ---"
             if sf project retrieve start \
                  --target-org "$SRC_ORG_ALIAS" \
-                 --manifest manifest/package.xml; then
+                 --manifest manifest/package.xml \
+                 --wait 30; then
               echo "✅ Retrieve succeeded on attempt $attempt."
               break
             fi
@@ -316,7 +376,7 @@ jobs:
           done
 
           echo "Files retrieved:"
-          find force-app -type f | sort
+          find force-app -type f | sort || echo "No files found"
 
       # ───────────────────────────────────────────────────────────────────────
       # Deploy to Destination Org
@@ -331,6 +391,8 @@ jobs:
 
           # Build test flags - using discovered OR manual tests
           TEST_FLAGS=""
+          TEST_NAMES=""
+          
           if [ "$RUN_TESTS" == "true" ]; then
             # Merge discovered + manual tests, then deduplicate
             ALL_TEST_INPUTS=""
@@ -347,8 +409,12 @@ jobs:
             
             # Deduplicate and format for CLI
             if [ -n "$ALL_TEST_INPUTS" ]; then
-              TEST_NAMES=$(echo "$ALL_TEST_INPUTS" | tr ',' '\n' | sort -u | tr '\n' ' ' | sed 's/ $//')
-              TEST_FLAGS="--test-level RunSpecifiedTests --tests $TEST_NAMES"
+              TEST_NAMES=$(echo "$ALL_TEST_INPUTS" | tr ',' '\n' | sort -u | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
+              TEST_FLAGS="--test-level RunSpecifiedTests"
+              # Add each test individually to avoid command line length issues
+              for test_name in $(echo "$TEST_NAMES" | tr ',' ' '); do
+                TEST_FLAGS="$TEST_FLAGS --tests $test_name"
+              done
               echo "🧪 Running specified tests: $TEST_NAMES"
             else
               # No tests found - use RunLocalTests as final fallback
@@ -362,7 +428,7 @@ jobs:
             DEPLOY_CMD="validate"
             echo "🔍 Validation-only mode — no changes will be applied."
           else
-            DEPLOY_CMD="start"
+            DEPLOY_CMD="deploy"
             echo "✅ Full deployment mode — changes will be applied."
           fi
 
@@ -373,10 +439,12 @@ jobs:
             echo "--- Deploy attempt $attempt of $MAX_ATTEMPTS ---"
 
             set +e
-            sf project deploy $DEPLOY_CMD \
+            # Use sf project deploy instead of deprecated sf project deploy start
+            sf project $DEPLOY_CMD \
               --target-org "$DST_ORG_ALIAS" \
               --source-dir force-app \
               $TEST_FLAGS \
+              --wait 30 \
               --json > deploy-result.json 2>&1
             DEPLOY_EXIT=$?
             set -e
@@ -412,11 +480,13 @@ jobs:
             echo "|---|---|" >> $GITHUB_STEP_SUMMARY
             echo "| Error | \`\`\`$ERROR_MSG\`\`\` |" >> $GITHUB_STEP_SUMMARY
             
-            FAILURES=$(jq -r '.result.details.componentFailures[]? | 
-                             "• \`" + .componentType + "." + .fullName + "\`: " + .problem' \
-                      deploy-result.json 2>/dev/null || true)
-            if [ -n "$FAILURES" ]; then
-              echo "| Failures | <pre>$FAILURES</pre> |" >> $GITHUB_STEP_SUMMARY
+            if [ -f deploy-result.json ]; then
+              FAILURES=$(jq -r '.result.details.componentFailures[]? | 
+                               "* `" + .componentType + "." + .fullName + "`: " + .problem' \
+                        deploy-result.json 2>/dev/null || true)
+              if [ -n "$FAILURES" ]; then
+                echo "| Failures | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
             
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -425,29 +495,31 @@ jobs:
             exit $DEPLOY_EXIT
           fi
 
-          # Success summary
+          # Success summary - fixed jq escaping
           echo "## ✅ Deployment Results" >> $GITHUB_STEP_SUMMARY
           
-          SUCCESS_COUNT=$(jq '[.result.details.componentSuccesses[]? | 
-                             select(.componentType != "" and .componentType != null and .fullName != "package.xml")] | length' \
+          if [ -f deploy-result.json ]; then
+            SUCCESS_COUNT=$(jq '[.result.details.componentSuccesses[]? | 
+                               select(.componentType != "" and .componentType != null and .fullName != "package.xml")] | length' \
                           deploy-result.json 2>/dev/null || echo "0")
           
-          if [ "$SUCCESS_COUNT" -gt "0" ]; then
-            echo "### Deployed Components ($SUCCESS_COUNT)" >> $GITHUB_STEP_SUMMARY
-            jq -r '.result.details.componentSuccesses[]? | 
-                   select(.componentType != "" and .componentType != null and .fullName != "package.xml") |
-                   "- \`" + .componentType + "\`: \`" + .fullName + "\` ✅"' \
-              deploy-result.json | sort -u >> $GITHUB_STEP_SUMMARY
-          else
-            echo "> ℹ️  No component success details available in response." >> $GITHUB_STEP_SUMMARY
+            if [ "$SUCCESS_COUNT" -gt "0" ]; then
+              echo "### Deployed Components ($SUCCESS_COUNT)" >> $GITHUB_STEP_SUMMARY
+              jq -r '.result.details.componentSuccesses[]? | 
+                     select(.componentType != "" and .componentType != null and .fullName != "package.xml") |
+                     "* `" + .componentType + "`: `" + .fullName + "` ✅"' \
+                deploy-result.json 2>/dev/null | sort -u >> $GITHUB_STEP_SUMMARY
+            else
+              echo "> ℹ️  No component success details available in response." >> $GITHUB_STEP_SUMMARY
+            fi
           fi
 
           # Test results
-          if [ "$RUN_TESTS" == "true" ]; then
+          if [ "$RUN_TESTS" == "true" ] && [ -f deploy-result.json ]; then
             echo "### Test Execution" >> $GITHUB_STEP_SUMMARY
             
             TEST_SUCCESSES=$(jq -r '.result.details.runTestResult.successes[]? | 
-                                   "- ✅ \`" + .name + "." + .methodName + "\`"' \
+                                   "* ✅ `" + .name + "." + .methodName + "`"' \
                             deploy-result.json 2>/dev/null || true)
             if [ -n "$TEST_SUCCESSES" ]; then
               echo "#### Passed" >> $GITHUB_STEP_SUMMARY
@@ -455,7 +527,7 @@ jobs:
             fi
             
             TEST_FAILURES=$(jq -r '.result.details.runTestResult.failures[]? | 
-                                  "- ❌ \`" + .name + "." + .methodName + "\`: " + .message' \
+                                  "* ❌ `" + .name + "." + .methodName + "`: " + .message' \
                            deploy-result.json 2>/dev/null || true)
             if [ -n "$TEST_FAILURES" ]; then
               echo "#### Failed" >> $GITHUB_STEP_SUMMARY
@@ -463,7 +535,7 @@ jobs:
             fi
             
             COVERAGE=$(jq -r '.result.details.runTestResult.codeCoverage[]? | 
-                             "\`" + .name + "\`: " + (.numLinesCovered | tostring) + "/" + (.numLinesUncovered | tostring) + " covered"' \
+                             "* `" + .name + "`: " + (.numLinesCovered | tostring) + "/" + (.numLinesUncovered | tostring) + " covered"' \
                       deploy-result.json 2>/dev/null || true)
             if [ -n "$COVERAGE" ]; then
               echo "#### Coverage" >> $GITHUB_STEP_SUMMARY
@@ -494,35 +566,39 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⏹ Dry run — no deployment performed." >> $GITHUB_STEP_SUMMARY
           elif [ -f "$PROJECT_DIR/deploy-result.json" ]; then
-            DEPLOY_STATUS=$(jq -r '.status // 1' "$PROJECT_DIR/deploy-result.json")
+            DEPLOY_STATUS=$(jq -r '.status // 1' "$PROJECT_DIR/deploy-result.json" 2>/dev/null || echo "1")
 
             if [ "$DEPLOY_STATUS" != "0" ]; then
               echo "### ❌ Deployment failed" >> $GITHUB_STEP_SUMMARY
-              jq -r '.message // "Unknown error"' "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY
+              jq -r '.message // "Unknown error"' "$PROJECT_DIR/deploy-result.json" 2>/dev/null >> $GITHUB_STEP_SUMMARY
             else
               echo "### ✅ Successes" >> $GITHUB_STEP_SUMMARY
               jq -r '.result.details.componentSuccesses[]?
                      | select(.componentType != "" and .fullName != "package.xml") |
-                     "- \`" + .componentType + "\`: \`" + .fullName + "\` ✅"' \
-                "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
+                     "* `" + .componentType + "`: `" + .fullName + "` ✅"' \
+                "$PROJECT_DIR/deploy-result.json" 2>/dev/null >> $GITHUB_STEP_SUMMARY \
                 || echo "No success details available." >> $GITHUB_STEP_SUMMARY
 
-              echo "### Test results" >> $GITHUB_STEP_SUMMARY
-              jq -r '.result.details.runTestResult.successes[]?
-                     | "- \`" + .name + "." + .methodName + "\` ✅"' \
-                "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
-                || echo "No test results." >> $GITHUB_STEP_SUMMARY
+              if [ "$RUN_TESTS" == "true" ]; then
+                echo "### Test results" >> $GITHUB_STEP_SUMMARY
+                jq -r '.result.details.runTestResult.successes[]?
+                       | "* ✅ `" + .name + "." + .methodName + "`"' \
+                  "$PROJECT_DIR/deploy-result.json" 2>/dev/null >> $GITHUB_STEP_SUMMARY \
+                  || echo "No test results." >> $GITHUB_STEP_SUMMARY
+              fi
 
               echo "### Failures (if any)" >> $GITHUB_STEP_SUMMARY
               jq -r '.result.details.componentFailures[]?
-                     | "- \`" + .componentType + "\`: \`" + .fullName + "\` ❌ — " + .problem' \
-                "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
+                     | "* `" + .componentType + "`: `" + .fullName + "` ❌ — " + .problem' \
+                "$PROJECT_DIR/deploy-result.json" 2>/dev/null >> $GITHUB_STEP_SUMMARY \
                 || echo "No component failures." >> $GITHUB_STEP_SUMMARY
 
-              jq -r '.result.details.runTestResult.failures[]?
-                     | "- \`" + .name + "." + .methodName + "\` ❌ — " + .message' \
-                "$PROJECT_DIR/deploy-result.json" >> $GITHUB_STEP_SUMMARY \
-                || echo "No test failures." >> $GITHUB_STEP_SUMMARY
+              if [ "$RUN_TESTS" == "true" ]; then
+                jq -r '.result.details.runTestResult.failures[]?
+                       | "* ❌ `" + .name + "." + .methodName + "` — " + .message' \
+                  "$PROJECT_DIR/deploy-result.json" 2>/dev/null >> $GITHUB_STEP_SUMMARY \
+                  || echo "No test failures." >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           else
             echo "⚠️  deploy-result.json not found — deployment step may have been skipped." \
@@ -534,7 +610,7 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: 'Upload Artifacts'
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-artifacts
           path: |
